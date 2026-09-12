@@ -30,6 +30,7 @@ const suites = [
   { name: 'Admin Notifications', script: 'test-management-notifications.cjs', expected: 43 },
   { name: 'Student Portal Foundation Hardening', script: 'test-student-portal-hardening.cjs', expected: 18 },
   { name: 'Student Mess Workflow', script: 'test-student-mess-workflow.cjs', expected: 20 },
+  { name: 'Student Portal Step 5 Hardening', script: 'test-student-portal-e2e-hardening.cjs', expected: 34 },
 ];
 
 console.log('====================================================');
@@ -50,7 +51,8 @@ for (const suite of suites) {
       output.match(/Passed:\s*(\d+)/i) ||
       output.match(/(\d+)\/(\d+)\s*tests passed/i) ||
       output.match(/SUITE:\s*(\d+)\/(\d+)\s*TESTS PASSED/i) ||
-      output.match(/COMPLETE:\s*(\d+)\/(\d+)\s*TESTS PASSED/i);
+      output.match(/COMPLETE:\s*(\d+)\/(\d+)\s*TESTS PASSED/i) ||
+      output.match(/ALL\s*(\d+)\s*STEP 5 HARDENING CHECKS PASSED/i);
     if (match) {
       passedCount = parseInt(match[1], 10);
     }
