@@ -28,6 +28,12 @@ import {
   MessTokenHistoryItem,
   HorizonDateItem,
 } from '../services/api';
+import {
+  StaticMessQrCard,
+  StaticMessQrModal,
+  STATIC_MESS_QR_PAYLOAD,
+  STATIC_MESS_ENTRY_POINT,
+} from '../components/StaticMessQr';
 
 export const MessTokensPage: React.FC = () => {
   const [data, setData] = useState<MessTokensData | null>(null);
@@ -35,10 +41,26 @@ export const MessTokensPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
+  // Static Mess QR State (Step 7)
+  const [qrModalOpen, setQrModalOpen] = useState<boolean>(false);
+  const [qrPayload, setQrPayload] = useState<string>(STATIC_MESS_QR_PAYLOAD);
+  const [qrEntryPoint, setQrEntryPoint] = useState<string>(STATIC_MESS_ENTRY_POINT);
+
   // Selected date state (defaults to today's ISO date string)
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
+
+  // Fetch static QR configuration once on mount
+  useEffect(() => {
+    apiService
+      .getMessQrConfig()
+      .then((cfg) => {
+        if (cfg.payload) setQrPayload(cfg.payload);
+        if (cfg.entryPoint) setQrEntryPoint(cfg.entryPoint);
+      })
+      .catch(() => {});
+  }, []);
 
   // Modal / Booking intent state
   const [activeModalSlot, setActiveModalSlot] = useState<MessMealSlot | null>(null);
@@ -545,6 +567,22 @@ export const MessTokensPage: React.FC = () => {
         </div>
       </section>
 
+      {/* Permanent Static Mess Verification QR Section (Step 7) */}
+      <section className="mess-section static-mess-qr-section" aria-labelledby="mess-qr-heading">
+        <div className="section-title-group">
+          <h2 id="mess-qr-heading" className="mess-section-title">
+            HMS Mess QR
+          </h2>
+          <span className="section-badge">Permanent Verification Entry Point</span>
+        </div>
+
+        <StaticMessQrCard
+          payload={qrPayload}
+          entryPoint={qrEntryPoint}
+          onOpenModal={() => setQrModalOpen(true)}
+        />
+      </section>
+
       {/* Active Digital Passes (Ticket Cards for Today) */}
       {isSelectedDateToday && activePasses.length > 0 && (
         <section className="mess-section" aria-labelledby="active-passes-heading">
@@ -578,7 +616,16 @@ export const MessTokensPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="pass-qr-visual" aria-hidden="true">
+                  <div
+                    className="pass-qr-visual"
+                    onClick={() => setQrModalOpen(true)}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to view full Mess Verification QR"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && setQrModalOpen(true)}
+                    aria-label="View Mess Verification QR Code"
+                  >
                     <QrCode size={52} />
                   </div>
                 </div>
@@ -814,6 +861,15 @@ export const MessTokensPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Permanent Static Mess QR Modal (Step 7) */}
+      {qrModalOpen && (
+        <StaticMessQrModal
+          payload={qrPayload}
+          entryPoint={qrEntryPoint}
+          onClose={() => setQrModalOpen(false)}
+        />
       )}
     </div>
   );

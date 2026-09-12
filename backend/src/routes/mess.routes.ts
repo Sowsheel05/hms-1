@@ -961,4 +961,24 @@ router.post('/mess-tokens/book', authenticateStudent, async (req: AuthenticatedR
   }
 });
 
+export const STATIC_MESS_QR_CONFIG = {
+  payload: 'HMS_MESS_ENTRY',
+  entryPoint: '/mess/verify',
+  title: 'HMS Mess Verification Entry Point',
+  description: 'Permanent static QR code for HMS hostel mess attendance verification.',
+  isStatic: true,
+};
+
+/**
+ * GET /api/student/mess/qr and GET /api/student/mess-qr
+ * Returns the permanent static QR entry-point configuration for HMS Mess verification.
+ * Deterministic and identical for every student, meal, and date.
+ */
+router.get(['/mess/qr', '/mess-qr'], authenticateStudent, (req: AuthenticatedRequest, res: Response): void => {
+  res.json({
+    success: true,
+    ...STATIC_MESS_QR_CONFIG,
+  });
+});
+
 export default router;

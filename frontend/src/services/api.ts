@@ -211,6 +211,15 @@ export interface MessTokensData {
   history: MessTokenHistoryItem[];
 }
 
+export interface StaticMessQrConfig {
+  success: boolean;
+  payload: string;
+  entryPoint: string;
+  title: string;
+  description: string;
+  isStatic: boolean;
+}
+
 export interface BookTokenResponse {
   success: boolean;
   message: string;
@@ -774,6 +783,30 @@ export const apiService = {
 
     if (!response.ok) {
       throw new Error(data.message || 'Failed to book mess token.');
+    }
+
+    return data;
+  },
+
+  /**
+   * Fetch permanent static mess verification QR configuration
+   */
+  async getMessQrConfig(): Promise<StaticMessQrConfig> {
+    const token = authStorage.getToken();
+    if (!token) {
+      throw new Error('Authentication session missing.');
+    }
+
+    const response = await fetch('/api/student/mess/qr', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || 'Unable to load mess QR configuration.');
     }
 
     return data;

@@ -32,6 +32,7 @@ const suites = [
   { name: 'Student Mess Workflow', script: 'test-student-mess-workflow.cjs', expected: 20 },
   { name: 'Student Portal Step 5 Hardening', script: 'test-student-portal-e2e-hardening.cjs', expected: 34 },
   { name: 'Cross-Portal Integration', script: 'test-cross-portal-integration.cjs', expected: 26 },
+  { name: 'Static Mess QR (Step 7)', script: 'test-student-mess-static-qr.cjs', expected: 20 },
 ];
 
 console.log('====================================================');
@@ -54,7 +55,8 @@ for (const suite of suites) {
       output.match(/SUITE:\s*(\d+)\/(\d+)\s*TESTS PASSED/i) ||
       output.match(/COMPLETE:\s*(\d+)\/(\d+)\s*TESTS PASSED/i) ||
       output.match(/ALL\s*(\d+)\s*STEP 5 HARDENING CHECKS PASSED/i) ||
-      output.match(/ALL\s*(\d+)\s*CROSS-PORTAL INTEGRATION TESTS PASSED/i);
+      output.match(/ALL\s*(\d+)\s*CROSS-PORTAL INTEGRATION TESTS PASSED/i) ||
+      output.match(/ALL\s*(\d+)\s*STEP 7 STATIC MESS QR TESTS PASSED/i);
     if (match) {
       passedCount = parseInt(match[1], 10);
     }

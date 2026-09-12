@@ -17719,3 +17719,491 @@ input[type="checkbox"] {
   align-items: center;
   gap: 0.5rem;
 }
+
+/* ============================================================ */
+/* STEP 7: STATIC MESS QR CARD & MODAL STYLES                   */
+/* ============================================================ */
+
+.static-mess-qr-section {
+  margin-bottom: 2rem;
+}
+
+.static-mess-qr-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.static-mess-qr-card:hover {
+  border-color: #CBD5E1;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+.static-qr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #F1F5F9;
+}
+
+.static-qr-title-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.static-qr-icon-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #EFF6FF;
+  color: #1D4ED8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.static-qr-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0F172A;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.static-qr-subtitle {
+  font-size: 0.8rem;
+  color: #64748B;
+  margin: 0.15rem 0 0;
+}
+
+.static-qr-permanent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 20px;
+  background: #F0FDF4;
+  color: #166534;
+  border: 1px solid #BBF7D0;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.static-qr-body {
+  padding: 1.25rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.static-qr-instruction {
+  font-size: 0.9rem;
+  color: #334155;
+  margin: 0 0 1.25rem;
+  font-weight: 500;
+  max-width: 460px;
+}
+
+.static-qr-visual-box {
+  position: relative;
+  padding: 12px;
+  background: #FFFFFF;
+  border: 2px solid #E2E8F0;
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  cursor: pointer;
+  display: inline-block;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.static-qr-visual-box:hover {
+  transform: translateY(-2px);
+  border-color: #2563EB;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+}
+
+.static-qr-image {
+  display: block;
+  border-radius: 6px;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+  width: 160px;
+  height: 160px;
+}
+
+.static-qr-placeholder {
+  width: 160px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #F8FAFC;
+  border-radius: 6px;
+  color: #94A3B8;
+}
+
+.static-qr-overlay-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  color: #64748B;
+  font-weight: 500;
+}
+
+.static-qr-info-box {
+  margin-top: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  max-width: 480px;
+  width: 100%;
+}
+
+.static-qr-info-icon {
+  color: #3B82F6;
+  flex-shrink: 0;
+}
+
+.static-qr-info-text {
+  font-size: 0.8rem;
+  color: #475569;
+  margin: 0;
+  text-align: left;
+  line-height: 1.4;
+}
+
+.static-qr-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid #F1F5F9;
+}
+
+.btn-view-qr {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 8px;
+  background: #151B54;
+  color: #FFFFFF;
+  border: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.btn-view-qr:hover {
+  background: #1e266d;
+  transform: translateY(-1px);
+}
+
+.static-qr-entry-tag {
+  font-size: 0.75rem;
+  color: #64748B;
+}
+
+.static-qr-entry-tag code {
+  background: #F1F5F9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #0F172A;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Static QR Modal */
+.mess-qr-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 9999;
+  animation: fadeInModal 0.2s ease-out;
+}
+
+@keyframes fadeInModal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mess-qr-modal-card {
+  background: #FFFFFF;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  animation: scaleInModal 0.2s ease-out;
+}
+
+@keyframes scaleInModal {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.mess-qr-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #F1F5F9;
+  background: #FAFAFA;
+}
+
+.modal-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.modal-brand-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #151B54;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mess-qr-modal-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0F172A;
+  margin: 0;
+}
+
+.mess-qr-close-btn {
+  background: none;
+  border: none;
+  color: #64748B;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mess-qr-close-btn:hover {
+  background: #F1F5F9;
+  color: #0F172A;
+}
+
+.mess-qr-modal-body {
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.mess-qr-modal-lead {
+  font-size: 0.92rem;
+  color: #334155;
+  margin: 0 0 1.25rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.mess-qr-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.mess-qr-frame {
+  padding: 16px;
+  background: #FFFFFF;
+  border: 2px solid #E2E8F0;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08);
+  display: inline-block;
+}
+
+.modal-qr-img {
+  display: block;
+  border-radius: 8px;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+  width: 240px;
+  height: 240px;
+}
+
+.modal-qr-loading {
+  width: 240px;
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #F8FAFC;
+  color: #94A3B8;
+  border-radius: 8px;
+}
+
+.qr-stage-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #166534;
+  background: #F0FDF4;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid #BBF7D0;
+}
+
+.mess-qr-modal-alert {
+  background: #F0F9FF;
+  border: 1px solid #BAE6FD;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  text-align: left;
+  margin-bottom: 1.25rem;
+}
+
+.modal-alert-icon {
+  color: #0284C7;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.modal-alert-text {
+  font-size: 0.78rem;
+  color: #0369A1;
+  line-height: 1.45;
+}
+
+.mess-qr-meta-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  background: #F8FAFC;
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #E2E8F0;
+  text-align: left;
+}
+
+.qr-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.qr-meta-lbl {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #64748B;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.qr-meta-val {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #0F172A;
+}
+
+.qr-meta-val code {
+  background: #E2E8F0;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.mess-qr-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #F1F5F9;
+  background: #FAFAFA;
+}
+
+.btn-qr-modal-close {
+  width: 100%;
+  padding: 0.65rem;
+  background: #151B54;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-qr-modal-close:hover {
+  background: #1e266d;
+}
+
+/* Mobile responsive adjustments for QR card & modal */
+@media (max-width: 480px) {
+  .static-mess-qr-card {
+    padding: 1rem;
+  }
+
+  .static-qr-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .static-qr-image {
+    width: 140px;
+    height: 140px;
+  }
+
+  .static-qr-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-view-qr {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .modal-qr-img {
+    width: 200px;
+    height: 200px;
+  }
+
+  .mess-qr-meta-row {
+    grid-template-columns: 1fr;
+  }
+}
