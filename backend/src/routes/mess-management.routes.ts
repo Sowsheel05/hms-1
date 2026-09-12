@@ -11,13 +11,13 @@ const router = Router();
 // Enforce authoritative management authentication on all mess management endpoints
 router.use(authenticateManagement);
 
-const VALID_MEALS = ['BREAKFAST', 'LUNCH', 'SNACKS', 'DINNER'] as const;
-type MealType = (typeof VALID_MEALS)[number];
+export const VALID_MEALS = ['BREAKFAST', 'LUNCH', 'SNACKS', 'DINNER'] as const;
+export type MealType = (typeof VALID_MEALS)[number];
 
-const VALID_STATUSES = ['BOOKED', 'CONSUMED', 'CANCELLED'] as const;
-type TokenStatus = (typeof VALID_STATUSES)[number];
+export const VALID_STATUSES = ['BOOKED', 'CONSUMED', 'CANCELLED', 'SKIPPED'] as const;
+export type TokenStatus = (typeof VALID_STATUSES)[number];
 
-interface MealTimingConfig {
+export interface MealTimingConfig {
   type: MealType;
   name: string;
   timing: string;
@@ -26,9 +26,20 @@ interface MealTimingConfig {
   endHour: number;
   endMinute: number;
   description: string;
+  cutoffHour: number;
+  cutoffMinute: number;
 }
 
-const MEAL_CONFIGS: MealTimingConfig[] = [
+/**
+ * Authoritative Booking Horizon in days configured by Mess Administration
+ */
+export const BOOKING_HORIZON_DAYS = 7;
+
+/**
+ * Authoritative Admin Mess Management Meal & Timing Configuration
+ * Single source of truth for meal definitions, schedules, and indent deadlines
+ */
+export const MEAL_CONFIGS: MealTimingConfig[] = [
   {
     type: 'BREAKFAST',
     name: 'Breakfast',
@@ -38,6 +49,8 @@ const MEAL_CONFIGS: MealTimingConfig[] = [
     endHour: 9,
     endMinute: 30,
     description: 'Hot breakfast buffet with choice of beverages',
+    cutoffHour: 7,
+    cutoffMinute: 0,
   },
   {
     type: 'LUNCH',
@@ -48,6 +61,8 @@ const MEAL_CONFIGS: MealTimingConfig[] = [
     endHour: 14,
     endMinute: 30,
     description: 'Complete nutritional multi-course lunch meal',
+    cutoffHour: 10,
+    cutoffMinute: 0,
   },
   {
     type: 'SNACKS',
@@ -58,6 +73,8 @@ const MEAL_CONFIGS: MealTimingConfig[] = [
     endHour: 18,
     endMinute: 0,
     description: 'Evening tea, coffee, and fresh evening snacks',
+    cutoffHour: 15,
+    cutoffMinute: 0,
   },
   {
     type: 'DINNER',
@@ -68,6 +85,8 @@ const MEAL_CONFIGS: MealTimingConfig[] = [
     endHour: 21,
     endMinute: 30,
     description: 'Residential dinner with seasonal specials',
+    cutoffHour: 17,
+    cutoffMinute: 30,
   },
 ];
 
@@ -134,9 +153,12 @@ router.get('/overview', async (req: AuthenticatedManagementRequest, res: Respons
       where: { isActive: true, allocationStatus: 'ALLOCATED' },
     });
 
-    // 2. Fetch all tokens for target date in one bounded query
+    // 2. Fetch all tokens for target date in one bounded query (excluding unsubmitted drafts)
     const tokensForDate = await prisma.messToken.findMany({
-      where: { date: targetDate },
+      where: {
+        date: targetDate,
+        status: { not: 'DRAFT' },
+      },
       select: {
         id: true,
         mealType: true,
@@ -292,6 +314,8 @@ router.get('/tokens', async (req: AuthenticatedManagementRequest, res: Response)
         return;
       }
       whereClause.status = normalizedStatus;
+    } else {
+      whereClause.status = { not: 'DRAFT' };
     }
 
     // Block filter & Search (requires student relation conditions)

@@ -103,7 +103,9 @@ export type MessEventType =
   | 'MESS_TOKEN_BOOKED'
   | 'MESS_TOKEN_CONSUMED'
   | 'MESS_TOKEN_CANCELLED'
-  | 'MESS_STATS_UPDATED';
+  | 'MESS_STATS_UPDATED'
+  | 'MESS_INDENT_UPDATED'
+  | 'MESS_TOKEN_UPDATED';
 
 export interface MessDomainEvent {
   type: MessEventType;
@@ -274,21 +276,35 @@ class ComplaintEventsService extends EventEmitter {
   }
 
   /**
+   * Helper to write events to all active SSE connections for a given student
+   */
+  private writeToStudentConnections(studentId: string, domainEventName: string, eventData: any, domain: string): void {
+    const connections = this.studentConnections.get(studentId);
+    if (!connections || connections.size === 0) return;
+
+    const domainPayload = `event: ${domainEventName}\ndata: ${JSON.stringify(eventData)}\n\n`;
+    const genericPayload = `event: student_event\ndata: ${JSON.stringify({
+      domain,
+      type: eventData.type,
+      timestamp: eventData.timestamp || new Date().toISOString(),
+      payload: eventData,
+    })}\n\n`;
+
+    for (const res of connections) {
+      try {
+        res.write(domainPayload);
+        res.write(genericPayload);
+      } catch (err) {
+        console.error(`Failed to write SSE ${domainEventName} to student connection:`, err);
+      }
+    }
+  }
+
+  /**
    * Emits a domain event exclusively to the authorized student
    */
   public emitToStudent(studentId: string, event: ComplaintDomainEvent): void {
-    // Notify student
-    const connections = this.studentConnections.get(studentId);
-    if (connections && connections.size > 0) {
-      const payload = `event: complaint_event\ndata: ${JSON.stringify(event)}\n\n`;
-      for (const res of connections) {
-        try {
-          res.write(payload);
-        } catch (err) {
-          console.error('Failed to write SSE event to connection:', err);
-        }
-      }
-    }
+    this.writeToStudentConnections(studentId, 'complaint_event', event, 'COMPLAINT');
 
     // Also notify management dashboard
     this.emitManagementDashboardUpdate({
@@ -302,18 +318,7 @@ class ComplaintEventsService extends EventEmitter {
    * Emits a leave domain event exclusively to the authorized student
    */
   public emitLeaveEventToStudent(studentId: string, event: LeaveDomainEvent): void {
-    // Notify student
-    const connections = this.studentConnections.get(studentId);
-    if (connections && connections.size > 0) {
-      const payload = `event: leave_event\ndata: ${JSON.stringify(event)}\n\n`;
-      for (const res of connections) {
-        try {
-          res.write(payload);
-        } catch (err) {
-          console.error('Failed to write SSE leave event to connection:', err);
-        }
-      }
-    }
+    this.writeToStudentConnections(studentId, 'leave_event', event, 'LEAVE');
 
     // Also notify management dashboard
     this.emitManagementDashboardUpdate({
@@ -348,38 +353,14 @@ class ComplaintEventsService extends EventEmitter {
    * Emits a notification domain event exclusively to the authorized student
    */
   public emitNotificationEventToStudent(studentId: string, event: NotificationDomainEvent): void {
-    const connections = this.studentConnections.get(studentId);
-    if (!connections || connections.size === 0) {
-      return;
-    }
-
-    const payload = `event: notification_event\ndata: ${JSON.stringify(event)}\n\n`;
-    for (const res of connections) {
-      try {
-        res.write(payload);
-      } catch (err) {
-        console.error('Failed to write SSE notification event to connection:', err);
-      }
-    }
+    this.writeToStudentConnections(studentId, 'notification_event', event, 'NOTIFICATION');
   }
 
   /**
    * Dispatches a lightweight biometric event to a specific student's SSE stream
    */
   public emitBiometricEventToStudent(studentId: string, event: BiometricDomainEvent): void {
-    const connections = this.studentConnections.get(studentId);
-    if (!connections || connections.size === 0) {
-      return;
-    }
-
-    const payload = `event: biometric_event\ndata: ${JSON.stringify(event)}\n\n`;
-    for (const res of connections) {
-      try {
-        res.write(payload);
-      } catch (err) {
-        console.error('Failed to write SSE biometric event to connection:', err);
-      }
-    }
+    this.writeToStudentConnections(studentId, 'biometric_event', event, 'BIOMETRIC');
 
     // Also notify management dashboard
     this.emitManagementDashboardUpdate({
@@ -393,17 +374,7 @@ class ComplaintEventsService extends EventEmitter {
    * Dispatches a room allocation domain event to a specific student's SSE stream and broadcasts to management
    */
   public emitRoomEventToStudent(studentId: string, event: RoomDomainEvent): void {
-    const connections = this.studentConnections.get(studentId);
-    if (connections && connections.size > 0) {
-      const payload = `event: room_event\ndata: ${JSON.stringify(event)}\n\n`;
-      for (const res of connections) {
-        try {
-          res.write(payload);
-        } catch (err) {
-          console.error('Failed to write SSE room event to student connection:', err);
-        }
-      }
-    }
+    this.writeToStudentConnections(studentId, 'room_event', event, 'ROOM');
 
     // Also broadcast to management dashboard
     this.emitManagementDashboardUpdate({
@@ -423,17 +394,7 @@ class ComplaintEventsService extends EventEmitter {
    */
   public emitMessEventToStudent(studentId: string | undefined, event: MessDomainEvent): void {
     if (studentId) {
-      const connections = this.studentConnections.get(studentId);
-      if (connections && connections.size > 0) {
-        const payload = `event: mess_event\ndata: ${JSON.stringify(event)}\n\n`;
-        for (const res of connections) {
-          try {
-            res.write(payload);
-          } catch (err) {
-            console.error('Failed to write SSE mess event to student connection:', err);
-          }
-        }
-      }
+      this.writeToStudentConnections(studentId, 'mess_event', event, 'MESS');
     }
 
     // Also broadcast to management dashboard and mess listeners
@@ -456,17 +417,7 @@ class ComplaintEventsService extends EventEmitter {
    */
   public emitOutingEventToStudent(studentId: string | undefined, event: OutingDomainEvent): void {
     if (studentId) {
-      const connections = this.studentConnections.get(studentId);
-      if (connections && connections.size > 0) {
-        const payload = `event: outing_event\ndata: ${JSON.stringify(event)}\n\n`;
-        for (const res of connections) {
-          try {
-            res.write(payload);
-          } catch (err) {
-            console.error('Failed to write SSE outing event to student connection:', err);
-          }
-        }
-      }
+      this.writeToStudentConnections(studentId, 'outing_event', event, 'OUTING');
     }
 
     // Broadcast to management

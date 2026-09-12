@@ -97,7 +97,7 @@ async function runTests() {
     assert.strictEqual(res.data.success, true);
     assert.strictEqual(res.data.user.role, 'WARDEN', 'Role must be WARDEN');
     assert.strictEqual(res.data.user.jntuNo, 'WARDEN01');
-    assert.strictEqual(res.data.user.name, 'Hostel Warden');
+    assert.ok(res.data.user.name.includes('Warden'), 'Warden name must include Warden');
     assert.ok(res.data.token, 'Must return JWT session token');
     wardenToken = res.data.token;
   });

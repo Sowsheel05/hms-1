@@ -1,3 +1,5 @@
+import { studentRealtimeClient } from './student-realtime';
+
 export interface StudentUser {
   id: string;
   jntuNo: string;
@@ -93,20 +95,52 @@ export interface MyRoomData {
   roommates: Roommate[];
 }
 
+export interface HorizonDateItem {
+  date: string;
+  dayName: string;
+  dayNumber: number;
+  monthName: string;
+  fullFormatted: string;
+  isToday: boolean;
+  isPast: boolean;
+}
+
+export interface BookingHorizon {
+  startDate: string;
+  endDate: string;
+  horizonDays: number;
+  dates: HorizonDateItem[];
+}
+
 export interface MessMealSlot {
   mealType: 'BREAKFAST' | 'LUNCH' | 'SNACKS' | 'DINNER';
   name: string;
   timing: string;
   description: string;
-  status: 'AVAILABLE' | 'BOOKED' | 'USED' | 'EXPIRED' | 'UNAVAILABLE';
+  status: 'AVAILABLE' | 'DRAFT' | 'BOOKED' | 'SKIPPED' | 'USED' | 'CLOSED' | 'EXPIRED' | 'UNAVAILABLE';
+  isLocked?: boolean;
+  attendanceIntent?: 'ATTENDING' | 'SKIPPED' | null;
+  isBookingOpen?: boolean;
+  deadlineTime?: string;
+  deadlineFormatted?: string;
+  timeRemainingSeconds?: number;
   token?: {
     id: string;
-    tokenNumber: string;
+    tokenNumber?: string | null;
     date: string;
     mealType: string;
     status: string;
+    isLocked?: boolean;
+    attendanceIntent?: string | null;
     createdAt: string;
     timing?: string;
+  } | null;
+  draft?: {
+    id: string;
+    date: string;
+    mealType: string;
+    attendanceIntent: 'ATTENDING' | 'SKIPPED';
+    updatedAt: string;
   } | null;
 }
 
@@ -133,6 +167,7 @@ export interface MessTokenHistoryItem {
   mealName: string;
   timing: string;
   status: string;
+  attendanceIntent?: string | null;
   createdAt: string;
 }
 
@@ -144,12 +179,29 @@ export interface MessTokensData {
     jntuNo: string;
     allocationStatus: string;
   };
+  horizon?: BookingHorizon;
+  selectedDate?: {
+    date: string;
+    formattedDate: string;
+    isToday: boolean;
+    summary: {
+      totalMeals: number;
+      bookedCount: number;
+      skippedCount?: number;
+      draftCount?: number;
+      remainingCount: number;
+      summaryStatus: string;
+    };
+    mealSlots: MessMealSlot[];
+  };
   today: {
     date: string;
     formattedDate: string;
     summary: {
       totalMeals: number;
       bookedCount: number;
+      skippedCount?: number;
+      draftCount?: number;
       remainingCount: number;
       summaryStatus: string;
     };
@@ -460,6 +512,7 @@ export const authStorage = {
   clearToken(): void {
     try {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
+      studentRealtimeClient.disconnect();
     } catch (e) {
       console.error('Failed to remove auth token', e);
     }
@@ -607,15 +660,16 @@ export const apiService = {
   },
 
   /**
-   * Fetch authenticated student's mess tokens, meal slots, and booking history
+   * Fetch authenticated student's mess tokens, meal slots, and booking history (optionally for a specific date)
    */
-  async getMessTokensData(): Promise<MessTokensData> {
+  async getMessTokensData(date?: string): Promise<MessTokensData> {
     const token = authStorage.getToken();
     if (!token) {
       throw new Error('Authentication session missing.');
     }
 
-    const response = await fetch('/api/student/mess-tokens', {
+    const url = date ? `/api/student/mess-tokens?date=${encodeURIComponent(date)}` : '/api/student/mess-tokens';
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -635,7 +689,69 @@ export const apiService = {
   },
 
   /**
-   * Book an available meal token
+   * Save a draft attendance intent (ATTENDING or SKIPPED)
+   */
+  async saveMessDraft(
+    mealType: string,
+    date: string,
+    attendanceIntent: 'ATTENDING' | 'SKIPPED'
+  ): Promise<{ success: boolean; message: string; draft: any }> {
+    const token = authStorage.getToken();
+    if (!token) {
+      throw new Error('Authentication session missing.');
+    }
+
+    const response = await fetch('/api/student/mess-tokens/draft', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ mealType, date, attendanceIntent }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to save draft intent.');
+    }
+
+    return data;
+  },
+
+  /**
+   * Submit and authoritatively lock a meal indent
+   */
+  async lockMessIndent(
+    mealType: string,
+    date: string,
+    attendanceIntent: 'ATTENDING' | 'SKIPPED'
+  ): Promise<{ success: boolean; message: string; token: any }> {
+    const token = authStorage.getToken();
+    if (!token) {
+      throw new Error('Authentication session missing.');
+    }
+
+    const response = await fetch('/api/student/mess-tokens/lock', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ mealType, date, attendanceIntent }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to lock meal indent.');
+    }
+
+    return data;
+  },
+
+  /**
+   * Book an available meal token (legacy compatibility)
    */
   async bookMessToken(mealType: string, date?: string): Promise<BookTokenResponse> {
     const token = authStorage.getToken();
@@ -909,62 +1025,10 @@ export const apiService = {
   },
 
   /**
-   * Subscribe to real-time complaint updates via Server-Sent Events (SSE)
-   * Phase 8, 10 & 11
+   * Subscribe to real-time complaint updates via unified Student SSE
    */
   subscribeToComplaintEvents(onEvent: (event: { type: string; complaintId: string; timestamp: string }) => void): () => void {
-    const token = authStorage.getToken();
-    if (!token) {
-      return () => {};
-    }
-
-    let isClosed = false;
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: NodeJS.Timeout | null = null;
-
-    const connect = () => {
-      if (isClosed) return;
-      try {
-        eventSource = new EventSource(`/api/student/complaints/events?token=${encodeURIComponent(token)}`);
-
-        eventSource.addEventListener('complaint_event', (e) => {
-          try {
-            const parsed = JSON.parse(e.data);
-            onEvent(parsed);
-          } catch (err) {
-            console.error('Error parsing SSE event data:', err);
-          }
-        });
-
-        eventSource.onerror = () => {
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-          if (!isClosed) {
-            // Reconnect after 3 seconds
-            reconnectTimeout = setTimeout(connect, 3000);
-          }
-        };
-      } catch (err) {
-        console.error('Failed to establish SSE connection:', err);
-        if (!isClosed) {
-          reconnectTimeout = setTimeout(connect, 5000);
-        }
-      }
-    };
-
-    connect();
-
-    // Return cleanup function
-    return () => {
-      isClosed = true;
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-    };
+    return studentRealtimeClient.subscribe('complaint', onEvent);
   },
 
   /**
@@ -1050,59 +1114,10 @@ export const apiService = {
   },
 
   /**
-   * Subscribe to real-time leave & suspension events via SSE
+   * Subscribe to real-time leave & suspension events via unified Student SSE
    */
   subscribeToLeaveEvents(onEvent: (event: { type: string; leaveId?: string; suspensionId?: string; timestamp: string }) => void): () => void {
-    const token = authStorage.getToken();
-    if (!token) {
-      return () => {};
-    }
-
-    let isClosed = false;
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: NodeJS.Timeout | null = null;
-
-    const connect = () => {
-      if (isClosed) return;
-      try {
-        eventSource = new EventSource(`/api/student/complaints/events?token=${encodeURIComponent(token)}`);
-
-        eventSource.addEventListener('leave_event', (e) => {
-          try {
-            const parsed = JSON.parse(e.data);
-            onEvent(parsed);
-          } catch (err) {
-            console.error('Error parsing SSE leave event data:', err);
-          }
-        });
-
-        eventSource.onerror = () => {
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-          if (!isClosed) {
-            reconnectTimeout = setTimeout(connect, 3000);
-          }
-        };
-      } catch (err) {
-        console.error('Failed to establish SSE connection for leaves:', err);
-        if (!isClosed) {
-          reconnectTimeout = setTimeout(connect, 5000);
-        }
-      }
-    };
-
-    connect();
-
-    return () => {
-      isClosed = true;
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-    };
+    return studentRealtimeClient.subscribe('leave', onEvent);
   },
 
   /**
@@ -1212,59 +1227,10 @@ export const apiService = {
   },
 
   /**
-   * Subscribe to real-time notification events via SSE
+   * Subscribe to real-time notification events via unified Student SSE
    */
   subscribeToNotificationEvents(onEvent: (event: { type: string; notificationId?: string; unreadCount?: number; timestamp: string }) => void): () => void {
-    const token = authStorage.getToken();
-    if (!token) {
-      return () => {};
-    }
-
-    let isClosed = false;
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: NodeJS.Timeout | null = null;
-
-    const connect = () => {
-      if (isClosed) return;
-      try {
-        eventSource = new EventSource(`/api/student/notifications/events?token=${encodeURIComponent(token)}`);
-
-        eventSource.addEventListener('notification_event', (e) => {
-          try {
-            const parsed = JSON.parse(e.data);
-            onEvent(parsed);
-          } catch (err) {
-            console.error('Error parsing SSE notification event:', err);
-          }
-        });
-
-        eventSource.onerror = () => {
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-          if (!isClosed) {
-            reconnectTimeout = setTimeout(connect, 3000);
-          }
-        };
-      } catch (err) {
-        console.error('Failed to connect to notification SSE:', err);
-        if (!isClosed) {
-          reconnectTimeout = setTimeout(connect, 5000);
-        }
-      }
-    };
-
-    connect();
-
-    return () => {
-      isClosed = true;
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-    };
+    return studentRealtimeClient.subscribe('notification', onEvent);
   },
 
   /**
@@ -1346,105 +1312,39 @@ export const apiService = {
     return data;
   },
 
+  /**
+   * Subscribe to real-time biometric events via unified Student SSE
+   */
   subscribeToBiometricEvents(onEvent: (event: any) => void): () => void {
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: any = null;
-    let isClosed = false;
-
-    const connect = () => {
-      if (isClosed) return;
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        eventSource = new EventSource(`/api/student/biometric/events-stream?token=${encodeURIComponent(token)}`);
-
-        eventSource.addEventListener('biometric_event', (e) => {
-          try {
-            const parsed = JSON.parse(e.data);
-            onEvent(parsed);
-          } catch (err) {
-            console.error('Error parsing SSE biometric event:', err);
-          }
-        });
-
-        eventSource.onerror = () => {
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-          if (!isClosed) {
-            reconnectTimeout = setTimeout(connect, 3000);
-          }
-        };
-      } catch (err) {
-        console.error('Failed to connect to biometric SSE:', err);
-        if (!isClosed) {
-          reconnectTimeout = setTimeout(connect, 5000);
-        }
-      }
-    };
-
-    connect();
-
-    return () => {
-      isClosed = true;
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-    };
+    return studentRealtimeClient.subscribe('biometric', onEvent);
   },
 
+  /**
+   * Subscribe to real-time room allocation events via unified Student SSE
+   */
   subscribeToRoomEvents(onEvent: (event: any) => void): () => void {
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: any = null;
-    let isClosed = false;
+    return studentRealtimeClient.subscribe('room', onEvent);
+  },
 
-    const connect = () => {
-      if (isClosed) return;
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
+  /**
+   * Subscribe to real-time outing events via unified Student SSE
+   */
+  subscribeToOutingEvents(onEvent: (event: any) => void): () => void {
+    return studentRealtimeClient.subscribe('outing', onEvent);
+  },
 
-        eventSource = new EventSource(`/api/student/biometric/events-stream?token=${encodeURIComponent(token)}`);
+  /**
+   * Subscribe to real-time mess token events via unified Student SSE
+   */
+  subscribeToMessEvents(onEvent: (event: any) => void): () => void {
+    return studentRealtimeClient.subscribe('mess', onEvent);
+  },
 
-        eventSource.addEventListener('room_event', (e) => {
-          try {
-            const parsed = JSON.parse(e.data);
-            onEvent(parsed);
-          } catch (err) {
-            console.error('Error parsing SSE room event:', err);
-          }
-        });
-
-        eventSource.onerror = () => {
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-          if (!isClosed) {
-            reconnectTimeout = setTimeout(connect, 3000);
-          }
-        };
-      } catch (err) {
-        if (!isClosed) {
-          reconnectTimeout = setTimeout(connect, 5000);
-        }
-      }
-    };
-
-    connect();
-
-    return () => {
-      isClosed = true;
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-    };
+  /**
+   * Subscribe to all student events via unified Student SSE
+   */
+  subscribeToStudentEvents(onEvent: (event: any) => void): () => void {
+    return studentRealtimeClient.subscribe('all', onEvent);
   },
 };
 

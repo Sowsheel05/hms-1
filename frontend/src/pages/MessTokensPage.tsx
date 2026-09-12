@@ -14,6 +14,11 @@ import {
   Ticket,
   ShieldCheck,
   X,
+  FileEdit,
+  Lock,
+  Check,
+  Slash,
+  Info,
 } from 'lucide-react';
 import {
   apiService,
@@ -21,6 +26,7 @@ import {
   MessMealSlot,
   ActiveMessToken,
   MessTokenHistoryItem,
+  HorizonDateItem,
 } from '../services/api';
 
 export const MessTokensPage: React.FC = () => {
@@ -29,12 +35,22 @@ export const MessTokensPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // Booking state
-  const [bookingMeal, setBookingMeal] = useState<string | null>(null);
+  // Selected date state (defaults to today's ISO date string)
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+
+  // Modal / Booking intent state
+  const [activeModalSlot, setActiveModalSlot] = useState<MessMealSlot | null>(null);
+  const [selectedIntent, setSelectedIntent] = useState<'ATTENDING' | 'SKIPPED'>('ATTENDING');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
 
-  const fetchMessTokens = useCallback(async (isSilentRefresh = false) => {
+  // Fetch authoritative state for selectedDate
+  const fetchMessTokens = useCallback(async (dateTarget?: string, isSilentRefresh = false) => {
+    const queryDate = dateTarget || selectedDate;
     if (isSilentRefresh) {
       setIsRefreshing(true);
     } else {
@@ -43,7 +59,7 @@ export const MessTokensPage: React.FC = () => {
     setError(null);
 
     try {
-      const response = await apiService.getMessTokensData();
+      const response = await apiService.getMessTokensData(queryDate);
       setData(response);
     } catch (err: any) {
       setError(err.message || 'Unable to load mess token information.');
@@ -51,27 +67,91 @@ export const MessTokensPage: React.FC = () => {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [selectedDate]);
 
+  // Initial fetch and on selectedDate change
   useEffect(() => {
-    fetchMessTokens();
-  }, [fetchMessTokens]);
+    fetchMessTokens(selectedDate);
+  }, [selectedDate, fetchMessTokens]);
 
-  const handleBookToken = async (mealType: string) => {
-    if (bookingMeal) return; // Prevent double submission
-    setBookingMeal(mealType);
-    setActionSuccess(null);
+  // Unified Student SSE Real-time Subscription
+  useEffect(() => {
+    const unsubscribe = apiService.subscribeToMessEvents((_event: any) => {
+      // Re-fetch authoritative mess state from PostgreSQL on any mess event
+      fetchMessTokens(selectedDate, true);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [fetchMessTokens, selectedDate]);
+
+  // Open booking modal for a meal slot
+  const handleOpenBookingModal = (slot: MessMealSlot) => {
+    setModalError(null);
+    setActiveModalSlot(slot);
+
+    // Pre-populate existing intent if draft or booked/skipped
+    if (slot.attendanceIntent) {
+      setSelectedIntent(slot.attendanceIntent);
+    } else if (slot.draft?.attendanceIntent) {
+      setSelectedIntent(slot.draft.attendanceIntent);
+    } else if (slot.status === 'SKIPPED') {
+      setSelectedIntent('SKIPPED');
+    } else {
+      setSelectedIntent('ATTENDING');
+    }
+  };
+
+  const handleCloseModal = () => {
+    if (isSubmitting) return;
+    setActiveModalSlot(null);
+    setModalError(null);
+  };
+
+  // Action: Save Draft
+  const handleSaveDraft = async () => {
+    if (!activeModalSlot || isSubmitting) return;
+    setIsSubmitting(true);
+    setModalError(null);
     setActionError(null);
 
     try {
-      const result = await apiService.bookMessToken(mealType);
-      setActionSuccess(result.message || 'Mess token booked successfully!');
-      // Refresh authoritative backend state immediately
-      await fetchMessTokens(true);
+      const res = await apiService.saveMessDraft(
+        activeModalSlot.mealType,
+        selectedDate,
+        selectedIntent
+      );
+      setActionSuccess(res.message || 'Draft saved successfully.');
+      setActiveModalSlot(null);
+      await fetchMessTokens(selectedDate, true);
     } catch (err: any) {
-      setActionError(err.message || 'Failed to book mess token. Please try again.');
+      setModalError(err.message || 'Failed to save draft intent.');
     } finally {
-      setBookingMeal(null);
+      setIsSubmitting(false);
+    }
+  };
+
+  // Action: Submit & Lock Indent
+  const handleLockIndent = async () => {
+    if (!activeModalSlot || isSubmitting) return;
+    setIsSubmitting(true);
+    setModalError(null);
+    setActionError(null);
+
+    try {
+      const res = await apiService.lockMessIndent(
+        activeModalSlot.mealType,
+        selectedDate,
+        selectedIntent
+      );
+      setActionSuccess(res.message || 'Meal indent submitted and locked.');
+      setActiveModalSlot(null);
+      await fetchMessTokens(selectedDate, true);
+    } catch (err: any) {
+      setModalError(err.message || 'Failed to lock meal indent.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -109,7 +189,7 @@ export const MessTokensPage: React.FC = () => {
   const formatDateOnly = (dateStr?: string | null) => {
     if (!dateStr) return 'N/A';
     try {
-      const date = new Date(dateStr);
+      const date = new Date(`${dateStr}T12:00:00Z`);
       return date.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
@@ -132,7 +212,7 @@ export const MessTokensPage: React.FC = () => {
           <p className="state-desc">{error}</p>
           <button
             type="button"
-            onClick={() => fetchMessTokens()}
+            onClick={() => fetchMessTokens(selectedDate)}
             className="btn-retry"
           >
             <RefreshCw size={16} />
@@ -147,26 +227,29 @@ export const MessTokensPage: React.FC = () => {
   if (loading && !data) {
     return (
       <div className="mess-page-content" aria-busy="true">
-        <div className="skeleton skeleton-welcome" style={{ height: '120px' }} />
+        <div className="skeleton skeleton-welcome" style={{ height: '140px' }} />
+        <div className="skeleton skeleton-welcome" style={{ height: '90px' }} />
         <div className="mess-slots-grid">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="skeleton skeleton-card" style={{ height: '220px' }} />
+            <div key={i} className="skeleton skeleton-card" style={{ height: '260px' }} />
           ))}
         </div>
-        <div className="skeleton skeleton-feed" style={{ height: '260px' }} />
+        <div className="skeleton skeleton-feed" style={{ height: '240px' }} />
       </div>
     );
   }
 
-  const today = data?.today;
-  const summary = today?.summary;
-  const mealSlots = today?.mealSlots || [];
-  const activePasses = today?.activeTokensToday || [];
+  const selectedDayData = data?.selectedDate || data?.today;
+  const summary = selectedDayData?.summary;
+  const mealSlots = selectedDayData?.mealSlots || [];
+  const activePasses = data?.today?.activeTokensToday || [];
   const history = data?.history || [];
+  const horizonDates = data?.horizon?.dates || [];
+  const isSelectedDateToday = selectedDate === new Date().toISOString().split('T')[0];
 
   return (
     <div className="mess-page-content">
-      {/* Toast / Action Feedback Notifications */}
+      {/* Toast / Feedback Notifications */}
       {actionSuccess && (
         <div className="feedback-banner success" role="status">
           <div className="feedback-content">
@@ -206,38 +289,94 @@ export const MessTokensPage: React.FC = () => {
         <div>
           <h1 className="mess-page-title">Mess Tokens</h1>
           <p className="mess-page-subtitle">
-            Manage your daily hostel meal tokens, booking slots, and active passes.
+            Plan multi-day hostel meal indents, place attendance choices, and manage active digital dining passes.
           </p>
         </div>
         <button
           type="button"
           className={`refresh-tokens-btn ${isRefreshing ? 'spinning' : ''}`}
-          onClick={() => fetchMessTokens(true)}
+          onClick={() => fetchMessTokens(selectedDate, true)}
           disabled={isRefreshing}
           aria-label="Refresh mess tokens"
           title="Refresh mess tokens"
         >
           <RefreshCw size={16} />
-          <span>Refresh</span>
+          <span>{isRefreshing ? 'Syncing...' : 'Refresh'}</span>
         </button>
       </div>
 
-      {/* Summary Overview Banner */}
-      <section className="mess-summary-banner" aria-label="Today's Token Summary">
+      {/* Booking Deadline Guidance Banner */}
+      <section className="mess-rules-card" aria-label="Booking Guidelines">
+        <div className="rules-icon-wrap">
+          <Info size={22} className="rules-info-icon" />
+        </div>
+        <div className="rules-body">
+          <h3 className="rules-title">Daily Meal Indent & Booking Cutoff Guidelines</h3>
+          <p className="rules-desc">
+            To ensure zero food waste and hot dining service, meals must be indented prior to cutoff times:
+            <strong> Breakfast</strong> by 07:00 AM ·
+            <strong> Lunch</strong> by 10:00 AM ·
+            <strong> Evening Snacks</strong> by 03:00 PM ·
+            <strong> Dinner</strong> by 05:30 PM.
+            You can <strong>Save Draft</strong> anytime to prepare your intent, or <strong>Submit & Lock Indent</strong> to finalize your token.
+          </p>
+        </div>
+      </section>
+
+      {/* Multi-Day Planning Date Selector Ribbon */}
+      <section className="mess-section" aria-label="Meal Date Selection">
+        <div className="section-title-group">
+          <div className="flex items-center gap-2">
+            <Calendar size={18} className="text-primary" />
+            <h2 className="mess-section-title">Meal Planning Horizon</h2>
+          </div>
+          <span className="section-badge highlight">
+            7-Day Booking Window
+          </span>
+        </div>
+
+        <div className="mess-date-ribbon" role="tablist" aria-label="Planning dates">
+          {horizonDates.map((item: HorizonDateItem) => {
+            const isSelected = item.date === selectedDate;
+            return (
+              <button
+                key={item.date}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                className={`date-ribbon-card ${isSelected ? 'active' : ''} ${item.isToday ? 'is-today' : ''}`}
+                onClick={() => setSelectedDate(item.date)}
+              >
+                <div className="date-card-top">
+                  <span className="day-name">{item.dayName}</span>
+                  {item.isToday && <span className="today-badge">Today</span>}
+                </div>
+                <div className="day-number">{item.dayNumber}</div>
+                <div className="month-name">{item.monthName}</div>
+                {isSelected && <div className="active-pill-dot" />}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Selected Date Summary Banner */}
+      <section className="mess-summary-banner" aria-label="Selected Date Summary">
         <div className="summary-banner-left">
           <div className="summary-date-badge">
             <Calendar size={18} />
-            <span>{today?.formattedDate || 'Today'}</span>
+            <span>{selectedDayData?.formattedDate || selectedDate}</span>
+            {isSelectedDateToday && <span className="badge-today-chip">· Today</span>}
           </div>
           <h2 className="summary-main-stat">
-            {summary?.bookedCount || 0} of {summary?.totalMeals || 4} Meals Booked
+            {summary?.bookedCount || 0} Booked · {summary?.skippedCount || 0} Skipped
           </h2>
           <p className="summary-subtext">
             {summary?.remainingCount === 0
-              ? 'All daily meals have been booked for today.'
-              : `${summary?.remainingCount} meal token${
+              ? 'All daily meal indents have been finalized for this date.'
+              : `${summary?.remainingCount} meal${
                   summary?.remainingCount === 1 ? '' : 's'
-                } remaining available for today.`}
+                } remaining available for planning.`}
           </p>
         </div>
 
@@ -248,8 +387,12 @@ export const MessTokensPage: React.FC = () => {
               <span className="stat-label">Booked</span>
             </div>
             <div className="summary-stat-box">
-              <span className="stat-number">{summary?.remainingCount || 0}</span>
-              <span className="stat-label">Available</span>
+              <span className="stat-number">{summary?.skippedCount || 0}</span>
+              <span className="stat-label">Skipped</span>
+            </div>
+            <div className="summary-stat-box">
+              <span className="stat-number">{summary?.draftCount || 0}</span>
+              <span className="stat-label">Drafts</span>
             </div>
           </div>
           <div
@@ -262,7 +405,7 @@ export const MessTokensPage: React.FC = () => {
             }`}
           >
             <ShieldCheck size={14} />
-            <span>{summary?.summaryStatus || 'Active Session'}</span>
+            <span>{summary?.summaryStatus || 'Active Indent Window'}</span>
           </div>
         </div>
       </section>
@@ -271,20 +414,32 @@ export const MessTokensPage: React.FC = () => {
       <section className="mess-section" aria-labelledby="meal-slots-heading">
         <div className="section-title-group">
           <h2 id="meal-slots-heading" className="mess-section-title">
-            Today's Meal Slots
+            Meal Indents for {selectedDayData?.formattedDate}
           </h2>
-          <span className="section-badge">Residential Hostel Menu</span>
+          <span className="section-badge">Authoritative State Machine</span>
         </div>
 
         <div className="mess-slots-grid">
           {mealSlots.map((slot: MessMealSlot) => {
             const isBooked = slot.status === 'BOOKED' || slot.status === 'USED';
-            const isSubmitting = bookingMeal === slot.mealType;
+            const isSkipped = slot.status === 'SKIPPED';
+            const isDraft = slot.status === 'DRAFT';
+            const isClosed = slot.status === 'CLOSED';
 
             return (
               <div
                 key={slot.mealType}
-                className={`meal-slot-card ${isBooked ? 'card-booked' : 'card-available'}`}
+                className={`meal-slot-card ${
+                  isBooked
+                    ? 'card-booked'
+                    : isSkipped
+                    ? 'card-skipped'
+                    : isDraft
+                    ? 'card-draft'
+                    : isClosed
+                    ? 'card-closed'
+                    : 'card-available'
+                }`}
               >
                 <div className="meal-card-top">
                   <div className="meal-icon-box">{getMealIcon(slot.mealType)}</div>
@@ -292,20 +447,39 @@ export const MessTokensPage: React.FC = () => {
                     className={`meal-status-badge ${
                       isBooked
                         ? 'badge-booked'
+                        : isSkipped
+                        ? 'badge-skipped'
+                        : isDraft
+                        ? 'badge-draft'
                         : slot.status === 'AVAILABLE'
                         ? 'badge-available'
-                        : 'badge-expired'
+                        : 'badge-closed'
                     }`}
                   >
                     {isBooked ? (
                       <>
                         <CheckCircle2 size={13} />
-                        <span>Booked</span>
+                        <span>Booked & Locked</span>
                       </>
-                    ) : (
+                    ) : isSkipped ? (
+                      <>
+                        <Slash size={13} />
+                        <span>Meal Skipped</span>
+                      </>
+                    ) : isDraft ? (
+                      <>
+                        <FileEdit size={13} />
+                        <span>Draft Saved</span>
+                      </>
+                    ) : slot.status === 'AVAILABLE' ? (
                       <>
                         <Clock size={13} />
                         <span>Available</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock size={13} />
+                        <span>Booking Closed</span>
                       </>
                     )}
                   </div>
@@ -318,6 +492,12 @@ export const MessTokensPage: React.FC = () => {
                     <span>{slot.timing}</span>
                   </div>
                   <p className="meal-desc">{slot.description}</p>
+
+                  {/* Deadline Notice Chip */}
+                  <div className="meal-deadline-chip">
+                    <Clock size={12} className="deadline-icon" />
+                    <span>Cutoff: {slot.deadlineFormatted || 'Check Schedule'}</span>
+                  </div>
                 </div>
 
                 <div className="meal-card-footer">
@@ -325,26 +505,35 @@ export const MessTokensPage: React.FC = () => {
                     <div className="booked-token-indicator">
                       <Ticket size={15} />
                       <span className="token-ref">
-                        Ref: {slot.token?.tokenNumber || 'Verified'}
+                        Ref: {slot.token?.tokenNumber || 'VERIFIED-PASS'}
                       </span>
+                    </div>
+                  ) : isSkipped ? (
+                    <div className="skipped-token-indicator">
+                      <Slash size={15} />
+                      <span>Indent Finalized: Skipped</span>
+                    </div>
+                  ) : isClosed ? (
+                    <div className="closed-token-indicator">
+                      <Lock size={14} />
+                      <span>Cutoff Passed · Closed</span>
                     </div>
                   ) : (
                     <button
                       type="button"
-                      className="btn-book-token"
-                      onClick={() => handleBookToken(slot.mealType)}
-                      disabled={isSubmitting || !!bookingMeal}
-                      aria-label={`Book token for ${slot.name}`}
+                      className={`btn-book-token ${isDraft ? 'btn-draft-action' : ''}`}
+                      onClick={() => handleOpenBookingModal(slot)}
+                      aria-label={`Configure indent for ${slot.name}`}
                     >
-                      {isSubmitting ? (
+                      {isDraft ? (
                         <>
-                          <div className="spinner-sm" />
-                          <span>Booking...</span>
+                          <FileEdit size={16} />
+                          <span>Update / Lock Indent</span>
                         </>
                       ) : (
                         <>
                           <Ticket size={16} />
-                          <span>Book Token</span>
+                          <span>Configure Indent</span>
                         </>
                       )}
                     </button>
@@ -356,15 +545,15 @@ export const MessTokensPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Today's Active Digital Passes (Ticket Cards) */}
-      {activePasses.length > 0 && (
+      {/* Active Digital Passes (Ticket Cards for Today) */}
+      {isSelectedDateToday && activePasses.length > 0 && (
         <section className="mess-section" aria-labelledby="active-passes-heading">
           <div className="section-title-group">
             <h2 id="active-passes-heading" className="mess-section-title">
-              Active Meal Passes
+              Today's Active Digital Passes
             </h2>
             <span className="section-badge highlight">
-              {activePasses.length} Active Today
+              {activePasses.length} Active Pass{activePasses.length === 1 ? '' : 'es'}
             </span>
           </div>
 
@@ -421,13 +610,13 @@ export const MessTokensPage: React.FC = () => {
         </section>
       )}
 
-      {/* Token History Section */}
+      {/* Indent & Token Booking History Section */}
       <section className="mess-section" aria-labelledby="token-history-heading">
         <div className="section-title-group">
           <h2 id="token-history-heading" className="mess-section-title">
-            Token Booking History
+            Token & Indent History
           </h2>
-          <span className="section-badge">Recent Records</span>
+          <span className="section-badge">Authoritative Audit Trail</span>
         </div>
 
         {history.length === 0 ? (
@@ -435,7 +624,7 @@ export const MessTokensPage: React.FC = () => {
             <Ticket size={40} className="empty-history-icon" />
             <h3 className="empty-history-title">No token history yet</h3>
             <p className="empty-history-desc">
-              When you book meal tokens, your complete verification records and booking history will appear here.
+              When you book meal tokens or submit indents, your complete verification records and booking history will appear here.
             </p>
           </div>
         ) : (
@@ -445,9 +634,9 @@ export const MessTokensPage: React.FC = () => {
                 <tr>
                   <th scope="col">Date</th>
                   <th scope="col">Meal Type</th>
-                  <th scope="col">Token ID / Reference</th>
+                  <th scope="col">Token Reference</th>
                   <th scope="col">Timing</th>
-                  <th scope="col">Booked At</th>
+                  <th scope="col">Recorded At</th>
                   <th scope="col">Status</th>
                 </tr>
               </thead>
@@ -465,7 +654,7 @@ export const MessTokensPage: React.FC = () => {
                     </td>
                     <td>
                       <span className="history-token-pill">
-                        {item.tokenNumber || 'MT-RECORD'}
+                        {item.tokenNumber || (item.status === 'SKIPPED' ? 'SKIPPED-INDENT' : 'DRAFT')}
                       </span>
                     </td>
                     <td className="text-slate-600 text-sm">{item.timing}</td>
@@ -479,7 +668,9 @@ export const MessTokensPage: React.FC = () => {
                             ? 'badge-success'
                             : item.status === 'CONSUMED'
                             ? 'badge-neutral'
-                            : 'badge-warning'
+                            : item.status === 'SKIPPED'
+                            ? 'badge-warning'
+                            : 'badge-default'
                         }`}
                       >
                         {item.status}
@@ -492,6 +683,138 @@ export const MessTokensPage: React.FC = () => {
           </div>
         )}
       </section>
+
+      {/* Meal Indent Booking Modal (Reference Flow) */}
+      {activeModalSlot && (
+        <div className="meal-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-meal-title">
+          <div className="meal-modal-container">
+            {/* Modal Header */}
+            <div className="modal-meal-header">
+              <div className="flex items-center gap-3">
+                <div className="modal-meal-icon">{getMealIcon(activeModalSlot.mealType)}</div>
+                <div>
+                  <h3 id="modal-meal-title" className="modal-meal-name">
+                    {activeModalSlot.name} Indent
+                  </h3>
+                  <p className="modal-meal-timing">
+                    {selectedDayData?.formattedDate} · {activeModalSlot.timing}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={handleCloseModal}
+                disabled={isSubmitting}
+                aria-label="Close modal"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Feedback */}
+            {modalError && (
+              <div className="modal-error-banner" role="alert">
+                <AlertCircle size={18} />
+                <span>{modalError}</span>
+              </div>
+            )}
+
+            {/* Attendance Question & Choice Cards */}
+            <div className="modal-body-section">
+              <label className="choice-question-label">
+                Are you planning to attend?
+              </label>
+
+              <div className="attendance-choices-grid">
+                {/* Option 1: Yes, I'll attend */}
+                <div
+                  className={`attendance-choice-card ${selectedIntent === 'ATTENDING' ? 'selected' : ''}`}
+                  onClick={() => setSelectedIntent('ATTENDING')}
+                  role="radio"
+                  aria-checked={selectedIntent === 'ATTENDING'}
+                  tabIndex={0}
+                >
+                  <div className="choice-radio-indicator">
+                    {selectedIntent === 'ATTENDING' && <Check size={14} />}
+                  </div>
+                  <div className="choice-content">
+                    <div className="choice-title-row">
+                      <span className="choice-title">Yes, I'll attend</span>
+                      <span className="choice-tag-attend">Dining Hall Pass</span>
+                    </div>
+                    <p className="choice-desc">
+                      A digital meal pass will be generated upon locking. Please present it at the mess service counter during meal hours.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Option 2: No, Skip meal */}
+                <div
+                  className={`attendance-choice-card ${selectedIntent === 'SKIPPED' ? 'selected' : ''}`}
+                  onClick={() => setSelectedIntent('SKIPPED')}
+                  role="radio"
+                  aria-checked={selectedIntent === 'SKIPPED'}
+                  tabIndex={0}
+                >
+                  <div className="choice-radio-indicator">
+                    {selectedIntent === 'SKIPPED' && <Check size={14} />}
+                  </div>
+                  <div className="choice-content">
+                    <div className="choice-title-row">
+                      <span className="choice-title">No, Skip meal</span>
+                      <span className="choice-tag-skip">Food Waste Prevention</span>
+                    </div>
+                    <p className="choice-desc">
+                      You will not receive a meal token for this slot. Notifying the kitchen helps prevent residential food waste.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Deadline reminder notice */}
+              <div className="modal-deadline-notice">
+                <Clock size={15} />
+                <span>Authoritative Cutoff: <strong>{activeModalSlot.deadlineFormatted}</strong></span>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="modal-footer-actions">
+              <button
+                type="button"
+                className="btn-modal-cancel"
+                onClick={handleCloseModal}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+
+              <div className="modal-primary-buttons">
+                <button
+                  type="button"
+                  className="btn-modal-draft"
+                  onClick={handleSaveDraft}
+                  disabled={isSubmitting}
+                >
+                  <FileEdit size={16} />
+                  <span>{isSubmitting ? 'Saving...' : 'Save Draft'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-modal-lock"
+                  onClick={handleLockIndent}
+                  disabled={isSubmitting}
+                >
+                  <Lock size={16} />
+                  <span>{isSubmitting ? 'Locking...' : 'Submit & Lock Indent'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

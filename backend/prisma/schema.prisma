@@ -80,6 +80,10 @@ model OutingRequest {
   status           String    @default("PENDING") // PENDING, APPROVED, OUT, RETURNED, REJECTED, CANCELLED
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+
+  @@index([studentId, createdAt])
+  @@index([studentId])
+  @@index([status])
 }
 
 model MessToken {
@@ -89,7 +93,10 @@ model MessToken {
   student            Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   date               String    // YYYY-MM-DD
   mealType           String    // BREAKFAST, LUNCH, SNACKS, DINNER
-  status             String    @default("BOOKED") // BOOKED, CONSUMED, CANCELLED
+  status             String    @default("BOOKED") // DRAFT, BOOKED, SKIPPED, CONSUMED, CANCELLED
+  isLocked           Boolean   @default(false)
+  lockedAt           DateTime?
+  attendanceIntent   String?   // ATTENDING, SKIPPED
   consumedAt         DateTime?
   cancelledAt        DateTime?
   cancellationReason String?
@@ -103,6 +110,7 @@ model MessToken {
   @@index([studentId])
   @@index([date, mealType])
   @@index([date, status])
+  @@index([isLocked])
 }
 
 model LeaveRequest {
@@ -125,6 +133,10 @@ model LeaveRequest {
   status           String    @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+
+  @@index([studentId, status])
+  @@index([studentId])
+  @@index([status])
 }
 
 model Suspension {
@@ -141,6 +153,10 @@ model Suspension {
   liftedBy    String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([studentId, status])
+  @@index([studentId])
+  @@index([status])
 }
 
 

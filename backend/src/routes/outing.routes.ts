@@ -3,6 +3,7 @@ import { authenticateStudent, AuthenticatedRequest } from '../middleware/auth.mi
 import { prisma } from '../services/prisma.service';
 import { notificationService } from '../services/notification.service';
 import { complaintEventsService } from '../services/events.service';
+import { getActiveSuspension } from './leave.routes';
 
 const router = Router();
 
@@ -142,7 +143,20 @@ router.post('/outing-requests', authenticateStudent, async (req: AuthenticatedRe
       return;
     }
 
-    // 3. Business rule: Check monthly quota
+    // 3. Suspension Check: Block suspended students
+    const activeSuspension = await getActiveSuspension(studentId);
+    if (activeSuspension) {
+      res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_SUSPENDED',
+        message: `Outing request prohibited: Your account is currently suspended until ${new Date(
+          activeSuspension.endDate
+        ).toLocaleDateString()} (${activeSuspension.reason}).`,
+      });
+      return;
+    }
+
+    // 4. Business rule: Check monthly quota
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const usedThisMonth = await prisma.outingRequest.count({

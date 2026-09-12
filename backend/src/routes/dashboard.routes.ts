@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticateStudent, AuthenticatedRequest } from '../middleware/auth.middleware';
 import { prisma } from '../services/prisma.service';
+import { complaintEventsService } from '../services/events.service';
 
 const router = Router();
 
@@ -145,6 +146,31 @@ router.get('/dashboard', authenticateStudent, async (req: AuthenticatedRequest, 
       message: 'Unable to load your hostel dashboard. Please try again.',
     });
   }
+});
+
+/**
+ * GET /api/student/events
+ * Unified Authoritative Multiplexed SSE Stream for all Student Portal domains
+ * Scoped to authenticated student with automatic keep-alive
+ */
+router.get('/events', authenticateStudent, (req: AuthenticatedRequest, res: Response): void => {
+  if (!req.student) {
+    res.status(401).json({
+      success: false,
+      message: 'Authentication required for live events stream.',
+    });
+    return;
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  res.flushHeaders?.();
+  complaintEventsService.registerClient(req.student.id, res);
 });
 
 export default router;

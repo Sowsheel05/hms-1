@@ -1,6 +1,9 @@
-import { Router, Response, NextFunction } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
+import jwt from 'jsonwebtoken';
+import { config } from '../config';
 import { authenticateStudent, AuthenticatedRequest } from '../middleware/auth.middleware';
+import { ALL_MANAGEMENT_ROLES } from '../middleware/management.middleware';
 import { prisma } from '../services/prisma.service';
 import { storageService } from '../services/storage.service';
 import { complaintEventsService } from '../services/events.service';
@@ -961,23 +964,99 @@ router.get('/complaints/:id/attachments', authenticateStudent, async (req: Authe
 });
 
 /**
+ * Middleware: Authenticate either student owner or authorized management user
+ */
+interface AttachmentAccessRequest extends Request {
+  student?: any;
+  managementUser?: any;
+}
+
+const authenticateAttachmentAccess = async (
+  req: AttachmentAccessRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    let token: string | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    } else if (typeof req.query.token === 'string' && req.query.token.trim().length > 0) {
+      token = req.query.token.trim();
+    }
+
+    if (!token) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required. No session token provided.',
+      });
+      return;
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { token },
+      include: { student: true },
+    });
+
+    if (!session || session.expiresAt < new Date()) {
+      if (session) {
+        await prisma.session.delete({ where: { token } }).catch(() => {});
+      }
+      res.status(401).json({
+        success: false,
+        message: 'Session expired or invalidated. Please sign in again.',
+      });
+      return;
+    }
+
+    try {
+      jwt.verify(token, config.jwtSecret);
+    } catch {
+      res.status(401).json({
+        success: false,
+        message: 'Session verification failed.',
+      });
+      return;
+    }
+
+    const user = session.student;
+    if (!user || !user.isActive) {
+      res.status(403).json({
+        success: false,
+        message: 'This account is currently unavailable or inactive.',
+      });
+      return;
+    }
+
+    if (user.role === 'STUDENT') {
+      req.student = user;
+    } else if (ALL_MANAGEMENT_ROLES.includes(user.role)) {
+      req.managementUser = user;
+    } else {
+      res.status(403).json({
+        success: false,
+        message: 'Access denied. Account lacks required role.',
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    console.error('Error in authenticateAttachmentAccess:', error);
+    res.status(500).json({ success: false, message: 'Authentication failed.' });
+  }
+};
+
+/**
  * GET /api/student/complaints/:id/attachments/:attachmentId
  * Phase 5: Secure authenticated download/view of attachment
+ * Allows owning student or authorized management roles (WARDEN, ADMIN, assigned MAINTENANCE_STAFF)
  */
 router.get(
   '/complaints/:id/attachments/:attachmentId',
-  authenticateStudent,
-  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  authenticateAttachmentAccess,
+  async (req: AttachmentAccessRequest, res: Response): Promise<void> => {
     try {
-      if (!req.student) {
-        res.status(401).json({
-          success: false,
-          message: 'Authentication required.',
-        });
-        return;
-      }
-
-      const studentId = req.student.id;
       const { id, attachmentId } = req.params;
 
       // 1. Verify complaint exists
@@ -993,11 +1072,29 @@ router.get(
         return;
       }
 
-      // 2. Strict IDOR protection: Complaint must belong to requesting student
-      if (complaint.studentId !== studentId) {
-        res.status(403).json({
+      // 2. Strict authorization check
+      if (req.student) {
+        // Student must own the complaint
+        if (complaint.studentId !== req.student.id) {
+          res.status(403).json({
+            success: false,
+            message: 'You are not authorized to access attachments from this complaint.',
+          });
+          return;
+        }
+      } else if (req.managementUser) {
+        // MAINTENANCE_STAFF can only access attachments on assigned complaints
+        if (req.managementUser.role === 'MAINTENANCE_STAFF' && complaint.assignedToId !== req.managementUser.id) {
+          res.status(403).json({
+            success: false,
+            message: 'Access denied. You are not assigned to this complaint.',
+          });
+          return;
+        }
+      } else {
+        res.status(401).json({
           success: false,
-          message: 'You are not authorized to access attachments from this complaint.',
+          message: 'Authentication required.',
         });
         return;
       }
@@ -1018,8 +1115,8 @@ router.get(
         return;
       }
 
-      // 4. Double check attachment ownership
-      if (attachment.studentId !== studentId) {
+      // 4. Double check attachment ownership for students
+      if (req.student && attachment.studentId !== req.student.id) {
         res.status(403).json({
           success: false,
           message: 'Unauthorized access to attachment.',

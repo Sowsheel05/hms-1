@@ -28,6 +28,8 @@ const suites = [
   { name: 'Outing Log History', script: 'test-management-outing-log-history.cjs', expected: 25 },
   { name: 'Device Management', script: 'test-management-device-api.cjs', expected: 32 },
   { name: 'Admin Notifications', script: 'test-management-notifications.cjs', expected: 43 },
+  { name: 'Student Portal Foundation Hardening', script: 'test-student-portal-hardening.cjs', expected: 18 },
+  { name: 'Student Mess Workflow', script: 'test-student-mess-workflow.cjs', expected: 20 },
 ];
 
 console.log('====================================================');
