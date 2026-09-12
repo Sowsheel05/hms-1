@@ -424,6 +424,7 @@ export interface SuspensionInfo {
   endDate: string;
   createdBy: string;
   remarks?: string | null;
+  status?: string;
 }
 
 export interface LeavesData {
@@ -448,6 +449,7 @@ export interface LeavesData {
     cancelled: number;
   };
   requests: LeaveRequestItem[];
+  suspensions?: SuspensionInfo[];
 }
 
 export interface CreateLeavePayload {

@@ -33,6 +33,9 @@ export const LeavesPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
+  // Main Segmented View (Leaves vs Suspensions)
+  const [activeSection, setActiveSection] = useState<'LEAVES' | 'SUSPENSIONS'>('LEAVES');
+
   // Filters & Tabs
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
@@ -479,6 +482,40 @@ export const LeavesPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Top Segmented Navigation: LEAVES vs SUSPENSIONS */}
+      <div className="student-segmented-nav">
+        <button
+          type="button"
+          onClick={() => setActiveSection('LEAVES')}
+          className={`student-segmented-btn ${activeSection === 'LEAVES' ? 'active' : ''}`}
+        >
+          <CalendarCheck size={16} />
+          <span>Leave Applications</span>
+          {data && (
+            <span className="student-segmented-badge">
+              {data.summary.total}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSection('SUSPENSIONS')}
+          className={`student-segmented-btn ${activeSection === 'SUSPENSIONS' ? 'active' : ''}`}
+        >
+          <ShieldAlert size={16} />
+          <span>Hostel Suspensions</span>
+          {isSuspended ? (
+            <span className="student-segmented-badge-alert">
+              ACTIVE
+            </span>
+          ) : (
+            <span className="student-segmented-badge">
+              {data?.suspensions?.length || 0}
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* Loading state */}
       {loading && !data && (
         <div className="p-12 text-center">
@@ -504,342 +541,475 @@ export const LeavesPage: React.FC = () => {
 
       {data && (
         <>
-          {/* Phase 14 & Phase 5: Student Authoritative Status Banner */}
-          <div>
-            {data.currentStatus === 'SUSPENDED' && data.activeSuspension ? (
-              <div className="suspension-alert-banner">
-                <div className="suspension-alert-icon">
-                  <ShieldAlert size={28} />
-                </div>
-                <div className="flex-1">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="suspension-badge">Account Suspended</span>
-                      <span className="text-xs font-semibold text-rose-700">
-                        Disciplinary Administrative Order
-                      </span>
+          {activeSection === 'LEAVES' ? (
+            <>
+              {/* Phase 14 & Phase 5: Student Authoritative Status Banner */}
+              <div>
+                {data.currentStatus === 'SUSPENDED' && data.activeSuspension ? (
+                  <div className="suspension-alert-banner">
+                    <div className="suspension-alert-icon">
+                      <ShieldAlert size={28} />
                     </div>
-                    <span className="text-xs font-semibold text-rose-800 bg-rose-100 px-2.5 py-1 rounded-md">
-                      Enforced Until: {formatDate(data.activeSuspension.endDate)}
-                    </span>
-                  </div>
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="suspension-badge">Account Suspended</span>
+                          <span className="text-xs font-semibold text-rose-700">
+                            Disciplinary Administrative Order
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-rose-800 bg-rose-100 px-2.5 py-1 rounded-md">
+                          Enforced Until: {formatDate(data.activeSuspension.endDate)}
+                        </span>
+                      </div>
 
-                  <h2 className="text-lg font-bold text-rose-950 mt-2 mb-1">
-                    Disciplinary Suspension Active
-                  </h2>
-                  <p className="text-sm text-rose-800">
-                    <strong>Reason:</strong> {data.activeSuspension.reason}
-                  </p>
-                  {data.activeSuspension.remarks && (
-                    <p className="text-xs text-rose-700 mt-1 bg-white/70 p-2 rounded-lg border border-rose-200">
-                      <strong>Administrative Remarks:</strong> {data.activeSuspension.remarks}
-                    </p>
-                  )}
-                  <div className="mt-3 flex items-center gap-2 text-xs font-medium text-rose-800">
-                    <AlertTriangle size={14} className="shrink-0" />
-                    <span>
-                      Under hostel administrative rules, leave requests and gate outing permissions are prohibited during suspension.
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : data.currentStatus === 'ON_LEAVE' && data.activeLeave ? (
-              <div className="active-leave-banner">
-                <div className="active-leave-icon">
-                  <CalendarCheck size={28} />
-                </div>
-                <div className="flex-1">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="leave-status-badge badge-active">
-                        <span className="pulse-dot" />
-                        Currently On Leave
-                      </span>
-                      <span className={`leave-type-pill ${getLeaveTypeClass(data.activeLeave.leaveType)}`}>
-                        {getLeaveTypeLabel(data.activeLeave.leaveType)}
-                      </span>
+                      <h2 className="text-lg font-bold text-rose-950 mt-2 mb-1">
+                        Disciplinary Suspension Active
+                      </h2>
+                      <p className="text-sm text-rose-800">
+                        <strong>Reason:</strong> {data.activeSuspension.reason}
+                      </p>
+                      {data.activeSuspension.remarks && (
+                        <p className="text-xs text-rose-700 mt-1 bg-white/70 p-2 rounded-lg border border-rose-200">
+                          <strong>Administrative Remarks:</strong> {data.activeSuspension.remarks}
+                        </p>
+                      )}
+                      <div className="mt-3 flex items-center gap-2 text-xs font-medium text-rose-800">
+                        <AlertTriangle size={14} className="shrink-0" />
+                        <span>
+                          Under hostel administrative rules, leave requests and gate outing permissions are prohibited during suspension.
+                        </span>
+                      </div>
                     </div>
-                    <span className="leave-request-id">
-                      {data.activeLeave.requestNumber}
-                    </span>
                   </div>
+                ) : data.currentStatus === 'ON_LEAVE' && data.activeLeave ? (
+                  <div className="active-leave-banner">
+                    <div className="active-leave-icon">
+                      <CalendarCheck size={28} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="leave-status-badge badge-active">
+                            <span className="pulse-dot" />
+                            Currently On Leave
+                          </span>
+                          <span className={`leave-type-pill ${getLeaveTypeClass(data.activeLeave.leaveType)}`}>
+                            {getLeaveTypeLabel(data.activeLeave.leaveType)}
+                          </span>
+                        </div>
+                        <span className="leave-request-id">
+                          {data.activeLeave.requestNumber}
+                        </span>
+                      </div>
 
-                  <h2 className="text-lg font-bold text-indigo-950 mt-2 mb-1">
-                    Active Leave Period in Progress
-                  </h2>
-                  <p className="text-sm text-indigo-800">
-                    Destination: <strong>{data.activeLeave.destination}</strong> · Expected return by{' '}
-                    <strong>{formatDate(data.activeLeave.endDate)}</strong> ({data.activeLeave.durationDays} days total)
-                  </p>
-                  {data.activeLeave.approvedBy && (
-                    <p className="text-xs text-indigo-700 mt-1">
-                      Approved by: {data.activeLeave.approvedBy}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="resident-status-card">
-                <div className="resident-info-group">
-                  <div className="resident-icon-box">
-                    <ShieldCheck size={24} />
+                      <h2 className="text-lg font-bold text-indigo-950 mt-2 mb-1">
+                        Active Leave Period in Progress
+                      </h2>
+                      <p className="text-sm text-indigo-800">
+                        Destination: <strong>{data.activeLeave.destination}</strong> · Expected return by{' '}
+                        <strong>{formatDate(data.activeLeave.endDate)}</strong> ({data.activeLeave.durationDays} days total)
+                      </p>
+                      {data.activeLeave.approvedBy && (
+                        <p className="text-xs text-indigo-700 mt-1">
+                          Approved by: {data.activeLeave.approvedBy}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <div className="resident-title-row">
-                      <span className="resident-status-title">
-                        Resident Status: Active in Hostel
-                      </span>
-                      <span className="resident-badge-active">
-                        Good Standing
+                ) : (
+                  <div className="resident-status-card">
+                    <div className="resident-info-group">
+                      <div className="resident-icon-box">
+                        <ShieldCheck size={24} />
+                      </div>
+                      <div>
+                        <div className="resident-title-row">
+                          <span className="resident-status-title">
+                            Resident Status: Active in Hostel
+                          </span>
+                          <span className="resident-badge-active">
+                            Good Standing
+                          </span>
+                        </div>
+                        <p className="resident-meta-text">
+                          <strong>{data.student.name}</strong> ({data.student.jntuNo}) ·{' '}
+                          {data.student.blockName || 'Hostel'} - Room {data.student.roomNumber || 'Assigned'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="resident-status-aside">
+                      <span className="resident-aside-label">Pending Applications</span>
+                      <span className="resident-aside-value">
+                        {data.summary.pending} request{data.summary.pending !== 1 ? 's' : ''}
                       </span>
                     </div>
-                    <p className="resident-meta-text">
-                      <strong>{data.student.name}</strong> ({data.student.jntuNo}) ·{' '}
-                      {data.student.blockName || 'Hostel'} - Room {data.student.roomNumber || 'Assigned'}
-                    </p>
                   </div>
+                )}
+              </div>
+
+              {/* Phase 8: KPI Statistics Summary */}
+              <div className="leaves-kpi-grid">
+                <div className="leave-kpi-card">
+                  <span className="kpi-title">Total Leaves</span>
+                  <span className="kpi-number">{data.summary.total}</span>
+                  <span className="kpi-subtext">All-time applications</span>
                 </div>
-                <div className="resident-status-aside">
-                  <span className="resident-aside-label">Pending Applications</span>
-                  <span className="resident-aside-value">
-                    {data.summary.pending} request{data.summary.pending !== 1 ? 's' : ''}
+
+                <div className="leave-kpi-card">
+                  <span className="kpi-title" style={{ color: '#B45309' }}>Pending</span>
+                  <span className="kpi-number" style={{ color: '#92400E' }}>{data.summary.pending}</span>
+                  <span className="kpi-subtext">Awaiting warden review</span>
+                </div>
+
+                <div className="leave-kpi-card">
+                  <span className="kpi-title" style={{ color: '#047857' }}>Approved / Active</span>
+                  <span className="kpi-number" style={{ color: '#065F46' }}>
+                    {data.summary.approved + data.summary.active}
+                  </span>
+                  <span className="kpi-subtext">
+                    {data.summary.active} currently active
+                  </span>
+                </div>
+
+                <div className="leave-kpi-card">
+                  <span className="kpi-title">Completed</span>
+                  <span className="kpi-number">{data.summary.completed}</span>
+                  <span className="kpi-subtext">Concluded leaves</span>
+                </div>
+
+                <div className="leave-kpi-card">
+                  <span className="kpi-title" style={{ color: '#BE123C' }}>Rejected / Cancelled</span>
+                  <span className="kpi-number" style={{ color: '#9F1239' }}>
+                    {data.summary.rejected + data.summary.cancelled}
+                  </span>
+                  <span className="kpi-subtext">
+                    {data.summary.rejected} rejected · {data.summary.cancelled} cancelled
                   </span>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Phase 8: KPI Statistics Summary */}
-          <div className="leaves-kpi-grid">
-            <div className="leave-kpi-card">
-              <span className="kpi-title">Total Leaves</span>
-              <span className="kpi-number">{data.summary.total}</span>
-              <span className="kpi-subtext">All-time applications</span>
-            </div>
+              {/* Filters & Tabs Bar */}
+              <div className="leaves-filter-toolbar">
+                {/* Status Filter Tabs */}
+                <div className="filter-pills-group">
+                  {[
+                    { key: 'ALL', label: 'All', count: data.summary.total },
+                    { key: 'PENDING', label: 'Pending', count: data.summary.pending },
+                    { key: 'APPROVED', label: 'Approved', count: data.summary.approved + data.summary.active },
+                    { key: 'COMPLETED', label: 'Completed', count: data.summary.completed },
+                    { key: 'REJECTED', label: 'Rejected', count: data.summary.rejected },
+                    { key: 'CANCELLED', label: 'Cancelled', count: data.summary.cancelled },
+                  ].map((tab) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setStatusFilter(tab.key)}
+                      className={`filter-pill-btn ${statusFilter === tab.key ? 'active' : ''}`}
+                    >
+                      <span>{tab.label}</span>
+                      <span className="filter-pill-count">{tab.count}</span>
+                    </button>
+                  ))}
+                </div>
 
-            <div className="leave-kpi-card">
-              <span className="kpi-title" style={{ color: '#B45309' }}>Pending</span>
-              <span className="kpi-number" style={{ color: '#92400E' }}>{data.summary.pending}</span>
-              <span className="kpi-subtext">Awaiting warden review</span>
-            </div>
-
-            <div className="leave-kpi-card">
-              <span className="kpi-title" style={{ color: '#047857' }}>Approved / Active</span>
-              <span className="kpi-number" style={{ color: '#065F46' }}>
-                {data.summary.approved + data.summary.active}
-              </span>
-              <span className="kpi-subtext">
-                {data.summary.active} currently active
-              </span>
-            </div>
-
-            <div className="leave-kpi-card">
-              <span className="kpi-title">Completed</span>
-              <span className="kpi-number">{data.summary.completed}</span>
-              <span className="kpi-subtext">Concluded leaves</span>
-            </div>
-
-            <div className="leave-kpi-card">
-              <span className="kpi-title" style={{ color: '#BE123C' }}>Rejected / Cancelled</span>
-              <span className="kpi-number" style={{ color: '#9F1239' }}>
-                {data.summary.rejected + data.summary.cancelled}
-              </span>
-              <span className="kpi-subtext">
-                {data.summary.rejected} rejected · {data.summary.cancelled} cancelled
-              </span>
-            </div>
-          </div>
-
-          {/* Filters & Tabs Bar */}
-          <div className="leaves-filter-toolbar">
-            {/* Status Filter Tabs */}
-            <div className="filter-pills-group">
-              {[
-                { key: 'ALL', label: 'All', count: data.summary.total },
-                { key: 'PENDING', label: 'Pending', count: data.summary.pending },
-                { key: 'APPROVED', label: 'Approved', count: data.summary.approved + data.summary.active },
-                { key: 'COMPLETED', label: 'Completed', count: data.summary.completed },
-                { key: 'REJECTED', label: 'Rejected', count: data.summary.rejected },
-                { key: 'CANCELLED', label: 'Cancelled', count: data.summary.cancelled },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setStatusFilter(tab.key)}
-                  className={`filter-pill-btn ${statusFilter === tab.key ? 'active' : ''}`}
-                >
-                  <span>{tab.label}</span>
-                  <span className="filter-pill-count">{tab.count}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Leave Type Selector */}
-            <div className="flex items-center gap-2 shrink-0">
-              <label htmlFor="leave-type-filter" className="text-xs font-semibold text-slate-500 whitespace-nowrap">
-                Type:
-              </label>
-              <select
-                id="leave-type-filter"
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="portal-select"
-                style={{ minWidth: '180px' }}
-              >
-                <option value="ALL">All Categories</option>
-                <option value="HOME_LEAVE">Home Leave</option>
-                <option value="MEDICAL">Medical Leave</option>
-                <option value="ACADEMIC">Academic / Conference</option>
-                <option value="EMERGENCY">Family Emergency</option>
-                <option value="SPECIAL_LEAVE">Special Leave</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Phase 8 & 14: Leave Requests List */}
-          {filteredRequests.length === 0 ? (
-            <div className="empty-state-container">
-              <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-2">
-                <Calendar size={32} />
+                {/* Leave Type Selector */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <label htmlFor="leave-type-filter" className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+                    Type:
+                  </label>
+                  <select
+                    id="leave-type-filter"
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className="portal-select"
+                    style={{ minWidth: '180px' }}
+                  >
+                    <option value="ALL">All Categories</option>
+                    <option value="HOME_LEAVE">Home Leave</option>
+                    <option value="MEDICAL">Medical Leave</option>
+                    <option value="ACADEMIC">Academic / Conference</option>
+                    <option value="EMERGENCY">Family Emergency</option>
+                    <option value="SPECIAL_LEAVE">Special Leave</option>
+                  </select>
+                </div>
               </div>
-              <h3 className="text-base font-bold text-slate-800">No Leave Requests Found</h3>
-              <p className="text-sm text-slate-500 max-w-md mx-auto mb-3">
-                {statusFilter !== 'ALL' || typeFilter !== 'ALL'
-                  ? 'No applications match your selected filter criteria.'
-                  : 'You have not submitted any leave applications yet. When you need to be away from the hostel, apply using the button below.'}
-              </p>
-              {!isSuspended && (
-                <button
-                  type="button"
-                  onClick={() => setIsApplyModalOpen(true)}
-                  className="btn-primary-action inline-flex"
-                >
-                  <Plus size={16} />
-                  <span>Apply for Leave</span>
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="leaves-cards-list">
-              {filteredRequests.map((req) => (
-                <div key={req.id} className="leave-card">
-                  {/* Card Header: Type Badge, ID, Date Applied, & Status Badge */}
-                  <div className="leave-card-header">
-                    <div className="leave-card-top-left">
-                      <div className={`leave-type-pill ${getLeaveTypeClass(req.leaveType)}`}>
-                        {getLeaveTypeIcon(req.leaveType)}
-                        <span>{getLeaveTypeLabel(req.leaveType)}</span>
-                      </div>
-                      <span className="leave-request-id">
-                        {req.requestNumber || 'LEV-PENDING'}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        · Applied {formatDate(req.createdAt)}
-                      </span>
-                    </div>
-                    <div>{renderStatusBadge(req.effectiveStatus)}</div>
+
+              {/* Phase 8 & 14: Leave Requests List */}
+              {filteredRequests.length === 0 ? (
+                <div className="empty-state-container">
+                  <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-2">
+                    <Calendar size={32} />
                   </div>
-
-                  <div className="leave-card-body">
-                    <div>
-                      {/* Date Range & Duration */}
-                      <div className="leave-dates-box">
-                        <div className="date-node">
-                          <span className="date-label">Departure</span>
-                          <span className="date-value">{formatDate(req.startDate)}</span>
-                        </div>
-                        <span className="date-arrow">→</span>
-                        <div className="date-node">
-                          <span className="date-label">Return</span>
-                          <span className="date-value">{formatDate(req.endDate)}</span>
-                        </div>
-                        <span className="duration-tag">
-                          <Clock size={12} />
-                          {req.durationDays} Days Total
-                        </span>
-                        {req.effectiveStatus === 'ACTIVE' && (
-                          <span className="leave-status-badge badge-active" style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem' }}>
-                            Currently Active
+                  <h3 className="text-base font-bold text-slate-800">No Leave Requests Found</h3>
+                  <p className="text-sm text-slate-500 max-w-md mx-auto mb-3">
+                    {statusFilter !== 'ALL' || typeFilter !== 'ALL'
+                      ? 'No applications match your selected filter criteria.'
+                      : 'You have not submitted any leave applications yet. When you need to be away from the hostel, apply using the button below.'}
+                  </p>
+                  {!isSuspended && (
+                    <button
+                      type="button"
+                      onClick={() => setIsApplyModalOpen(true)}
+                      className="btn-primary-action inline-flex"
+                    >
+                      <Plus size={16} />
+                      <span>Apply for Leave</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="leaves-cards-list">
+                  {filteredRequests.map((req) => (
+                    <div key={req.id} className="leave-card">
+                      {/* Card Header: Type Badge, ID, Date Applied, & Status Badge */}
+                      <div className="leave-card-header">
+                        <div className="leave-card-top-left">
+                          <div className={`leave-type-pill ${getLeaveTypeClass(req.leaveType)}`}>
+                            {getLeaveTypeIcon(req.leaveType)}
+                            <span>{getLeaveTypeLabel(req.leaveType)}</span>
+                          </div>
+                          <span className="leave-request-id">
+                            {req.requestNumber || 'LEV-PENDING'}
                           </span>
-                        )}
+                          <span className="text-xs text-slate-400">
+                            · Applied {formatDate(req.createdAt)}
+                          </span>
+                        </div>
+                        <div>{renderStatusBadge(req.effectiveStatus)}</div>
                       </div>
 
-                      {/* Destination & Reason Excerpt */}
-                      {req.destination && (
-                        <div className="leave-destination-row">
-                          <MapPin size={14} className="text-slate-400 shrink-0" />
-                          <span>{req.destination}</span>
-                        </div>
-                      )}
+                      <div className="leave-card-body">
+                        <div>
+                          {/* Date Range & Duration */}
+                          <div className="leave-dates-box">
+                            <div className="date-node">
+                              <span className="date-label">Departure</span>
+                              <span className="date-value">{formatDate(req.startDate)}</span>
+                            </div>
+                            <div className="duration-arrow">
+                              <span className="duration-text">{req.durationDays} day{req.durationDays !== 1 ? 's' : ''}</span>
+                              <div className="arrow-line" />
+                            </div>
+                            <div className="date-node">
+                              <span className="date-label">Return</span>
+                              <span className="date-value">{formatDate(req.endDate)}</span>
+                            </div>
+                          </div>
 
-                      <p className="leave-reason-text">
-                        "{req.reason}"
-                      </p>
+                          {/* Destination */}
+                          <div className="leave-meta-row">
+                            <MapPin size={15} className="text-slate-400 shrink-0 mt-0.5" />
+                            <span className="text-slate-700 font-medium">{req.destination}</span>
+                          </div>
 
-                      {/* Administrative Remarks if present */}
-                      {req.status === 'REJECTED' && req.rejectionReason && (
-                        <div className="mt-3 p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800">
-                          <strong>Rejection Reason:</strong> {req.rejectionReason}
+                          {/* Reason */}
+                          <div className="leave-reason-text">
+                            "{req.reason}"
+                          </div>
                         </div>
-                      )}
-                      {req.status === 'APPROVED' && req.remarks && (
-                        <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
-                          <strong>Warden Note:</strong> {req.remarks}
+
+                        {/* Card Actions */}
+                        <div className="leave-card-actions">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDetail(req.id)}
+                            className="btn-secondary-action"
+                            style={{ fontSize: '0.8rem', padding: '0.5rem 0.85rem' }}
+                          >
+                            <Eye size={14} />
+                            <span>View Details</span>
+                          </button>
+
+                          {req.status === 'PENDING' && (
+                            <>
+                              {cancelConfirmId === req.id ? (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelLeave(req.id)}
+                                    disabled={cancellingId === req.id}
+                                    className="btn-destructive-action"
+                                    style={{ fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
+                                  >
+                                    {cancellingId === req.id ? '...' : 'Confirm'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setCancelConfirmId(null)}
+                                    className="btn-secondary-action"
+                                    style={{ fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
+                                  >
+                                    No
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setCancelConfirmId(req.id)}
+                                  className="btn-destructive-action"
+                                  style={{ fontSize: '0.8rem', padding: '0.5rem 0.85rem' }}
+                                >
+                                  <Trash2 size={13} />
+                                  <span>Cancel</span>
+                                </button>
+                              )}
+                            </>
+                          )}
                         </div>
-                      )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            /* Dedicated Hostel Suspensions Section */
+            <div className="flex flex-col gap-6">
+              {/* Disciplinary Standing Overview Banner */}
+              {data.currentStatus === 'SUSPENDED' && data.activeSuspension ? (
+                <div className="suspension-alert-banner">
+                  <div className="suspension-alert-icon">
+                    <ShieldAlert size={28} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="suspension-badge">Active Disciplinary Suspension</span>
+                        <span className="text-xs font-semibold text-rose-700">
+                          Administrative Action
+                        </span>
+                      </div>
+                      <span className="text-xs font-semibold text-rose-800 bg-rose-100 px-2.5 py-1 rounded-md">
+                        Enforced Until: {formatDate(data.activeSuspension.endDate)}
+                      </span>
                     </div>
 
-                    {/* Card Actions */}
-                    <div className="leave-card-actions">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenDetail(req.id)}
-                        className="btn-secondary-action"
-                        style={{ fontSize: '0.8rem', padding: '0.5rem 0.9rem' }}
-                      >
-                        <Eye size={14} />
-                        <span>View Details</span>
-                      </button>
-
-                      {req.status === 'PENDING' && (
-                        <>
-                          {cancelConfirmId === req.id ? (
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleCancelLeave(req.id)}
-                                disabled={cancellingId === req.id}
-                                className="btn-destructive-action"
-                                style={{ fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
-                              >
-                                {cancellingId === req.id ? '...' : 'Confirm'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setCancelConfirmId(null)}
-                                className="btn-secondary-action"
-                                style={{ fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
-                              >
-                                No
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setCancelConfirmId(req.id)}
-                              className="btn-destructive-action"
-                              style={{ fontSize: '0.8rem', padding: '0.5rem 0.85rem' }}
-                            >
-                              <Trash2 size={13} />
-                              <span>Cancel</span>
-                            </button>
-                          )}
-                        </>
-                      )}
+                    <h2 className="text-lg font-bold text-rose-950 mt-2 mb-1">
+                      Account Under Disciplinary Suspension
+                    </h2>
+                    <p className="text-sm text-rose-800">
+                      <strong>Grounds:</strong> {data.activeSuspension.reason}
+                    </p>
+                    {data.activeSuspension.remarks && (
+                      <p className="text-xs text-rose-700 mt-1 bg-white/70 p-2.5 rounded-lg border border-rose-200">
+                        <strong>Administrative Remarks:</strong> {data.activeSuspension.remarks}
+                      </p>
+                    )}
+                    <div className="mt-3 flex items-center gap-2 text-xs font-medium text-rose-800">
+                      <AlertTriangle size={14} className="shrink-0" />
+                      <span>
+                        Under hostel administrative rules, gate outing requests and leave permissions are blocked while under suspension.
+                      </span>
                     </div>
                   </div>
                 </div>
-              ))}
+              ) : (
+                <div className="p-6 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex items-start gap-4 shadow-sm">
+                  <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center shrink-0">
+                    <ShieldCheck size={28} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-base font-bold text-emerald-950">
+                        Disciplinary Record in Good Standing
+                      </h3>
+                      <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full">
+                        Clean Status
+                      </span>
+                    </div>
+                    <p className="text-sm text-emerald-800 leading-relaxed">
+                      You currently have no active administrative suspensions or disciplinary restrictions. You are fully eligible for hostel gate outings, mess reservations, and leave requests subject to standard warden authorizations.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Historical Disciplinary Log */}
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Historical Disciplinary Records</h3>
+                    <p className="text-xs text-slate-500">Official log of past and present disciplinary administrative actions</p>
+                  </div>
+                  <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
+                    {data.suspensions?.length || 0} Record{data.suspensions?.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {(!data.suspensions || data.suspensions.length === 0) ? (
+                  <div className="empty-state-container bg-white border border-slate-200 rounded-2xl p-10 text-center">
+                    <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <ShieldCheck size={28} />
+                    </div>
+                    <h4 className="text-base font-bold text-slate-800">No Disciplinary Suspensions Recorded</h4>
+                    <p className="text-sm text-slate-500 max-w-md mx-auto mt-1">
+                      Your administrative record is clean. No disciplinary actions or hostel suspensions have been issued for your student account.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {data.suspensions.map((s) => {
+                      const isOrderActive = s.status === 'ACTIVE' && new Date(s.endDate) >= new Date();
+                      return (
+                        <div
+                          key={s.id}
+                          className={`student-suspension-card ${isOrderActive ? 'active-order' : ''}`}
+                        >
+                          <div className="student-suspension-header">
+                            <div className="student-suspension-order-title">
+                              {isOrderActive ? (
+                                <ShieldAlert size={18} className="text-rose-600 shrink-0" />
+                              ) : (
+                                <CheckCircle2 size={18} className="text-slate-500 shrink-0" />
+                              )}
+                              <span>Order #{s.id.slice(0, 8).toUpperCase()}</span>
+                              <span className="text-xs font-normal text-slate-400">
+                                · Issued by {s.createdBy || 'Hostel Administration'}
+                              </span>
+                            </div>
+                            <div>
+                              {isOrderActive ? (
+                                <span className="student-status-badge rejected">
+                                  Active Suspension
+                                </span>
+                              ) : (
+                                <span className="student-status-badge closed">
+                                  Concluded / Lifted
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                                Effective Duration
+                              </span>
+                              <div className="flex items-center gap-2 text-slate-800 font-semibold">
+                                <Calendar size={15} className="text-slate-400" />
+                                <span>{formatDate(s.startDate)} — {formatDate(s.endDate)}</span>
+                              </div>
+                            </div>
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                                Grounds / Reason
+                              </span>
+                              <span className="text-slate-800 font-medium">{s.reason}</span>
+                            </div>
+                          </div>
+
+                          {s.remarks && (
+                            <div className="text-xs p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-amber-900">
+                              <strong>Administrative Remarks:</strong> {s.remarks}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </>

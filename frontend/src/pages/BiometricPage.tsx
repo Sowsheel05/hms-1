@@ -141,184 +141,95 @@ export const BiometricPage: React.FC = () => {
   };
 
   return (
-    <div className="biometric-page-container" style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="student-portal-page biometric-page">
       {/* Toast Alert */}
       {realtimeToast && (
-        <div
-          role="alert"
-          style={{
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            zIndex: 9999,
-            backgroundColor: '#0f172a',
-            color: '#f8fafc',
-            border: '1px solid #10b981',
-            borderRadius: '10px',
-            padding: '12px 20px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            fontSize: '0.9rem',
-            animation: 'fadeIn 0.3s ease-out',
-          }}
-        >
-          <CheckCircle2 size={18} color="#10b981" />
-          <span>{realtimeToast}</span>
-        </div>
-      )}
-
-      {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.75rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-            <div style={{ background: 'linear-gradient(135deg, #3b82f6, #6366f1)', color: '#fff', padding: '8px', borderRadius: '10px' }}>
-              <Fingerprint size={24} />
-            </div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: '700', margin: 0, color: '#0f172a' }}>
-              Biometric Tracking
-            </h1>
-          </div>
-          <p style={{ margin: 0, color: '#64748b', fontSize: '0.95rem' }}>
-            Server-authoritative, real-time physical access logs from hostel turnstiles and security gates.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => fetchData(true)}
-          disabled={loading || isRefreshing}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            borderRadius: '8px',
-            border: '1px solid #cbd5e1',
-            backgroundColor: '#fff',
-            color: '#334155',
-            fontWeight: 500,
-            fontSize: '0.875rem',
-            cursor: loading || isRefreshing ? 'not-allowed' : 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <RotateCw size={16} className={isRefreshing ? 'spin-icon' : ''} />
-          <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-        </button>
-      </div>
-
-      {/* Error state */}
-      {error && (
-        <div
-          style={{
-            backgroundColor: '#fef2f2',
-            border: '1px solid #fecaca',
-            color: '#991b1b',
-            borderRadius: '10px',
-            padding: '16px 20px',
-            marginBottom: '1.5rem',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <AlertTriangle size={20} />
-            <span>{error}</span>
+        <div className="feedback-banner success" role="alert">
+          <div className="feedback-content">
+            <CheckCircle2 size={18} className="feedback-icon" />
+            <span>{realtimeToast}</span>
           </div>
           <button
             type="button"
-            onClick={() => fetchData()}
-            style={{
-              padding: '6px 12px',
-              backgroundColor: '#dc2626',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontWeight: 500,
-            }}
+            className="feedback-dismiss-btn"
+            onClick={() => setRealtimeToast(null)}
+            aria-label="Dismiss message"
           >
-            Retry
+            &times;
           </button>
         </div>
       )}
 
+      {/* Page Header */}
+      <div className="student-page-header">
+        <div className="student-page-header-text">
+          <div className="student-page-title">
+            <Fingerprint size={26} className="text-primary-navy" />
+            <span>Biometric Tracking</span>
+          </div>
+          <p className="student-page-subtitle">
+            Server-authoritative, real-time physical access logs from hostel turnstiles and security gates.
+          </p>
+        </div>
+
+        <div className="student-header-actions">
+          <button
+            type="button"
+            onClick={() => fetchData(true)}
+            disabled={loading || isRefreshing}
+            className="student-btn-secondary"
+            aria-label="Refresh biometric records"
+            title="Refresh biometric records"
+          >
+            <RotateCw size={16} className={isRefreshing ? 'spin-icon' : ''} />
+            <span>{isRefreshing ? 'Syncing...' : 'Sync'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Error state */}
+      {error && (
+        <div className="student-error-state" role="alert">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <AlertTriangle size={20} />
+              <span>{error}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => fetchData()}
+              className="student-btn-secondary"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Today's Status Banner Card */}
-      <div
-        style={{
-          background: '#fff',
-          borderRadius: '14px',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
-          padding: '1.5rem',
-          marginBottom: '1.75rem',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1.25rem', marginBottom: '1.25rem' }}>
+      <div className="biometric-hero-banner">
+        <div className="biometric-hero-top">
           <div>
-            <div style={{ fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', marginBottom: '6px' }}>
+            <div className="student-metric-label" style={{ marginBottom: '6px' }}>
               Today's Presence State
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               {todayStatus?.status === 'INSIDE_HOSTEL' && (
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '6px 16px',
-                    backgroundColor: '#ecfdf5',
-                    color: '#065f46',
-                    border: '1px solid #a7f3d0',
-                    borderRadius: '20px',
-                    fontWeight: 700,
-                    fontSize: '1rem',
-                  }}
-                >
+                <span className="biometric-presence-badge inside">
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
                   Present / Inside Hostel
                 </span>
               )}
 
               {todayStatus?.status === 'OUTSIDE_HOSTEL' && (
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '6px 16px',
-                    backgroundColor: '#fffbeb',
-                    color: '#92400e',
-                    border: '1px solid #fde68a',
-                    borderRadius: '20px',
-                    fontWeight: 700,
-                    fontSize: '1rem',
-                  }}
-                >
+                <span className="biometric-presence-badge outside">
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }} />
                   Outside Hostel
                 </span>
               )}
 
               {todayStatus?.status === 'NO_RECORD' && (
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '6px 16px',
-                    backgroundColor: '#f8fafc',
-                    color: '#475569',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '20px',
-                    fontWeight: 600,
-                    fontSize: '0.95rem',
-                  }}
-                >
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#94a3b8', display: 'inline-block' }} />
+                <span className="student-status-badge neutral">
                   No Record Today
                 </span>
               )}
@@ -332,66 +243,60 @@ export const BiometricPage: React.FC = () => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#059669', fontSize: '0.85rem', fontWeight: 500 }}>
-            <ShieldCheck size={16} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#059669', fontSize: '0.85rem', fontWeight: 600 }}>
+            <ShieldCheck size={18} />
             <span>Immutable Device Log</span>
           </div>
         </div>
 
         {/* 5-Column Stats Grid */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-            gap: '1rem',
-          }}
-        >
-          <div style={{ backgroundColor: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+        <div className="biometric-stats-grid">
+          <div className="biometric-stat-box">
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.8rem', fontWeight: 500, marginBottom: '4px' }}>
               <LogIn size={15} color="#10b981" />
               <span>First Entry</span>
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
+            <div className="biometric-stat-val">
               {todayStatus?.firstEntry ? formatTime(todayStatus.firstEntry.toString()) : '--:--'}
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+          <div className="biometric-stat-box">
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.8rem', fontWeight: 500, marginBottom: '4px' }}>
               <LogOut size={15} color="#f59e0b" />
               <span>Last Exit</span>
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
+            <div className="biometric-stat-val">
               {todayStatus?.lastExit ? formatTime(todayStatus.lastExit.toString()) : '--:--'}
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+          <div className="biometric-stat-box">
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.8rem', fontWeight: 500, marginBottom: '4px' }}>
               <Fingerprint size={15} color="#3b82f6" />
               <span>Entries Today</span>
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
+            <div className="biometric-stat-val">
               {todayStatus?.entryCount ?? 0}
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+          <div className="biometric-stat-box">
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.8rem', fontWeight: 500, marginBottom: '4px' }}>
               <LogOut size={15} color="#8b5cf6" />
               <span>Exits Today</span>
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
+            <div className="biometric-stat-val">
               {todayStatus?.exitCount ?? 0}
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#f8fafc', padding: '12px 16px', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+          <div className="biometric-stat-box">
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.8rem', fontWeight: 500, marginBottom: '4px' }}>
               <Clock size={15} color="#059669" />
-              <span>Time Inside Today</span>
+              <span>Time Inside</span>
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
+            <div className="biometric-stat-val">
               {todayStatus?.approximateHoursInside ? `${todayStatus.approximateHoursInside} hrs` : '0 hrs'}
             </div>
           </div>
@@ -399,28 +304,20 @@ export const BiometricPage: React.FC = () => {
       </div>
 
       {/* Tabs & Filters Navigation */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '1rem',
-          marginBottom: '1rem',
-        }}
-      >
+      <div className="student-filter-bar">
         {/* View Switcher */}
         <div style={{ display: 'flex', gap: '6px', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '10px' }}>
           <button
             type="button"
             onClick={() => setActiveTab('timeline')}
+            className={`student-btn-secondary ${activeTab === 'timeline' ? 'active' : ''}`}
             style={{
               padding: '6px 16px',
               borderRadius: '8px',
               border: 'none',
               backgroundColor: activeTab === 'timeline' ? '#fff' : 'transparent',
               color: activeTab === 'timeline' ? '#0f172a' : '#64748b',
-              fontWeight: activeTab === 'timeline' ? 600 : 500,
+              fontWeight: activeTab === 'timeline' ? 700 : 500,
               boxShadow: activeTab === 'timeline' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
               cursor: 'pointer',
               fontSize: '0.875rem',
@@ -431,13 +328,14 @@ export const BiometricPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('daily')}
+            className={`student-btn-secondary ${activeTab === 'daily' ? 'active' : ''}`}
             style={{
               padding: '6px 16px',
               borderRadius: '8px',
               border: 'none',
               backgroundColor: activeTab === 'daily' ? '#fff' : 'transparent',
               color: activeTab === 'daily' ? '#0f172a' : '#64748b',
-              fontWeight: activeTab === 'daily' ? 600 : 500,
+              fontWeight: activeTab === 'daily' ? 700 : 500,
               boxShadow: activeTab === 'daily' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
               cursor: 'pointer',
               fontSize: '0.875rem',
@@ -449,7 +347,7 @@ export const BiometricPage: React.FC = () => {
 
         {/* Filter Controls (Timeline Tab Only) */}
         {activeTab === 'timeline' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div className="student-select-group">
             {/* Date Range Filter */}
             <select
               value={dateRange}
@@ -457,15 +355,7 @@ export const BiometricPage: React.FC = () => {
                 setDateRange(e.target.value);
                 setPagination((prev) => ({ ...prev, page: 1 }));
               }}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '8px',
-                border: '1px solid #cbd5e1',
-                backgroundColor: '#fff',
-                color: '#334155',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-              }}
+              className="student-select"
             >
               <option value="ALL">All Time</option>
               <option value="TODAY">Today Only</option>
@@ -480,15 +370,7 @@ export const BiometricPage: React.FC = () => {
                 setEventTypeFilter(e.target.value);
                 setPagination((prev) => ({ ...prev, page: 1 }));
               }}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '8px',
-                border: '1px solid #cbd5e1',
-                backgroundColor: '#fff',
-                color: '#334155',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-              }}
+              className="student-select"
             >
               <option value="ALL">All Events</option>
               <option value="ENTRY">Entries Only</option>
@@ -502,15 +384,7 @@ export const BiometricPage: React.FC = () => {
                 setVerificationFilter(e.target.value);
                 setPagination((prev) => ({ ...prev, page: 1 }));
               }}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '8px',
-                border: '1px solid #cbd5e1',
-                backgroundColor: '#fff',
-                color: '#334155',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-              }}
+              className="student-select"
             >
               <option value="ALL">All Results</option>
               <option value="VERIFIED">Verified Scans</option>
@@ -801,86 +675,44 @@ export const BiometricPage: React.FC = () => {
         <div
           role="dialog"
           aria-modal="true"
+          className="student-modal-overlay"
           onClick={() => setSelectedEvent(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.6)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '1rem',
-          }}
         >
           <div
+            className="student-modal-box"
             onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: '#fff',
-              borderRadius: '16px',
-              maxWidth: '520px',
-              width: '100%',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
-              overflow: 'hidden',
-              animation: 'scaleUp 0.2s ease-out',
-            }}
           >
             {/* Modal Header */}
-            <div
-              style={{
-                backgroundColor: selectedEvent.verificationStatus === 'VERIFIED' ? '#f8fafc' : '#fef2f2',
-                padding: '18px 24px',
-                borderBottom: '1px solid #e2e8f0',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
+            <div className="student-modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Fingerprint size={22} color={selectedEvent.verificationStatus === 'VERIFIED' ? '#3b82f6' : '#ef4444'} />
-                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
+                <Fingerprint size={22} color={selectedEvent.verificationStatus === 'VERIFIED' ? '#2563eb' : '#ef4444'} />
+                <h3 className="student-modal-title">
                   Biometric Scan Details
                 </h3>
               </div>
 
               <button
                 type="button"
+                className="student-modal-close-btn"
                 onClick={() => setSelectedEvent(null)}
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  fontSize: '1.5rem',
-                  lineHeight: '1',
-                  color: '#64748b',
-                }}
+                aria-label="Close modal"
               >
                 &times;
               </button>
             </div>
 
             {/* Modal Body */}
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="student-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' }}>
                 <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Scan Result</span>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    color: selectedEvent.verificationStatus === 'VERIFIED' ? '#065f46' : '#991b1b',
-                  }}
-                >
+                <span className={`student-status-badge ${selectedEvent.verificationStatus === 'VERIFIED' ? 'success' : 'danger'}`}>
                   {selectedEvent.verificationStatus === 'VERIFIED' ? (
                     <>
-                      <CheckCircle2 size={16} /> VERIFIED SUCCESSFUL
+                      <CheckCircle2 size={15} /> VERIFIED SUCCESSFUL
                     </>
                   ) : (
                     <>
-                      <XCircle size={16} /> REJECTED / ACCESS DENIED
+                      <XCircle size={15} /> REJECTED / ACCESS DENIED
                     </>
                   )}
                 </span>
@@ -952,27 +784,11 @@ export const BiometricPage: React.FC = () => {
             </div>
 
             {/* Modal Footer */}
-            <div
-              style={{
-                backgroundColor: '#f8fafc',
-                padding: '14px 24px',
-                borderTop: '1px solid #e2e8f0',
-                display: 'flex',
-                justifyContent: 'flex-end',
-              }}
-            >
+            <div className="student-modal-footer">
               <button
                 type="button"
                 onClick={() => setSelectedEvent(null)}
-                style={{
-                  padding: '8px 20px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  backgroundColor: '#fff',
-                  color: '#334155',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
+                className="student-btn-secondary"
               >
                 Close
               </button>

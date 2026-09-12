@@ -216,6 +216,12 @@ router.get('/leaves', authenticateStudent, async (req: AuthenticatedRequest, res
       currentStatus = 'ON_LEAVE';
     }
 
+    // 3b. Fetch all suspension records for student history
+    const allSuspensions = await prisma.suspension.findMany({
+      where: { studentId },
+      orderBy: { createdAt: 'desc' },
+    });
+
     res.status(200).json({
       success: true,
       student: {
@@ -247,6 +253,7 @@ router.get('/leaves', authenticateStudent, async (req: AuthenticatedRequest, res
         cancelled: cancelledCount,
       },
       requests: enrichedLeaves,
+      suspensions: allSuspensions,
     });
   } catch (error) {
     console.error('Error fetching leaves:', error);

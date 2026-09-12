@@ -193,22 +193,47 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
   };
 
   /**
-   * Icons and visual helpers
+   * Icons and visual helpers mapping domain categories to reference visual categories:
+   * Announcements, Reminders, Events, Alerts, General
    */
+  const mapCategoryToVisualLabel = (category: string) => {
+    switch (category) {
+      case 'ANNOUNCEMENT':
+        return 'Announcement';
+      case 'MESS':
+      case 'ROOM':
+        return 'Reminder';
+      case 'BIOMETRIC':
+        return 'Event';
+      case 'SUSPENSION':
+        return 'Alert';
+      case 'OUTING':
+      case 'LEAVE':
+      case 'COMPLAINT':
+      case 'SYSTEM':
+      default:
+        return 'General';
+    }
+  };
+
   const getCategoryIcon = (category: string) => {
     switch (category) {
+      case 'ANNOUNCEMENT':
+        return <Sparkles size={18} className="text-blue-600" />;
+      case 'MESS':
+        return <UtensilsCrossed size={18} className="text-purple-600" />;
+      case 'ROOM':
+        return <Bed size={18} className="text-emerald-600" />;
+      case 'BIOMETRIC':
+        return <Footprints size={18} className="text-indigo-600" />;
+      case 'SUSPENSION':
+        return <ShieldAlert size={18} className="text-red-700" />;
       case 'OUTING':
         return <Footprints size={18} className="text-amber-600" />;
       case 'LEAVE':
         return <Calendar size={18} className="text-indigo-600" />;
       case 'COMPLAINT':
         return <AlertCircle size={18} className="text-rose-600" />;
-      case 'SUSPENSION':
-        return <ShieldAlert size={18} className="text-red-700" />;
-      case 'ROOM':
-        return <Bed size={18} className="text-emerald-600" />;
-      case 'MESS':
-        return <UtensilsCrossed size={18} className="text-purple-600" />;
       case 'SYSTEM':
       default:
         return <Sparkles size={18} className="text-blue-600" />;
@@ -217,16 +242,21 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
 
   const getCategoryBoxClass = (category: string) => {
     switch (category) {
+      case 'ANNOUNCEMENT':
+        return 'cat-system';
+      case 'MESS':
+      case 'ROOM':
+        return 'cat-room';
+      case 'BIOMETRIC':
+        return 'cat-leave';
+      case 'SUSPENSION':
+        return 'cat-suspension';
       case 'OUTING':
         return 'cat-outing';
       case 'LEAVE':
         return 'cat-leave';
       case 'COMPLAINT':
         return 'cat-complaint';
-      case 'SUSPENSION':
-        return 'cat-suspension';
-      case 'ROOM':
-        return 'cat-room';
       case 'SYSTEM':
       default:
         return 'cat-system';
@@ -348,12 +378,11 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
             <div className="notification-category-pills">
               {[
                 { key: 'ALL', label: 'All' },
-                { key: 'OUTING', label: 'Outings' },
-                { key: 'LEAVE', label: 'Leaves' },
-                { key: 'COMPLAINT', label: 'Complaints' },
-                { key: 'SUSPENSION', label: 'Suspensions' },
-                { key: 'ROOM', label: 'Room' },
-                { key: 'SYSTEM', label: 'System' },
+                { key: 'ANNOUNCEMENT', label: 'Announcements' },
+                { key: 'MESS', label: 'Reminders' },
+                { key: 'BIOMETRIC', label: 'Events' },
+                { key: 'SUSPENSION', label: 'Alerts' },
+                { key: 'SYSTEM', label: 'General' },
               ].map((tab) => (
                 <button
                   key={tab.key}
@@ -458,7 +487,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
                     <div className="notification-card-bottom">
                       <div className="flex items-center gap-2">
                         <span className="notification-category-tag">
-                          {item.category}
+                          {mapCategoryToVisualLabel(item.category)}
                         </span>
                         {item.type && item.type !== 'INFO' && (
                           <span
