@@ -1,5 +1,7 @@
 const assert = require('assert');
+const { PrismaClient } = require('@prisma/client');
 
+const prisma = new PrismaClient();
 const BASE_URL = 'http://localhost:5001';
 
 async function runTests() {
@@ -184,6 +186,25 @@ async function runTests() {
     headers: { Authorization: `Bearer ${tokenA}` },
   });
   const leavesDataA = await leavesResA.json();
+  if (!leavesDataA.requests || leavesDataA.requests.length === 0) {
+    const sA = await prisma.student.findUnique({ where: { jntuNo: '25331A05H7' } });
+    await prisma.leaveRequest.create({
+      data: {
+        studentId: sA.id,
+        leaveType: 'HOME_VISIT',
+        reason: 'Family wedding event',
+        destination: 'Visakhapatnam',
+        emergencyContact: '9876543210',
+        startDate: new Date(Date.now() + 86400000),
+        endDate: new Date(Date.now() + 3 * 86400000),
+        status: 'PENDING',
+      },
+    });
+    const refreshedLeaves = await fetch(`${BASE_URL}/api/student/leaves`, {
+      headers: { Authorization: `Bearer ${tokenA}` },
+    }).then((r) => r.json());
+    leavesDataA.requests = refreshedLeaves.requests;
+  }
   assert(leavesDataA.requests && leavesDataA.requests.length > 0, 'Student A must have existing leaves');
   const leaveIdA = leavesDataA.requests[0].id;
 
@@ -336,6 +357,11 @@ async function runTests() {
     assert.strictEqual(forgedOutingRes.status, 409, 'Expected 409 if already ongoing outing');
     markPass('Outing request concurrency check prevents multiple simultaneous active/pending passes');
   }
+
+  // Ensure no lingering pending outings block validation testing
+  await prisma.outingRequest.deleteMany({
+    where: { studentId: loginDataA.user.id, status: 'PENDING' },
+  }).catch(() => {});
 
   // Outing date validation: returnDate <= outDate
   const invalidDateOutingRes = await fetch(`${BASE_URL}/api/student/outing-requests`, {
@@ -568,7 +594,11 @@ async function runTests() {
   console.log('====================================================\n');
 }
 
-runTests().catch((err) => {
-  console.error('\n[FAIL] Step 5 Test Failed:', err);
-  process.exit(1);
-});
+runTests()
+  .catch((err) => {
+    console.error('\n[FAIL] Step 5 Test Failed:', err);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
