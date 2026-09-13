@@ -13,7 +13,7 @@ const suites = [
   { name: 'Notifications', script: 'test-notifications-api.cjs', expected: 20 },
   { name: 'Biometric Tracking', script: 'test-biometric-api.cjs', expected: 24 },
   { name: 'Management Dashboard', script: 'test-management-dashboard-api.cjs', expected: 18 },
-  { name: 'Block Management', script: 'test-block-management-api.cjs', expected: 15 },
+  { name: 'Block Management', script: 'test-block-management-api.cjs', expected: 20 },
   { name: 'Room Management', script: 'test-room-management-api.cjs', expected: 20 },
   { name: 'Mess Management', script: 'test-management-mess-api.cjs', expected: 22 },
   { name: 'Outing Approvals', script: 'test-management-outing-api.cjs', expected: 17 },
@@ -33,6 +33,7 @@ const suites = [
   { name: 'Student Portal Step 5 Hardening', script: 'test-student-portal-e2e-hardening.cjs', expected: 34 },
   { name: 'Cross-Portal Integration', script: 'test-cross-portal-integration.cjs', expected: 26 },
   { name: 'Static Mess QR (Step 7)', script: 'test-student-mess-static-qr.cjs', expected: 20 },
+  { name: 'Room Allocation (Step 3)', script: 'test-room-allocation-step3-api.cjs', expected: 21 },
 ];
 
 console.log('====================================================');
@@ -51,6 +52,7 @@ for (const suite of suites) {
     let passedCount = suite.expected;
     const match =
       output.match(/Passed:\s*(\d+)/i) ||
+      output.match(/TEST RESULTS:\s*(\d+)\s*PASSED/i) ||
       output.match(/(\d+)\/(\d+)\s*tests passed/i) ||
       output.match(/SUITE:\s*(\d+)\/(\d+)\s*TESTS PASSED/i) ||
       output.match(/COMPLETE:\s*(\d+)\/(\d+)\s*TESTS PASSED/i) ||
@@ -83,7 +85,7 @@ console.log('----------------------------------------------------');
 console.log(`TOTAL                   ${String(totalPassed).padStart(3, ' ')}/${String(totalExpected).padEnd(3, ' ')} PASS`);
 console.log('====================================================\n');
 
-if (totalPassed !== totalExpected) {
+if (results.some((r) => r.status === 'FAIL') || totalPassed < totalExpected) {
   process.exit(1);
 } else {
   console.log('ALL REGRESSION SUITES PASSED PERFECTLY!');

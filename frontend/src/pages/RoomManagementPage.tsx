@@ -9,15 +9,22 @@ import {
   CheckCircle2,
   AlertTriangle,
   Users,
-  Building,
-  Layers,
-  Home,
   UserPlus,
   UserMinus,
   ArrowRightLeft,
   X,
   History,
   LayoutGrid,
+  Filter,
+  Fingerprint,
+  Phone,
+  Mail,
+  GraduationCap,
+  Calendar,
+  ShieldCheck,
+  Check,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -26,6 +33,7 @@ import {
   EligibleStudent,
   CreateRoomDto,
   Block,
+  PendingAllocationItem,
 } from '../services/api';
 
 interface RoomManagementPageProps {
@@ -33,10 +41,60 @@ interface RoomManagementPageProps {
 }
 
 export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
-  // Navigation Tabs: 'rooms' | 'allocations'
-  const [activeTab, setActiveTab] = useState<'rooms' | 'allocations'>('rooms');
+  // Navigation Tabs: 'pending' | 'rooms' | 'allocations'
+  // Default is 'pending' for screenshot-accurate Room Allocation workflow
+  const [activeTab, setActiveTab] = useState<'pending' | 'rooms' | 'allocations'>('pending');
 
-  // Rooms State
+  // =========================================================================
+  //                       PENDING ALLOCATIONS STATE
+  // =========================================================================
+  const [pendingAllocations, setPendingAllocations] = useState<PendingAllocationItem[]>([]);
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const [pendingTotal, setPendingTotal] = useState<number>(0);
+  const [pendingPage, setPendingPage] = useState<number>(1);
+  const [pendingLimit] = useState<number>(10);
+  const [pendingTotalPages, setPendingTotalPages] = useState<number>(1);
+  const [pendingLoading, setPendingLoading] = useState<boolean>(true);
+  const [pendingRefreshing, setPendingRefreshing] = useState<boolean>(false);
+  const [pendingError, setPendingError] = useState<string | null>(null);
+
+  // Search & Filters for Pending Allocations
+  const [residentSearchQuery, setResidentSearchQuery] = useState<string>('');
+  const [pendingBlockFilter, setPendingBlockFilter] = useState<string>('ALL');
+  const [pendingRoomTypeFilter, setPendingRoomTypeFilter] = useState<string>('ALL');
+  const [pendingBiometricFilter, setPendingBiometricFilter] = useState<string>('ALL');
+
+  // Modals for Pending Allocations
+  // 1. Assign Modal
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState<boolean>(false);
+  const [assignStudentTarget, setAssignStudentTarget] = useState<PendingAllocationItem | null>(null);
+  const [selectedAssignRoomId, setSelectedAssignRoomId] = useState<string>('');
+  const [selectedAssignBed, setSelectedAssignBed] = useState<string>('');
+  const [assignModalBlockFilter, setAssignModalBlockFilter] = useState<string>('ALL');
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [isAssigning, setIsAssigning] = useState<boolean>(false);
+
+  // 2. Reject Modal
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState<boolean>(false);
+  const [rejectStudentTarget, setRejectStudentTarget] = useState<PendingAllocationItem | null>(null);
+  const [rejectReason, setRejectReason] = useState<string>('');
+  const [rejectError, setRejectError] = useState<string | null>(null);
+  const [isRejecting, setIsRejecting] = useState<boolean>(false);
+
+  // 3. View Modal
+  const [isViewModalOpen, setIsViewModalOpen] = useState<boolean>(false);
+  const [viewStudentTarget, setViewStudentTarget] = useState<PendingAllocationItem | null>(null);
+
+  // 4. Biometric Status Mapping Modal
+  const [isBiometricModalOpen, setIsBiometricModalOpen] = useState<boolean>(false);
+  const [biometricSyncing, setBiometricSyncing] = useState<boolean>(false);
+
+  // 5. Filter Modal
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState<boolean>(false);
+
+  // =========================================================================
+  //                       ROOMS & ALLOCATIONS STATE
+  // =========================================================================
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -47,7 +105,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
   const [allocations, setAllocations] = useState<RoomAllocationItem[]>([]);
   const [allocationsLoading, setAllocationsLoading] = useState<boolean>(false);
 
-  // Filters
+  // Rooms Filters
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [blockFilter, setBlockFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -67,7 +125,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
   const [roomFormError, setRoomFormError] = useState<string | null>(null);
   const [isSubmittingRoom, setIsSubmittingRoom] = useState<boolean>(false);
 
-  // Allocate Student Modal State
+  // Allocate Student Modal State (from rooms overview)
   const [isAllocateModalOpen, setIsAllocateModalOpen] = useState<boolean>(false);
   const [eligibleStudents, setEligibleStudents] = useState<EligibleStudent[]>([]);
   const [allocateBlockId, setAllocateBlockId] = useState<string>('');
@@ -117,6 +175,39 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
       setToastMessage(null);
     }, 4000);
   };
+
+  // =========================================================================
+  //                          DATA FETCHING METHODS
+  // =========================================================================
+
+  // Fetch Pending Allocations from PostgreSQL
+  const fetchPendingAllocations = useCallback(async (isBg = false) => {
+    if (!isBg) setPendingLoading(true);
+    else setPendingRefreshing(true);
+    setPendingError(null);
+
+    try {
+      const res = await managementApiService.getPendingAllocations({
+        search: residentSearchQuery.trim() || undefined,
+        block: pendingBlockFilter !== 'ALL' ? pendingBlockFilter : undefined,
+        roomType: pendingRoomTypeFilter !== 'ALL' ? pendingRoomTypeFilter : undefined,
+        biometricStatus: pendingBiometricFilter !== 'ALL' ? pendingBiometricFilter : undefined,
+        page: pendingPage,
+        limit: pendingLimit,
+      });
+
+      setPendingAllocations(res.data || []);
+      setPendingCount(res.pendingCount || 0);
+      setPendingTotal(res.total || 0);
+      setPendingTotalPages(res.totalPages || 1);
+    } catch (err: any) {
+      console.error('Failed to fetch pending allocations:', err);
+      setPendingError(err.message || 'Failed to load pending allocations.');
+    } finally {
+      setPendingLoading(false);
+      setPendingRefreshing(false);
+    }
+  }, [residentSearchQuery, pendingBlockFilter, pendingRoomTypeFilter, pendingBiometricFilter, pendingPage, pendingLimit]);
 
   // Fetch Blocks for Dropdowns
   const fetchBlocks = useCallback(async () => {
@@ -169,14 +260,17 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
   // Initial load
   useEffect(() => {
     fetchBlocks();
+    fetchPendingAllocations(false);
     fetchRooms(false);
-  }, [fetchBlocks, fetchRooms]);
+  }, [fetchBlocks, fetchPendingAllocations, fetchRooms]);
 
   useEffect(() => {
     if (activeTab === 'allocations') {
       fetchAllocations();
+    } else if (activeTab === 'pending') {
+      fetchPendingAllocations(true);
     }
-  }, [activeTab, fetchAllocations]);
+  }, [activeTab, fetchAllocations, fetchPendingAllocations]);
 
   // Real-time SSE synchronization
   useEffect(() => {
@@ -188,8 +282,10 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
         event?.type === 'STUDENT_ALLOCATED' ||
         event?.type === 'STUDENT_VACATED' ||
         event?.type === 'STUDENT_REALLOCATED' ||
+        event?.type === 'ALLOCATION_REJECTED' ||
         event?.type === 'ROOM_ALLOCATION_CHANGED'
       ) {
+        fetchPendingAllocations(true);
         fetchRooms(true);
         if (activeTab === 'allocations') {
           fetchAllocations();
@@ -198,30 +294,133 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     });
 
     return () => unsubscribe();
-  }, [fetchRooms, fetchAllocations, activeTab]);
+  }, [fetchPendingAllocations, fetchRooms, fetchAllocations, activeTab]);
 
-  // Metrics summary
-  const summaryMetrics = useMemo(() => {
-    const totalRooms = rooms.length;
-    const occupiedRooms = rooms.filter((r) => r.occupancy >= r.capacity).length;
-    const partiallyOccupied = rooms.filter((r) => r.occupancy > 0 && r.occupancy < r.capacity).length;
-    const vacantRooms = rooms.filter((r) => r.occupancy === 0).length;
-    const totalCapacity = rooms.reduce((acc, r) => acc + r.capacity, 0);
-    const allocatedBeds = rooms.reduce((acc, r) => acc + r.occupancy, 0);
-    const occupancyRate = totalCapacity > 0 ? Math.round((allocatedBeds / totalCapacity) * 100) : 0;
+  // =========================================================================
+  //                  PENDING ALLOCATION ACTIONS (STEP 3)
+  // =========================================================================
 
-    return {
-      totalRooms,
-      occupiedRooms,
-      partiallyOccupied,
-      vacantRooms,
-      totalCapacity,
-      allocatedBeds,
-      occupancyRate,
-    };
-  }, [rooms]);
+  // Open Assign Modal for a pending resident
+  const handleOpenAssignModal = (item: PendingAllocationItem) => {
+    setAssignStudentTarget(item);
+    setSelectedAssignRoomId('');
+    setSelectedAssignBed('');
+    setAssignError(null);
+    setAssignModalBlockFilter(item.preferences.blockPreference || 'ALL');
+    setIsAssignModalOpen(true);
+  };
 
-  // Handle Open Create Modal
+  // Rooms available for pending allocation
+  const availableRoomsForPending = useMemo(() => {
+    return rooms.filter((r) => {
+      if (r.status !== 'ACTIVE') return false;
+      if (r.occupancy >= r.capacity) return false;
+      if (assignModalBlockFilter !== 'ALL') {
+        const matchesName = r.block.name.toLowerCase().includes(assignModalBlockFilter.toLowerCase());
+        const matchesCode = r.block.code.toLowerCase().includes(assignModalBlockFilter.toLowerCase());
+        const matchesId = r.blockId === assignModalBlockFilter;
+        return matchesName || matchesCode || matchesId;
+      }
+      return true;
+    });
+  }, [rooms, assignModalBlockFilter]);
+
+  // Selected room details in assign modal
+  const selectedAssignRoom = useMemo(() => {
+    return rooms.find((r) => r.id === selectedAssignRoomId) || null;
+  }, [rooms, selectedAssignRoomId]);
+
+  // Confirm Assign Pending Student to Room
+  const handleConfirmAssign = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignStudentTarget) return;
+    setAssignError(null);
+
+    if (!selectedAssignRoomId) {
+      setAssignError('Please select a room with available vacancy.');
+      return;
+    }
+
+    setIsAssigning(true);
+    try {
+      const res = await managementApiService.allocateStudent({
+        roomId: selectedAssignRoomId,
+        studentId: assignStudentTarget.studentId,
+        bedNumber: selectedAssignBed.trim() ? selectedAssignBed.trim() : undefined,
+      });
+
+      showToast(res.message || `Assigned ${assignStudentTarget.name} successfully!`);
+      setIsAssignModalOpen(false);
+      setAssignStudentTarget(null);
+      fetchPendingAllocations(false);
+      fetchRooms(true);
+    } catch (err: any) {
+      setAssignError(err.message || 'Failed to allocate student to room.');
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  // Open Reject Modal
+  const handleOpenRejectModal = (item: PendingAllocationItem) => {
+    setRejectStudentTarget(item);
+    setRejectReason('');
+    setRejectError(null);
+    setIsRejectModalOpen(true);
+  };
+
+  // Confirm Reject Pending Allocation
+  const handleConfirmReject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rejectStudentTarget) return;
+    setRejectError(null);
+
+    if (!rejectReason.trim() || rejectReason.trim().length < 4) {
+      setRejectError('Please provide a specific reason for rejection (min 4 characters).');
+      return;
+    }
+
+    setIsRejecting(true);
+    try {
+      const res = await managementApiService.rejectPendingAllocation(
+        rejectStudentTarget.studentId,
+        rejectReason.trim()
+      );
+
+      showToast(res.message || `Allocation request for ${rejectStudentTarget.name} rejected.`);
+      setIsRejectModalOpen(false);
+      setRejectStudentTarget(null);
+      fetchPendingAllocations(false);
+    } catch (err: any) {
+      setRejectError(err.message || 'Failed to reject allocation request.');
+    } finally {
+      setIsRejecting(false);
+    }
+  };
+
+  // Open View Modal
+  const handleOpenViewModal = (item: PendingAllocationItem) => {
+    setViewStudentTarget(item);
+    setIsViewModalOpen(true);
+  };
+
+  // Biometric Sync handler
+  const handleBiometricSync = async () => {
+    setBiometricSyncing(true);
+    try {
+      await fetchPendingAllocations(true);
+      showToast('Biometric status synchronized from authoritative access control logs.');
+    } catch (err) {
+      showToast('Failed to synchronize biometric status.', 'error');
+    } finally {
+      setBiometricSyncing(false);
+    }
+  };
+
+  // =========================================================================
+  //                  ROOMS INVENTORY CRUD HANDLERS
+  // =========================================================================
+
   const handleOpenCreateModal = () => {
     setEditingRoom(null);
     const activeBlocks = blocks.filter((b) => b.status === 'ACTIVE');
@@ -237,7 +436,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     setIsRoomModalOpen(true);
   };
 
-  // Handle Open Edit Modal
   const handleOpenEditModal = (room: RoomItem) => {
     setEditingRoom(room);
     setRoomFormData({
@@ -252,20 +450,19 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     setIsRoomModalOpen(true);
   };
 
-  // Handle Submit Room (Create / Edit)
-  const handleSubmitRoom = async (e: React.FormEvent) => {
+  const handleSubmitRoomForm = async (e: React.FormEvent) => {
     e.preventDefault();
     setRoomFormError(null);
 
     if (!roomFormData.blockId) {
-      setRoomFormError('Please select a residential block.');
+      setRoomFormError('Please select a block for the room.');
       return;
     }
     if (!roomFormData.roomNumber.trim()) {
       setRoomFormError('Room number is required.');
       return;
     }
-    if (roomFormData.capacity < 1 || roomFormData.capacity > 10) {
+    if (roomFormData.capacity <= 0 || roomFormData.capacity > 10) {
       setRoomFormError('Capacity must be between 1 and 10.');
       return;
     }
@@ -273,27 +470,12 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     setIsSubmittingRoom(true);
     try {
       if (editingRoom) {
-        await managementApiService.updateRoom(editingRoom.id, {
-          blockId: roomFormData.blockId,
-          roomNumber: roomFormData.roomNumber.trim(),
-          floor: Number(roomFormData.floor),
-          roomType: roomFormData.roomType,
-          capacity: Number(roomFormData.capacity),
-          status: roomFormData.status,
-        });
-        showToast(`Room '${roomFormData.roomNumber.trim()}' updated successfully.`);
+        await managementApiService.updateRoom(editingRoom.id, roomFormData);
+        showToast(`Room '${roomFormData.roomNumber}' updated successfully.`);
       } else {
-        await managementApiService.createRoom({
-          blockId: roomFormData.blockId,
-          roomNumber: roomFormData.roomNumber.trim(),
-          floor: Number(roomFormData.floor),
-          roomType: roomFormData.roomType,
-          capacity: Number(roomFormData.capacity),
-          status: roomFormData.status,
-        });
-        showToast(`Room '${roomFormData.roomNumber.trim()}' created successfully.`);
+        await managementApiService.createRoom(roomFormData);
+        showToast(`Room '${roomFormData.roomNumber}' created successfully.`);
       }
-
       setIsRoomModalOpen(false);
       fetchRooms(false);
     } catch (err: any) {
@@ -303,34 +485,25 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     }
   };
 
-  // Handle Open Allocate Modal
-  const handleOpenAllocateModal = async (preselectedRoomId?: string, preselectedBlockId?: string) => {
+  const handleOpenAllocateModal = async (prefillRoom?: RoomItem) => {
     setAllocateError(null);
-    setAllocateStudentId('');
     setAllocateBedNumber('');
+    setIsAllocateModalOpen(true);
 
-    // Preselect block & room if given
-    if (preselectedBlockId) setAllocateBlockId(preselectedBlockId);
-    else if (blocks.length > 0) setAllocateBlockId(blocks[0].id);
+    const activeBlocks = blocks.filter((b) => b.status === 'ACTIVE');
+    const defaultBlockId = prefillRoom ? prefillRoom.blockId : activeBlocks.length > 0 ? activeBlocks[0].id : '';
+    setAllocateBlockId(defaultBlockId);
+    setAllocateRoomId(prefillRoom ? prefillRoom.id : '');
 
-    if (preselectedRoomId) setAllocateRoomId(preselectedRoomId);
-    else setAllocateRoomId('');
-
-    // Fetch eligible unallocated students
     try {
       const res = await managementApiService.getEligibleStudents();
       setEligibleStudents(res.students || []);
-      if (res.students && res.students.length > 0) {
-        setAllocateStudentId(res.students[0].id);
-      }
-    } catch (err: any) {
+      setAllocateStudentId(res.students.length > 0 ? res.students[0].id : '');
+    } catch (err) {
       console.error('Failed to load eligible students:', err);
     }
-
-    setIsAllocateModalOpen(true);
   };
 
-  // Available rooms for allocate modal based on selected block
   const availableRoomsForAllocation = useMemo(() => {
     if (!allocateBlockId) return [];
     return rooms.filter(
@@ -338,26 +511,16 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     );
   }, [rooms, allocateBlockId]);
 
-  // When available rooms change in allocate modal, update allocateRoomId if not set or invalid
-  useEffect(() => {
-    if (isAllocateModalOpen && availableRoomsForAllocation.length > 0) {
-      if (!allocateRoomId || !availableRoomsForAllocation.some((r) => r.id === allocateRoomId)) {
-        setAllocateRoomId(availableRoomsForAllocation[0].id);
-      }
-    }
-  }, [availableRoomsForAllocation, allocateRoomId, isAllocateModalOpen]);
-
-  // Handle Submit Allocation
   const handleSubmitAllocation = async (e: React.FormEvent) => {
     e.preventDefault();
     setAllocateError(null);
 
     if (!allocateRoomId) {
-      setAllocateError('Please select a room with available vacancy.');
+      setAllocateError('Please select a room with vacancy.');
       return;
     }
     if (!allocateStudentId) {
-      setAllocateError('Please select an eligible student to allocate.');
+      setAllocateError('Please select an eligible student.');
       return;
     }
 
@@ -369,28 +532,29 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
         bedNumber: allocateBedNumber.trim() ? allocateBedNumber.trim() : undefined,
       });
 
-      showToast(res.message || 'Student allocated successfully!');
+      showToast(res.message || 'Student allocated successfully.');
       setIsAllocateModalOpen(false);
       fetchRooms(false);
+      fetchPendingAllocations(true);
       if (activeTab === 'allocations') fetchAllocations();
     } catch (err: any) {
-      setAllocateError(err.message || 'Failed to allocate student.');
+      setAllocateError(err.message || 'Failed to allocate student to room.');
     } finally {
       setIsSubmittingAllocation(false);
     }
   };
 
-  // Handle Vacate Student
   const handleConfirmVacate = async () => {
     if (!vacateModalData) return;
     setIsVacating(true);
     setVacateError(null);
 
     try {
-      await managementApiService.vacateStudent(vacateModalData.allocationId);
-      showToast(`Student ${vacateModalData.studentName} vacated successfully.`);
+      const res = await managementApiService.vacateStudent(vacateModalData.allocationId);
+      showToast(res.message || 'Student vacated successfully.');
       setVacateModalData(null);
       fetchRooms(false);
+      fetchPendingAllocations(true);
       if (activeTab === 'allocations') fetchAllocations();
     } catch (err: any) {
       setVacateError(err.message || 'Failed to vacate resident.');
@@ -399,7 +563,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     }
   };
 
-  // Handle Open Reallocate Modal
   const handleOpenReallocateModal = (alloc: {
     allocationId: string;
     studentId: string;
@@ -412,7 +575,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     setReallocateError(null);
     setNewBedNumber('');
 
-    // Default target block & room
     const activeBlocks = blocks.filter((b) => b.status === 'ACTIVE');
     const firstBlockId = activeBlocks.length > 0 ? activeBlocks[0].id : '';
     setTargetBlockId(firstBlockId);
@@ -423,15 +585,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     setTargetRoomId(vacantRooms.length > 0 ? vacantRooms[0].id : '');
   };
 
-  // Target rooms available for reallocation
-  const availableTargetRooms = useMemo(() => {
-    if (!targetBlockId) return [];
-    return rooms.filter(
-      (r) => r.blockId === targetBlockId && r.status === 'ACTIVE' && r.occupancy < r.capacity
-    );
-  }, [rooms, targetBlockId]);
-
-  // Handle Confirm Reallocation
   const handleConfirmReallocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reallocateModalData) return;
@@ -460,7 +613,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     }
   };
 
-  // Handle Confirm Delete Room
   const handleConfirmDeleteRoom = async () => {
     if (!deleteRoomTarget) return;
     setIsDeletingRoom(true);
@@ -478,8 +630,27 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     }
   };
 
+  // Helper date formatter
+  const formatDate = (isoStr: string) => {
+    if (!isoStr) return 'N/A';
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch {
+      return isoStr;
+    }
+  };
+
+  // =========================================================================
+  //                                  RENDER
+  // =========================================================================
+
   return (
-    <div className="room-mgmt-page">
+    <div className="room-mgmt-page" style={{ padding: 'clamp(1rem, 2.5vw, 2rem)' }}>
       {/* Toast Notification */}
       {toastMessage && (
         <div
@@ -506,611 +677,1398 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
         </div>
       )}
 
-      {/* Header Section */}
-      <div className="room-page-header">
-        <div className="room-header-title-group">
-          <h1>
-            <BedDouble size={26} style={{ color: '#151B54' }} />
-            Room Management &amp; Allocation
-          </h1>
-          <p>
-            Configure rooms, track bed occupancy, and assign residential accommodations.
-          </p>
-        </div>
-
-        <div className="room-header-actions">
-          <button
-            type="button"
-            onClick={() => fetchRooms(true)}
-            className="btn-secondary"
-            title="Synchronize authoritative data"
-            disabled={isRefreshing}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 0.9rem' }}
-          >
-            <RotateCw size={15} className={isRefreshing ? 'spin-anim' : ''} />
-            <span>Sync</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleOpenAllocateModal()}
-            className="btn-primary"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.55rem 1rem',
-              backgroundColor: '#0F766E',
-            }}
-          >
-            <UserPlus size={16} />
-            <span>Allocate Student</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleOpenCreateModal}
-            className="btn-primary"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.55rem 1rem',
-              backgroundColor: '#151B54',
-            }}
-          >
-            <Plus size={16} />
-            <span>Add Room</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Summary KPI Cards Grid */}
-      <section className="room-kpi-grid" aria-label="Summary Statistics">
-        <div className="room-kpi-card">
-          <span className="room-kpi-label">TOTAL ROOMS</span>
-          <div className="room-kpi-value" style={{ color: '#0F172A' }}>
-            {summaryMetrics.totalRooms}
-          </div>
-          <div className="room-kpi-sub" style={{ color: '#64748B' }}>
-            Across all blocks
-          </div>
-        </div>
-
-        <div className="room-kpi-card">
-          <span className="room-kpi-label">OCCUPIED ROOMS</span>
-          <div className="room-kpi-value" style={{ color: '#1E293B' }}>
-            {summaryMetrics.occupiedRooms}
-          </div>
-          <div className="room-kpi-sub" style={{ color: '#059669' }}>
-            At 100% capacity
-          </div>
-        </div>
-
-        <div className="room-kpi-card">
-          <span className="room-kpi-label">PARTIALLY OCCUPIED</span>
-          <div className="room-kpi-value" style={{ color: '#D97706' }}>
-            {summaryMetrics.partiallyOccupied}
-          </div>
-          <div className="room-kpi-sub" style={{ color: '#B45309' }}>
-            Has vacancies
-          </div>
-        </div>
-
-        <div className="room-kpi-card">
-          <span className="room-kpi-label">VACANT ROOMS</span>
-          <div className="room-kpi-value" style={{ color: '#64748B' }}>
-            {summaryMetrics.vacantRooms}
-          </div>
-          <div className="room-kpi-sub" style={{ color: '#475569' }}>
-            0 allocations
-          </div>
-        </div>
-
-        <div className="room-kpi-card">
-          <span className="room-kpi-label">TOTAL CAPACITY</span>
-          <div className="room-kpi-value" style={{ color: '#0F172A' }}>
-            {summaryMetrics.totalCapacity}
-          </div>
-          <div className="room-kpi-sub" style={{ color: '#64748B' }}>
-            Total beds available
-          </div>
-        </div>
-
-        <div className="room-kpi-card">
-          <span className="room-kpi-label">ALLOCATED BEDS</span>
-          <div className="room-kpi-value" style={{ color: '#2563EB' }}>
-            {summaryMetrics.allocatedBeds}
-          </div>
-          <div className="room-kpi-sub" style={{ color: '#2563EB' }}>
-            {summaryMetrics.occupancyRate}% filled
-          </div>
-        </div>
-      </section>
-
-      {/* View Switcher Tabs */}
-      <div className="room-tabs-bar">
+      {/* Top View-Switcher Tabs */}
+      <div className="allocation-tabs-navigation" role="tablist">
         <button
           type="button"
-          onClick={() => setActiveTab('rooms')}
-          className={`room-tab-btn ${activeTab === 'rooms' ? 'active' : ''}`}
+          role="tab"
+          aria-selected={activeTab === 'pending'}
+          onClick={() => setActiveTab('pending')}
+          className={`allocation-nav-tab ${activeTab === 'pending' ? 'active' : ''}`}
         >
-          <LayoutGrid size={16} />
-          <span>Rooms Overview ({rooms.length})</span>
+          <Users size={16} />
+          <span>Pending Allocations</span>
+          <span className="allocation-tab-badge">{pendingCount}</span>
         </button>
 
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'rooms'}
+          onClick={() => setActiveTab('rooms')}
+          className={`allocation-nav-tab ${activeTab === 'rooms' ? 'active' : ''}`}
+        >
+          <LayoutGrid size={16} />
+          <span>Room Inventory</span>
+          <span className="allocation-tab-badge">{rooms.length}</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'allocations'}
           onClick={() => setActiveTab('allocations')}
-          className={`room-tab-btn ${activeTab === 'allocations' ? 'active' : ''}`}
+          className={`allocation-nav-tab ${activeTab === 'allocations' ? 'active' : ''}`}
         >
           <History size={16} />
           <span>Allocations History</span>
         </button>
       </div>
 
-      {/* Filter & Search Bar */}
-      <div className="room-filter-toolbar">
-        <div className="room-search-box">
-          <Search size={16} className="search-icon" />
-          <input
-            type="text"
-            placeholder={
-              activeTab === 'rooms'
-                ? 'Search room number, block name...'
-                : 'Search student name, roll number, room...'
-            }
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            aria-label="Search"
-          />
-        </div>
+      {/* ================================================================= */}
+      {/*              TAB 1: PENDING ALLOCATIONS (STEP 3)                  */}
+      {/* ================================================================= */}
+      {activeTab === 'pending' && (
+        <div className="allocation-view-container">
+          {/* Header Section with Page Title and Status Indicator */}
+          <div className="room-allocation-header-card">
+            <div className="room-allocation-title-row">
+              <h1 className="room-allocation-main-title">Room Allocation</h1>
+              <div className="pending-allocations-badge" aria-live="polite">
+                <span className="pending-badge-pulse-dot" />
+                <span>{pendingCount} pending allocations</span>
+              </div>
+            </div>
+          </div>
 
-        {activeTab === 'rooms' && (
-          <div className="room-filter-controls">
-            {/* Block Filter */}
-            <select
-              value={blockFilter}
-              onChange={(e) => setBlockFilter(e.target.value)}
-              className="room-filter-select"
-              aria-label="Filter by block"
-            >
-              <option value="ALL">All Blocks</option>
-              {blocks.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name} ({b.code})
-                </option>
-              ))}
-            </select>
-
-            {/* Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="room-filter-select"
-              aria-label="Filter by room status"
-            >
-              <option value="ALL">All Statuses</option>
-              <option value="ACTIVE">Active</option>
-              <option value="INACTIVE">Inactive</option>
-              <option value="UNDER_MAINTENANCE">Maintenance</option>
-            </select>
-
-            {/* Occupancy Filter */}
-            <select
-              value={occupancyFilter}
-              onChange={(e) => setOccupancyFilter(e.target.value)}
-              className="room-filter-select"
-              aria-label="Filter by occupancy"
-            >
-              <option value="ALL">All Occupancy</option>
-              <option value="OCCUPIED">Fully Occupied</option>
-              <option value="PARTIALLY_OCCUPIED">Partially Occupied</option>
-              <option value="VACANT">Fully Vacant</option>
-            </select>
-
-            {(blockFilter !== 'ALL' || statusFilter !== 'ALL' || occupancyFilter !== 'ALL' || searchTerm.trim() !== '') && (
+          {/* Search Bar */}
+          <div className="allocation-search-wrap">
+            <Search size={18} className="allocation-search-icon" />
+            <input
+              type="text"
+              className="allocation-search-input"
+              placeholder="Search by resident ID or name"
+              value={residentSearchQuery}
+              onChange={(e) => setResidentSearchQuery(e.target.value)}
+              aria-label="Search by resident ID or name"
+            />
+            {residentSearchQuery && (
               <button
                 type="button"
-                onClick={() => {
-                  setBlockFilter('ALL');
-                  setStatusFilter('ALL');
-                  setOccupancyFilter('ALL');
-                  setSearchTerm('');
-                }}
-                className="room-reset-filter-btn"
-                title="Reset all filters"
+                onClick={() => setResidentSearchQuery('')}
+                className="allocation-search-clear"
+                title="Clear search query"
               >
-                Reset
+                <X size={16} />
               </button>
             )}
           </div>
-        )}
-      </div>
 
-      {/* Main Content Area */}
-      {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
-          <div className="spin-anim" style={{ display: 'inline-block', marginBottom: '0.5rem' }}>
-            <RotateCw size={28} />
-          </div>
-          <p>Loading rooms from PostgreSQL database...</p>
-        </div>
-      ) : error ? (
-        <div
-          className="state-card error-state"
-          style={{
-            padding: '2rem',
-            textAlign: 'center',
-            backgroundColor: '#FEF2F2',
-            border: '1px solid #FCA5A5',
-            borderRadius: '8px',
-          }}
-        >
-          <AlertTriangle size={32} style={{ color: '#DC2626', margin: '0 auto 0.5rem' }} />
-          <h3 style={{ color: '#991B1B', fontWeight: 600 }}>Failed to Load Rooms</h3>
-          <p style={{ color: '#B91C1C', fontSize: '0.9rem', marginBottom: '1rem' }}>{error}</p>
-          <button type="button" onClick={() => fetchRooms(false)} className="btn-primary">
-            Retry
-          </button>
-        </div>
-      ) : activeTab === 'rooms' ? (
-        /* ROOMS GRID / LIST VIEW */
-        rooms.length === 0 ? (
-          <div
-            className="mgmt-card empty-state-card"
-            style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}
-          >
-            <BedDouble size={48} style={{ color: '#CBD5E1', margin: '0 auto 1rem' }} />
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 600, color: '#1E293B' }}>No Rooms Found</h3>
-            <p style={{ fontSize: '0.9rem', marginTop: '0.25rem', marginBottom: '1.25rem' }}>
-              No rooms match your filter criteria or no rooms have been added yet.
-            </p>
+          {/* Action Bar */}
+          <div className="allocation-action-bar">
             <button
               type="button"
-              onClick={handleOpenCreateModal}
-              className="btn-primary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+              onClick={() => setIsBiometricModalOpen(true)}
+              className="btn-navy-primary"
+              title="View and verify resident biometric status"
             >
-              <Plus size={16} />
-              <span>Add First Room</span>
+              <Fingerprint size={16} />
+              <span>Map Biometric Status</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsFilterModalOpen(true)}
+              className="btn-navy-primary"
+              title="Filter allocations by block or room type"
+            >
+              <Filter size={16} />
+              <span>Filter</span>
+              {(pendingBlockFilter !== 'ALL' || pendingRoomTypeFilter !== 'ALL' || pendingBiometricFilter !== 'ALL') && (
+                <span className="filter-active-badge" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fetchPendingAllocations(true)}
+              className="btn-light-secondary"
+              title="Fetch authoritative pending records from PostgreSQL"
+              disabled={pendingRefreshing}
+            >
+              <RotateCw size={16} className={pendingRefreshing ? 'spin-anim' : ''} />
+              <span>Refresh</span>
             </button>
           </div>
-        ) : (
-          <div className="rooms-grid">
-            {rooms.map((room) => {
-              const occPct = room.capacity > 0 ? Math.round((room.occupancy / room.capacity) * 100) : 0;
-              const isFull = room.occupancy >= room.capacity;
-              const hasVacancy = !isFull && room.status === 'ACTIVE' && room.block.status === 'ACTIVE';
 
-              return (
-                <div
-                  key={room.id}
-                  className="room-card"
-                  style={{
-                    borderLeft: `4px solid ${
-                      room.status !== 'ACTIVE'
-                        ? '#CBD5E1'
-                        : isFull
-                        ? '#151B54'
-                        : room.occupancy > 0
-                        ? '#F59E0B'
-                        : '#10B981'
-                    }`,
-                  }}
-                >
-                  {/* Card Header & Content */}
-                  <div>
-                    <div className="room-card-header">
-                      {/* Top Row: Room Number & Action Buttons */}
-                      <div className="room-header-top-row">
-                        <span className="room-title-number">
-                          Room {room.roomNumber}
-                        </span>
-
-                        <div className="room-header-actions">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(room)}
-                            className="room-action-icon-btn"
-                            title="Edit Room"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteRoomTarget(room);
-                              setDeleteRoomError(null);
-                            }}
-                            className="room-action-icon-btn delete"
-                            title="Delete Room"
-                            disabled={room.occupancy > 0}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Sub Row: Status Badge & Block Info */}
-                      <div className="room-sub-row">
-                        <span
-                          className={`room-badge-status ${
-                            room.status === 'ACTIVE'
-                              ? 'active'
-                              : room.status === 'UNDER_MAINTENANCE'
-                              ? 'maintenance'
-                              : 'inactive'
-                          }`}
-                        >
-                          {room.status}
-                        </span>
-                        <div className="room-block-info">
-                          <Building size={13} />
-                          <span>
-                            {room.block.name} ({room.block.code})
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Room Meta (Floor, Type, Capacity) */}
-                    <div className="room-specs-row">
-                      <span className="room-spec-item">
-                        <Layers size={13} /> Floor {room.floor || 1}
-                      </span>
-                      <span className="room-spec-item">
-                        <Home size={13} /> {room.roomType || 'Non-AC'}
-                      </span>
-                      <span className="room-spec-item">
-                        <Users size={13} /> Cap: {room.capacity}
-                      </span>
-                    </div>
-
-                    {/* Occupancy Progress Visual Indicator */}
-                    <div className="room-occupancy-indicator">
-                      <div className="room-occupancy-labels">
-                        <span style={{ color: isFull ? '#1E293B' : '#059669' }}>
-                          {room.occupancy} / {room.capacity} occupied
-                        </span>
-                        <span style={{ color: '#64748B' }}>
-                          {room.availableBeds} {room.availableBeds === 1 ? 'bed' : 'beds'} free
-                        </span>
-                      </div>
-                      <div className="room-occupancy-track">
-                        <div
-                          className="room-occupancy-fill"
-                          style={{
-                            width: `${occPct}%`,
-                            backgroundColor: isFull ? '#151B54' : room.occupancy > 0 ? '#F59E0B' : '#10B981',
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Active Occupants List */}
-                    <div className="room-occupants-box">
-                      <span className="room-occupants-heading">
-                        Assigned Students ({room.activeOccupants.length})
-                      </span>
-
-                      <div>
-                        {room.activeOccupants.length > 0 ? (
-                          room.activeOccupants.map((occ) => (
-                            <div key={occ.allocationId} className="room-occupant-chip">
-                              <div className="room-occupant-meta">
-                                <span className="room-occupant-name">{occ.name}</span>{' '}
-                                <span className="room-occupant-jntu">({occ.jntuNo})</span>
-                                {occ.bedNumber && (
-                                  <span className="room-occupant-bed">
-                                    {occ.bedNumber}
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="room-occupant-actions">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleOpenReallocateModal({
-                                      allocationId: occ.allocationId,
-                                      studentId: occ.studentId,
-                                      studentName: occ.name,
-                                      currentRoomNumber: room.roomNumber,
-                                      currentBlockName: room.block.name,
-                                      currentBedNumber: occ.bedNumber,
-                                    })
-                                  }
-                                  title="Reallocate student to another room"
-                                  style={{
-                                    border: 'none',
-                                    background: 'none',
-                                    color: '#2563EB',
-                                    cursor: 'pointer',
-                                    padding: '2px',
-                                  }}
-                                >
-                                  <ArrowRightLeft size={13} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setVacateModalData({
-                                      allocationId: occ.allocationId,
-                                      studentName: occ.name,
-                                      roomNumber: room.roomNumber,
-                                      blockName: room.block.name,
-                                      bedNumber: occ.bedNumber,
-                                    })
-                                  }
-                                  title="Vacate student"
-                                  style={{
-                                    border: 'none',
-                                    background: 'none',
-                                    color: '#DC2626',
-                                    cursor: 'pointer',
-                                    padding: '2px',
-                                  }}
-                                >
-                                  <UserMinus size={13} />
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div style={{ fontSize: '0.8rem', color: '#94A3B8', fontStyle: 'italic', padding: '4px 0' }}>
-                            No residents currently assigned.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card Bottom Quick Action */}
-                  <div className="room-card-footer">
-                    {hasVacancy ? (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenAllocateModal(room.id, room.blockId)}
-                        className="room-allocate-btn"
-                      >
-                        <UserPlus size={14} />
-                        <span>Allocate Available Bed</span>
-                      </button>
-                    ) : (
-                      <div
-                        className="room-empty-footer"
-                        style={{ color: isFull ? '#64748B' : '#94A3B8' }}
-                      >
-                        {isFull ? 'Room Fully Occupied' : `Unavailable (${room.status})`}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )
-      ) : (
-        /* ALLOCATIONS HISTORY TAB VIEW */
-        <div className="room-table-card">
-          {allocationsLoading ? (
-            <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748B' }}>
-              <RotateCw size={24} className="spin-anim" style={{ margin: '0 auto 0.5rem' }} />
-              <p>Loading historical allocation records...</p>
+          {/* Loading State */}
+          {pendingLoading ? (
+            <div style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
+              <div className="spin-anim" style={{ display: 'inline-block', marginBottom: '0.5rem' }}>
+                <RotateCw size={30} />
+              </div>
+              <p>Loading pending allocations from PostgreSQL...</p>
             </div>
-          ) : allocations.length === 0 ? (
-            <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748B' }}>
-              <History size={36} style={{ color: '#CBD5E1', margin: '0 auto 0.75rem' }} />
-              <p>No room allocations found.</p>
+          ) : pendingError ? (
+            <div
+              className="state-card error-state"
+              style={{
+                padding: '2rem',
+                textAlign: 'center',
+                backgroundColor: '#FEF2F2',
+                border: '1px solid #FCA5A5',
+                borderRadius: '12px',
+              }}
+            >
+              <AlertTriangle size={32} style={{ color: '#DC2626', margin: '0 auto 0.5rem' }} />
+              <h3 style={{ color: '#991B1B', margin: '0 0 0.5rem' }}>Database Error</h3>
+              <p style={{ color: '#B91C1C', margin: '0 0 1rem' }}>{pendingError}</p>
+              <button
+                type="button"
+                onClick={() => fetchPendingAllocations(false)}
+                className="btn-navy-primary"
+              >
+                Retry
+              </button>
+            </div>
+          ) : pendingAllocations.length === 0 ? (
+            <div className="allocation-empty-state">
+              <Users size={40} style={{ color: '#94A3B8' }} />
+              <h3 className="empty-state-title">No pending allocations found</h3>
+              <p className="empty-state-desc">
+                {residentSearchQuery || pendingBlockFilter !== 'ALL'
+                  ? 'No resident applications matched the active search or filter criteria.'
+                  : 'All resident accommodations are currently allocated or processed in the database.'}
+              </p>
+              {(residentSearchQuery || pendingBlockFilter !== 'ALL' || pendingRoomTypeFilter !== 'ALL' || pendingBiometricFilter !== 'ALL') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResidentSearchQuery('');
+                    setPendingBlockFilter('ALL');
+                    setPendingRoomTypeFilter('ALL');
+                    setPendingBiometricFilter('ALL');
+                  }}
+                  className="btn-light-secondary"
+                  style={{ marginTop: '0.5rem' }}
+                >
+                  Clear Filters
+                </button>
+              )}
             </div>
           ) : (
-            <div className="room-table-wrap">
-              <table className="room-alloc-table">
-                <thead>
-                  <tr>
-                    <th>Student</th>
-                    <th>JNTU No</th>
-                    <th>Block &amp; Room</th>
-                    <th>Bed</th>
-                    <th>Allocated Date</th>
-                    <th>Vacated Date</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allocations.map((alloc) => {
-                    const isActive = alloc.status === 'ACTIVE';
+            /* Pending Allocation Cards List */
+            <div className="pending-cards-container">
+              {pendingAllocations.map((item) => (
+                <article key={item.id} className="pending-resident-card" aria-label={`Allocation request for ${item.name}`}>
+                  {/* Top Section: Avatar + Student Name/JNTU + Date */}
+                  <div className="pending-card-top">
+                    <div className="pending-student-info">
+                      <div className="student-avatar-badge" aria-hidden="true">
+                        {item.name
+                          .split(' ')
+                          .filter(Boolean)
+                          .map((n) => n[0])
+                          .slice(0, 2)
+                          .join('')
+                          .toUpperCase()}
+                      </div>
+                      <div className="student-identity-block">
+                        <h2 className="student-full-name">{item.name}</h2>
+                        <span className="student-jntu-id">{item.jntuNo}</span>
+                      </div>
+                    </div>
 
-                    return (
-                      <tr key={alloc.id}>
-                        <td style={{ fontWeight: 600, color: '#0F172A' }}>
-                          {alloc.student.name}
-                        </td>
-                        <td style={{ color: '#475569' }}>{alloc.student.jntuNo}</td>
-                        <td style={{ color: '#334155' }}>
-                          {alloc.room.block.name} - Room {alloc.room.roomNumber}
-                        </td>
-                        <td style={{ color: '#475569' }}>{alloc.bedNumber || 'Auto'}</td>
-                        <td style={{ color: '#64748B', fontSize: '0.82rem' }}>
-                          {new Date(alloc.allocatedAt).toLocaleDateString()}
-                        </td>
-                        <td style={{ color: '#64748B', fontSize: '0.82rem' }}>
-                          {alloc.vacatedAt ? new Date(alloc.vacatedAt).toLocaleDateString() : '—'}
-                        </td>
-                        <td>
-                          <span
-                            className={`room-badge-status ${
-                              alloc.status === 'ACTIVE'
-                                ? 'active'
-                                : alloc.status === 'VACATED'
-                                ? 'inactive'
-                                : 'maintenance'
-                            }`}
-                          >
-                            {alloc.status}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          {isActive ? (
-                            <div style={{ display: 'inline-flex', gap: '6px' }}>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleOpenReallocateModal({
-                                    allocationId: alloc.id,
-                                    studentId: alloc.studentId,
-                                    studentName: alloc.student.name,
-                                    currentRoomNumber: alloc.room.roomNumber,
-                                    currentBlockName: alloc.room.block.name,
-                                    currentBedNumber: alloc.bedNumber,
-                                  })
-                                }
-                                className="btn-secondary"
-                                style={{ padding: '3px 8px', fontSize: '0.75rem' }}
-                              >
-                                Reallocate
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setVacateModalData({
-                                    allocationId: alloc.id,
-                                    studentName: alloc.student.name,
-                                    roomNumber: alloc.room.roomNumber,
-                                    blockName: alloc.room.block.name,
-                                    bedNumber: alloc.bedNumber,
-                                  })
-                                }
-                                className="btn-secondary"
-                                style={{ padding: '3px 8px', fontSize: '0.75rem', color: '#DC2626' }}
-                              >
-                                Vacate
-                              </button>
-                            </div>
-                          ) : (
-                            <span style={{ color: '#94A3B8', fontSize: '0.75rem' }}>Archived</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    <div className="pending-submission-date" title={`Submission date: ${item.createdAt}`}>
+                      <Calendar size={13} />
+                      <span>{formatDate(item.createdAt)}</span>
+                    </div>
+                  </div>
+
+                  {/* Card Details Responsive Grid */}
+                  <div className="pending-card-grid">
+                    {/* 1. Contact */}
+                    <div className="pending-grid-group">
+                      <span className="pending-group-title">Contact</span>
+                      <div className="pending-detail-line" title={item.phone}>
+                        <Phone size={13} style={{ color: '#64748B', flexShrink: 0 }} />
+                        <span>{item.phone}</span>
+                      </div>
+                      <div className="pending-detail-line" title={item.email}>
+                        <Mail size={13} style={{ color: '#64748B', flexShrink: 0 }} />
+                        <span>{item.email}</span>
+                      </div>
+                    </div>
+
+                    {/* 2. Course Information */}
+                    <div className="pending-grid-group">
+                      <span className="pending-group-title">Course Information</span>
+                      <div className="pending-detail-line" title={`${item.courseInfo.degree} - ${item.courseInfo.department}`}>
+                        <GraduationCap size={14} style={{ color: '#64748B', flexShrink: 0 }} />
+                        <span>{item.courseInfo.degree}</span>
+                      </div>
+                      <div className="pending-detail-line" style={{ fontSize: '0.8rem', color: '#475569' }}>
+                        <span>{item.courseInfo.department}</span>
+                      </div>
+                      <div className="pending-detail-chips">
+                        <span className="info-chip-tag">{item.courseInfo.year}</span>
+                        <span className="info-chip-tag">{item.courseInfo.semester}</span>
+                      </div>
+                    </div>
+
+                    {/* 3. Preference */}
+                    <div className="pending-grid-group">
+                      <span className="pending-group-title">Preference</span>
+                      <div className="preference-highlight">
+                        <BedDouble size={14} style={{ color: '#2563EB', flexShrink: 0 }} />
+                        <span>{item.preferences.roomPreference}</span>
+                      </div>
+                      <div className="preference-sub-specs">
+                        <span>
+                          Block: <strong>{item.preferences.blockPreference}</strong>
+                        </span>
+                        <span>
+                          Floor: <strong>{item.preferences.floorPreference}</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 4. Documents / Verification */}
+                    <div className="pending-grid-group">
+                      <span className="pending-group-title">Documents / Verification</span>
+                      <div className="verification-status-row">
+                        <span className="verification-label">Biometric Status</span>
+                        <span
+                          className={`status-badge ${
+                            item.documents.biometricStatus === 'VERIFIED'
+                              ? 'badge-verified'
+                              : 'badge-pending'
+                          }`}
+                        >
+                          {item.documents.biometricStatus}
+                        </span>
+                      </div>
+                      <div className="verification-status-row">
+                        <span className="verification-label">Photos</span>
+                        <span className="status-badge badge-submitted">
+                          {item.documents.photos}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons Row */}
+                  <div className="pending-card-actions">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAssignModal(item)}
+                      className="btn-card-action btn-card-assign"
+                      title={`Assign room to ${item.name}`}
+                    >
+                      Assign
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenRejectModal(item)}
+                      className="btn-card-action btn-card-reject"
+                      title={`Reject allocation for ${item.name}`}
+                    >
+                      Reject
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenViewModal(item)}
+                      className="btn-card-action btn-card-view"
+                      title={`View detailed application for ${item.name}`}
+                    >
+                      View
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {pendingTotalPages > 1 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '1rem 0',
+                borderTop: '1px solid #E2E8F0',
+                marginTop: '1rem',
+              }}
+            >
+              <span style={{ fontSize: '0.85rem', color: '#64748B' }}>
+                Showing {(pendingPage - 1) * pendingLimit + 1} to{' '}
+                {Math.min(pendingPage * pendingLimit, pendingTotal)} of {pendingTotal} pending allocations
+              </span>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setPendingPage((p) => Math.max(1, p - 1))}
+                  disabled={pendingPage === 1}
+                  className="btn-light-secondary"
+                  style={{ minHeight: '36px', padding: '0.4rem 0.8rem' }}
+                >
+                  <ChevronLeft size={16} />
+                  <span>Previous</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingPage((p) => Math.min(pendingTotalPages, p + 1))}
+                  disabled={pendingPage >= pendingTotalPages}
+                  className="btn-light-secondary"
+                  style={{ minHeight: '36px', padding: '0.4rem 0.8rem' }}
+                >
+                  <span>Next</span>
+                  <ChevronRight size={16} />
+                </button>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ================= MODALS ================= */}
+      {/* ================================================================= */}
+      {/*              TAB 2: ROOMS OVERVIEW (PRESERVED)                    */}
+      {/* ================================================================= */}
+      {activeTab === 'rooms' && (
+        <div>
+          {/* Header Section */}
+          <div className="room-page-header">
+            <div className="room-header-title-group">
+              <h1>
+                <BedDouble size={26} style={{ color: '#151B54' }} />
+                Room Inventory Management
+              </h1>
+              <p>Configure room records, capacities, and monitor live vacancy across blocks.</p>
+            </div>
 
-      {/* 1. Add / Edit Room Modal */}
+            <div className="room-header-actions">
+              <button
+                type="button"
+                onClick={() => fetchRooms(true)}
+                className="btn-secondary"
+                title="Synchronize authoritative data"
+                disabled={isRefreshing}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 0.9rem' }}
+              >
+                <RotateCw size={15} className={isRefreshing ? 'spin-anim' : ''} />
+                <span>Sync</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenAllocateModal()}
+                className="btn-primary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.55rem 1rem',
+                  backgroundColor: '#0F766E',
+                }}
+              >
+                <UserPlus size={16} />
+                <span>Allocate Student</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenCreateModal}
+                className="btn-primary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.55rem 1rem',
+                  backgroundColor: '#151B54',
+                }}
+              >
+                <Plus size={16} />
+                <span>Add Room</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Filter & Search Bar */}
+          <div className="room-filter-toolbar" style={{ margin: '1.25rem 0' }}>
+            <div className="room-search-box">
+              <Search size={16} className="search-icon" />
+              <input
+                type="text"
+                placeholder="Search room number, block name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                aria-label="Search"
+              />
+            </div>
+
+            <div className="room-filter-controls">
+              <select
+                value={blockFilter}
+                onChange={(e) => setBlockFilter(e.target.value)}
+                className="room-filter-select"
+                aria-label="Filter by block"
+              >
+                <option value="ALL">All Blocks</option>
+                {blocks.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} ({b.code})
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="room-filter-select"
+                aria-label="Filter by room status"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+                <option value="UNDER_MAINTENANCE">Maintenance</option>
+              </select>
+
+              <select
+                value={occupancyFilter}
+                onChange={(e) => setOccupancyFilter(e.target.value)}
+                className="room-filter-select"
+                aria-label="Filter by occupancy"
+              >
+                <option value="ALL">All Occupancy</option>
+                <option value="OCCUPIED">Fully Occupied</option>
+                <option value="PARTIALLY_OCCUPIED">Partially Occupied</option>
+                <option value="VACANT">Fully Vacant</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Rooms Grid */}
+          {isLoading ? (
+            <div style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
+              <div className="spin-anim" style={{ display: 'inline-block', marginBottom: '0.5rem' }}>
+                <RotateCw size={28} />
+              </div>
+              <p>Loading rooms from PostgreSQL...</p>
+            </div>
+          ) : error ? (
+            <div
+              style={{
+                padding: '1.5rem',
+                textAlign: 'center',
+                backgroundColor: '#FEF2F2',
+                border: '1px solid #FCA5A5',
+                borderRadius: '8px',
+                color: '#DC2626',
+              }}
+            >
+              <AlertTriangle size={28} style={{ margin: '0 auto 0.5rem' }} />
+              <p>{error}</p>
+            </div>
+          ) : (
+            <div className="rooms-cards-grid">
+              {rooms.map((room) => {
+                const isFull = room.occupancy >= room.capacity;
+                return (
+                  <div key={room.id} className="room-display-card">
+                    <div className="room-card-head">
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0F172A' }}>
+                          Room {room.roomNumber}
+                        </h3>
+                        <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                          {room.block.name} • Floor {room.floor || 1}
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          borderRadius: '9999px',
+                          backgroundColor: isFull ? '#F1F5F9' : '#DEF7EC',
+                          color: isFull ? '#475569' : '#03543F',
+                        }}
+                      >
+                        {room.occupancy}/{room.capacity} ({room.availableBeds} beds free)
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAllocateModal(room)}
+                        className="btn-secondary"
+                        style={{ flex: 1, padding: '0.45rem', fontSize: '0.8rem' }}
+                        disabled={isFull}
+                      >
+                        Allocate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(room)}
+                        className="btn-secondary"
+                        style={{ padding: '0.45rem 0.65rem' }}
+                        title="Edit room"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteRoomTarget(room)}
+                        className="btn-secondary"
+                        style={{ padding: '0.45rem 0.65rem', color: '#DC2626' }}
+                        title="Delete room"
+                        disabled={room.occupancy > 0}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/*              TAB 3: ALLOCATIONS HISTORY (PRESERVED)               */}
+      {/* ================================================================= */}
+      {activeTab === 'allocations' && (
+        <div>
+          <div className="room-page-header">
+            <div className="room-header-title-group">
+              <h1>
+                <History size={26} style={{ color: '#151B54' }} />
+                Authoritative Allocations Log
+              </h1>
+              <p>Review current and past room assignments, occupied beds, and historical vacates.</p>
+            </div>
+            <button
+              type="button"
+              onClick={fetchAllocations}
+              className="btn-secondary"
+              disabled={allocationsLoading}
+            >
+              <RotateCw size={15} className={allocationsLoading ? 'spin-anim' : ''} />
+              <span>Refresh Log</span>
+            </button>
+          </div>
+
+          <div style={{ marginTop: '1.25rem' }}>
+            {allocationsLoading ? (
+              <p style={{ textAlign: 'center', padding: '2rem', color: '#64748B' }}>Loading allocations...</p>
+            ) : allocations.length === 0 ? (
+              <p style={{ textAlign: 'center', padding: '2rem', color: '#64748B' }}>No allocations found.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {allocations.map((a) => (
+                  <div
+                    key={a.id}
+                    style={{
+                      padding: '1rem',
+                      background: '#FFFFFF',
+                      borderRadius: '10px',
+                      border: '1px solid #E2E8F0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '0.75rem',
+                    }}
+                  >
+                    <div>
+                      <strong style={{ color: '#0F172A' }}>{a.student.name}</strong>{' '}
+                      <span style={{ color: '#64748B', fontSize: '0.85rem' }}>({a.student.jntuNo})</span>
+                      <div style={{ fontSize: '0.825rem', color: '#475569', marginTop: '2px' }}>
+                        {a.room.block.name} • Room {a.room.roomNumber} ({a.bedNumber || 'Bed Assigned'})
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          borderRadius: '9999px',
+                          backgroundColor: a.status === 'ACTIVE' ? '#DEF7EC' : '#F1F5F9',
+                          color: a.status === 'ACTIVE' ? '#03543F' : '#64748B',
+                        }}
+                      >
+                        {a.status}
+                      </span>
+                      {a.status === 'ACTIVE' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOpenReallocateModal({
+                                allocationId: a.id,
+                                studentId: a.student.id,
+                                studentName: a.student.name,
+                                currentRoomNumber: a.room.roomNumber,
+                                currentBlockName: a.room.block.name,
+                                currentBedNumber: a.bedNumber,
+                              })
+                            }
+                            className="btn-light-secondary"
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', minHeight: '30px' }}
+                          >
+                            Reallocate
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVacateModalData({
+                                allocationId: a.id,
+                                studentName: a.student.name,
+                                roomNumber: a.room.roomNumber,
+                                blockName: a.room.block.name,
+                                bedNumber: a.bedNumber,
+                              })
+                            }
+                            className="btn-danger-card"
+                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', minHeight: '30px' }}
+                          >
+                            Vacate
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/*              MODAL 1: ASSIGN ROOM MODAL (STEP 3)                  */}
+      {/* ================================================================= */}
+      {isAssignModalOpen && assignStudentTarget && (
+        <div className="mgmt-modal-backdrop" onClick={() => setIsAssignModalOpen(false)}>
+          <div
+            className="mgmt-notice-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '580px', width: '92%' }}
+          >
+            <div className="notice-modal-header">
+              <div className="notice-icon-circle" style={{ backgroundColor: '#EEF2FF', color: '#151B54' }}>
+                <BedDouble size={20} />
+              </div>
+              <div>
+                <h3 className="notice-modal-title" style={{ margin: 0 }}>
+                  Assign Room
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                  {assignStudentTarget.name} ({assignStudentTarget.jntuNo})
+                </span>
+              </div>
+              <button
+                type="button"
+                className="notice-close-btn"
+                onClick={() => setIsAssignModalOpen(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmAssign}>
+              <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {assignError && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      backgroundColor: '#FEF2F2',
+                      border: '1px solid #FCA5A5',
+                      borderRadius: '6px',
+                      color: '#B91C1C',
+                      fontSize: '0.85rem',
+                    }}
+                  >
+                    {assignError}
+                  </div>
+                )}
+
+                {/* Requested Preferences Summary */}
+                <div
+                  style={{
+                    backgroundColor: '#F8FAFC',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #E2E8F0',
+                    fontSize: '0.825rem',
+                  }}
+                >
+                  <span style={{ fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                    STUDENT PREFERENCES:
+                  </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', color: '#1E293B' }}>
+                    <span>
+                      Room: <strong>{assignStudentTarget.preferences.roomPreference}</strong>
+                    </span>
+                    <span>
+                      Block: <strong>{assignStudentTarget.preferences.blockPreference}</strong>
+                    </span>
+                    <span>
+                      Floor: <strong>{assignStudentTarget.preferences.floorPreference}</strong>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Filter by Block */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
+                    1. Filter Block
+                  </label>
+                  <select
+                    value={assignModalBlockFilter}
+                    onChange={(e) => {
+                      setAssignModalBlockFilter(e.target.value);
+                      setSelectedAssignRoomId('');
+                    }}
+                    className="mgmt-select"
+                    style={{ width: '100%', height: '38px' }}
+                  >
+                    <option value="ALL">All Active Blocks</option>
+                    {blocks
+                      .filter((b) => b.status === 'ACTIVE')
+                      .map((b) => (
+                        <option key={b.id} value={b.name}>
+                          {b.name} ({b.code})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {/* Select Room */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
+                    2. Select Available Room *
+                  </label>
+                  {availableRoomsForPending.length === 0 ? (
+                    <div
+                      style={{
+                        padding: '1rem',
+                        textAlign: 'center',
+                        backgroundColor: '#FFFBEB',
+                        border: '1px solid #FDE68A',
+                        borderRadius: '8px',
+                        color: '#B45309',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      No rooms with available beds in the selected block. Please pick another block.
+                    </div>
+                  ) : (
+                    <div className="room-selection-list">
+                      {availableRoomsForPending.map((r) => {
+                        const isSelected = selectedAssignRoomId === r.id;
+                        return (
+                          <div
+                            key={r.id}
+                            className={`room-select-item ${isSelected ? 'selected' : ''}`}
+                            onClick={() => setSelectedAssignRoomId(r.id)}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            <div>
+                              <strong style={{ color: '#0F172A', fontSize: '0.95rem' }}>
+                                Room {r.roomNumber}
+                              </strong>{' '}
+                              <span style={{ color: '#64748B', fontSize: '0.82rem' }}>
+                                ({r.block.name} • Floor {r.floor || 1})
+                              </span>
+                              <div style={{ fontSize: '0.78rem', color: '#475569', marginTop: '2px' }}>
+                                {r.roomType || 'Standard'} • Capacity: {r.capacity}
+                              </div>
+                            </div>
+
+                            <div style={{ textAlign: 'right' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  color: '#059669',
+                                  backgroundColor: '#DEF7EC',
+                                  padding: '2px 7px',
+                                  borderRadius: '9999px',
+                                  display: 'inline-block',
+                                }}
+                              >
+                                {r.availableBeds} beds available
+                              </span>
+                              {isSelected && (
+                                <div
+                                  style={{
+                                    marginTop: '4px',
+                                    color: '#151B54',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'flex-end',
+                                    gap: '2px',
+                                  }}
+                                >
+                                  <Check size={14} />
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Selected</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Bed Assignment */}
+                {selectedAssignRoom && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
+                      3. Bed Assignment (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Bed-1, Bed-2 (leave blank to auto-assign)"
+                      value={selectedAssignBed}
+                      onChange={(e) => setSelectedAssignBed(e.target.value)}
+                      className="mgmt-input"
+                      style={{ width: '100%', height: '38px' }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div
+                className="notice-modal-footer"
+                style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem' }}
+              >
+                <button
+                  type="button"
+                  className="btn-light-secondary"
+                  onClick={() => setIsAssignModalOpen(false)}
+                  disabled={isAssigning}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-navy-primary"
+                  disabled={isAssigning || !selectedAssignRoomId}
+                >
+                  {isAssigning ? 'Allocating...' : 'Confirm Allocation'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/*              MODAL 2: REJECT ALLOCATION MODAL (STEP 3)            */}
+      {/* ================================================================= */}
+      {isRejectModalOpen && rejectStudentTarget && (
+        <div className="mgmt-modal-backdrop" onClick={() => setIsRejectModalOpen(false)}>
+          <div
+            className="mgmt-notice-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '500px', width: '92%' }}
+          >
+            <div className="notice-modal-header">
+              <div className="notice-icon-circle" style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <h3 className="notice-modal-title" style={{ margin: 0, color: '#991B1B' }}>
+                  Reject Allocation
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                  {rejectStudentTarget.name} ({rejectStudentTarget.jntuNo})
+                </span>
+              </div>
+              <button
+                type="button"
+                className="notice-close-btn"
+                onClick={() => setIsRejectModalOpen(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmReject}>
+              <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {rejectError && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      backgroundColor: '#FEF2F2',
+                      border: '1px solid #FCA5A5',
+                      borderRadius: '6px',
+                      color: '#B91C1C',
+                      fontSize: '0.85rem',
+                    }}
+                  >
+                    {rejectError}
+                  </div>
+                )}
+
+                <p style={{ margin: 0, fontSize: '0.9rem', color: '#334155', lineHeight: 1.5 }}>
+                  Are you sure you want to reject the room allocation request for{' '}
+                  <strong>{rejectStudentTarget.name}</strong>? This action updates their status to{' '}
+                  <code>NOT_ALLOCATED</code> in PostgreSQL.
+                </p>
+
+                <div>
+                  <label
+                    htmlFor="rejectionReasonInput"
+                    style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}
+                  >
+                    Rejection Reason *
+                  </label>
+                  <textarea
+                    id="rejectionReasonInput"
+                    rows={3}
+                    placeholder="Enter explicit reason (e.g. Block capacity filled, duplicate request, ineligible)..."
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    className="mgmt-input"
+                    style={{ width: '100%', padding: '0.6rem', boxSizing: 'border-box' }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div
+                className="notice-modal-footer"
+                style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem' }}
+              >
+                <button
+                  type="button"
+                  className="btn-light-secondary"
+                  onClick={() => setIsRejectModalOpen(false)}
+                  disabled={isRejecting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-danger-card"
+                  disabled={isRejecting || !rejectReason.trim()}
+                >
+                  {isRejecting ? 'Rejecting...' : 'Confirm Rejection'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/*              MODAL 3: VIEW RESIDENT DETAILS (STEP 3)              */}
+      {/* ================================================================= */}
+      {isViewModalOpen && viewStudentTarget && (
+        <div className="mgmt-modal-backdrop" onClick={() => setIsViewModalOpen(false)}>
+          <div
+            className="mgmt-notice-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '600px', width: '92%' }}
+          >
+            <div className="notice-modal-header">
+              <div className="notice-icon-circle" style={{ backgroundColor: '#EEF2FF', color: '#151B54' }}>
+                <Users size={20} />
+              </div>
+              <div>
+                <h3 className="notice-modal-title" style={{ margin: 0 }}>
+                  Resident Application Details
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                  {viewStudentTarget.name} ({viewStudentTarget.jntuNo})
+                </span>
+              </div>
+              <button
+                type="button"
+                className="notice-close-btn"
+                onClick={() => setIsViewModalOpen(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Profile Bar */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  padding: '1rem',
+                  backgroundColor: '#F8FAFC',
+                  borderRadius: '12px',
+                  border: '1px solid #E2E8F0',
+                }}
+              >
+                <div className="student-avatar-badge" style={{ width: '56px', height: '56px', fontSize: '1.3rem' }}>
+                  {viewStudentTarget.name
+                    .split(' ')
+                    .filter(Boolean)
+                    .map((n) => n[0])
+                    .slice(0, 2)
+                    .join('')
+                    .toUpperCase()}
+                </div>
+                <div>
+                  <h4 style={{ margin: '0 0 2px', fontSize: '1.15rem', color: '#0F172A' }}>
+                    {viewStudentTarget.name}
+                  </h4>
+                  <div style={{ fontSize: '0.85rem', color: '#475569', fontFamily: 'monospace' }}>
+                    JNTU ID: {viewStudentTarget.jntuNo}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: '4px' }}>
+                    Submitted on: {new Date(viewStudentTarget.createdAt).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Grid breakdown */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+                {/* Academic */}
+                <div style={{ padding: '0.85rem', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #F1F5F9' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                    Academic Enrollment
+                  </span>
+                  <div style={{ marginTop: '0.35rem', fontSize: '0.875rem', color: '#1E293B', fontWeight: 600 }}>
+                    {viewStudentTarget.courseInfo.degree} - {viewStudentTarget.courseInfo.department}
+                  </div>
+                  <div style={{ fontSize: '0.825rem', color: '#475569', marginTop: '2px' }}>
+                    {viewStudentTarget.courseInfo.year} • {viewStudentTarget.courseInfo.semester}
+                  </div>
+                </div>
+
+                {/* Contact */}
+                <div style={{ padding: '0.85rem', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #F1F5F9' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                    Contact Information
+                  </span>
+                  <div style={{ marginTop: '0.35rem', fontSize: '0.85rem', color: '#1E293B' }}>
+                    Phone: <strong>{viewStudentTarget.phone}</strong>
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#1E293B', marginTop: '2px' }}>
+                    Email: <strong>{viewStudentTarget.email}</strong>
+                  </div>
+                </div>
+
+                {/* Preferences */}
+                <div style={{ padding: '0.85rem', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #F1F5F9' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                    Accommodations Requested
+                  </span>
+                  <div style={{ marginTop: '0.35rem', fontSize: '0.875rem', color: '#151B54', fontWeight: 600 }}>
+                    {viewStudentTarget.preferences.roomPreference}
+                  </div>
+                  <div style={{ fontSize: '0.825rem', color: '#475569', marginTop: '2px' }}>
+                    Block: {viewStudentTarget.preferences.blockPreference} | Floor:{' '}
+                    {viewStudentTarget.preferences.floorPreference}
+                  </div>
+                </div>
+
+                {/* Verification */}
+                <div style={{ padding: '0.85rem', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #F1F5F9' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                    Identity Verification
+                  </span>
+                  <div style={{ marginTop: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#475569' }}>Biometrics:</span>
+                    <span className={`status-badge ${viewStudentTarget.documents.biometricStatus === 'VERIFIED' ? 'badge-verified' : 'badge-pending'}`}>
+                      {viewStudentTarget.documents.biometricStatus}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#475569' }}>Photos:</span>
+                    <span className="status-badge badge-submitted">{viewStudentTarget.documents.photos}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="notice-modal-footer"
+              style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem' }}
+            >
+              <button
+                type="button"
+                className="btn-light-secondary"
+                onClick={() => setIsViewModalOpen(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn-danger-card"
+                onClick={() => {
+                  setIsViewModalOpen(false);
+                  handleOpenRejectModal(viewStudentTarget);
+                }}
+              >
+                Reject
+              </button>
+              <button
+                type="button"
+                className="btn-navy-primary"
+                onClick={() => {
+                  setIsViewModalOpen(false);
+                  handleOpenAssignModal(viewStudentTarget);
+                }}
+              >
+                Assign Room
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/*              MODAL 4: MAP BIOMETRIC STATUS (STEP 3)               */}
+      {/* ================================================================= */}
+      {isBiometricModalOpen && (
+        <div className="mgmt-modal-backdrop" onClick={() => setIsBiometricModalOpen(false)}>
+          <div
+            className="mgmt-notice-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '560px', width: '92%' }}
+          >
+            <div className="notice-modal-header">
+              <div className="notice-icon-circle" style={{ backgroundColor: '#EEF2FF', color: '#151B54' }}>
+                <Fingerprint size={20} />
+              </div>
+              <div>
+                <h3 className="notice-modal-title" style={{ margin: 0 }}>
+                  Biometric Access Mapping
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                  Authoritative device status for resident allocation
+                </span>
+              </div>
+              <button
+                type="button"
+                className="notice-close-btn"
+                onClick={() => setIsBiometricModalOpen(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  padding: '0.85rem',
+                  backgroundColor: '#EFF6FF',
+                  borderRadius: '10px',
+                  border: '1px solid #BFDBFE',
+                  fontSize: '0.85rem',
+                  color: '#1E40AF',
+                }}
+              >
+                <ShieldCheck size={20} style={{ flexShrink: 0 }} />
+                <span>
+                  Physical biometric access control events are recorded authoritatively in PostgreSQL from gate
+                  sensors.
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                  Pending Resident Enrollment Status
+                </span>
+
+                {pendingAllocations.map((p) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '8px',
+                      border: '1px solid #E2E8F0',
+                      backgroundColor: '#FFFFFF',
+                    }}
+                  >
+                    <div>
+                      <strong style={{ fontSize: '0.9rem', color: '#0F172A' }}>{p.name}</strong>
+                      <div style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                        {p.jntuNo} • Events logged: {p.biometricEventsCount}
+                      </div>
+                    </div>
+
+                    <span
+                      className={`status-badge ${
+                        p.documents.biometricStatus === 'VERIFIED' ? 'badge-verified' : 'badge-pending'
+                      }`}
+                    >
+                      {p.documents.biometricStatus}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div
+              className="notice-modal-footer"
+              style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem' }}
+            >
+              <button
+                type="button"
+                className="btn-light-secondary"
+                onClick={() => setIsBiometricModalOpen(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn-navy-primary"
+                onClick={handleBiometricSync}
+                disabled={biometricSyncing}
+              >
+                <RotateCw size={15} className={biometricSyncing ? 'spin-anim' : ''} />
+                <span>{biometricSyncing ? 'Syncing...' : 'Sync Biometrics'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/*              MODAL 5: FILTER ALLOCATIONS (STEP 3)                 */}
+      {/* ================================================================= */}
+      {isFilterModalOpen && (
+        <div className="mgmt-modal-backdrop" onClick={() => setIsFilterModalOpen(false)}>
+          <div
+            className="mgmt-notice-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '480px', width: '92%' }}
+          >
+            <div className="notice-modal-header">
+              <div className="notice-icon-circle" style={{ backgroundColor: '#EEF2FF', color: '#151B54' }}>
+                <Filter size={20} />
+              </div>
+              <h3 className="notice-modal-title" style={{ margin: 0 }}>
+                Filter Allocations
+              </h3>
+              <button
+                type="button"
+                className="notice-close-btn"
+                onClick={() => setIsFilterModalOpen(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Block Filter */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
+                  Block Preference
+                </label>
+                <select
+                  value={pendingBlockFilter}
+                  onChange={(e) => setPendingBlockFilter(e.target.value)}
+                  className="mgmt-select"
+                  style={{ width: '100%', height: '38px' }}
+                >
+                  <option value="ALL">All Blocks</option>
+                  {blocks.map((b) => (
+                    <option key={b.id} value={b.name}>
+                      {b.name} ({b.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Room Type Filter */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
+                  Room Preference
+                </label>
+                <select
+                  value={pendingRoomTypeFilter}
+                  onChange={(e) => setPendingRoomTypeFilter(e.target.value)}
+                  className="mgmt-select"
+                  style={{ width: '100%', height: '38px' }}
+                >
+                  <option value="ALL">All Room Types</option>
+                  <option value="Non-AC Room (2 Sharing)">Non-AC Room (2 Sharing)</option>
+                  <option value="Non-AC Room (3 Sharing)">Non-AC Room (3 Sharing)</option>
+                  <option value="AC Room (2 Sharing)">AC Room (2 Sharing)</option>
+                </select>
+              </div>
+
+              {/* Biometric Status Filter */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
+                  Biometric Status
+                </label>
+                <select
+                  value={pendingBiometricFilter}
+                  onChange={(e) => setPendingBiometricFilter(e.target.value)}
+                  className="mgmt-select"
+                  style={{ width: '100%', height: '38px' }}
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="VERIFIED">Verified / Enrolled</option>
+                  <option value="PENDING">Pending</option>
+                </select>
+              </div>
+            </div>
+
+            <div
+              className="notice-modal-footer"
+              style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem' }}
+            >
+              <button
+                type="button"
+                className="btn-light-secondary"
+                onClick={() => {
+                  setPendingBlockFilter('ALL');
+                  setPendingRoomTypeFilter('ALL');
+                  setPendingBiometricFilter('ALL');
+                  setIsFilterModalOpen(false);
+                }}
+              >
+                Reset Filters
+              </button>
+              <button
+                type="button"
+                className="btn-navy-primary"
+                onClick={() => {
+                  setIsFilterModalOpen(false);
+                  fetchPendingAllocations(false);
+                }}
+              >
+                Apply Filters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/*              MODAL 6: CREATE / EDIT ROOM MODAL (PRESERVED)        */}
+      {/* ================================================================= */}
       {isRoomModalOpen && (
         <div className="mgmt-modal-backdrop" onClick={() => setIsRoomModalOpen(false)}>
-          <div className="mgmt-notice-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+          <div
+            className="mgmt-notice-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '480px', width: '92%' }}
+          >
             <div className="notice-modal-header">
-              <div className="notice-icon-circle">
+              <div className="notice-icon-circle" style={{ backgroundColor: '#EEF2FF', color: '#151B54' }}>
                 <BedDouble size={20} />
               </div>
               <h3 className="notice-modal-title">{editingRoom ? 'Edit Room' : 'Add New Room'}</h3>
@@ -1124,8 +2082,8 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmitRoom}>
-              <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+            <form onSubmit={handleSubmitRoomForm}>
+              <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {roomFormError && (
                   <div
                     style={{
@@ -1143,7 +2101,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
-                    Residential Block *
+                    Block *
                   </label>
                   <select
                     value={roomFormData.blockId}
@@ -1153,22 +2111,24 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                     style={{ width: '100%', height: '38px' }}
                   >
                     <option value="">Select Block</option>
-                    {blocks.map((b) => (
-                      <option key={b.id} value={b.id} disabled={b.status !== 'ACTIVE'}>
-                        {b.name} ({b.code}) {b.status !== 'ACTIVE' ? '- Inactive' : ''}
-                      </option>
-                    ))}
+                    {blocks
+                      .filter((b) => b.status === 'ACTIVE')
+                      .map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name} ({b.code})
+                        </option>
+                      ))}
                   </select>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
                       Room Number *
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. 101, 204"
+                      placeholder="e.g. 101"
                       value={roomFormData.roomNumber}
                       onChange={(e) => setRoomFormData({ ...roomFormData, roomNumber: e.target.value })}
                       className="mgmt-input"
@@ -1185,7 +2145,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                       type="number"
                       min="0"
                       max="20"
-                      value={roomFormData.floor ?? 1}
+                      value={roomFormData.floor}
                       onChange={(e) => setRoomFormData({ ...roomFormData, floor: Number(e.target.value) })}
                       className="mgmt-input"
                       style={{ width: '100%', height: '38px' }}
@@ -1193,7 +2153,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
                       Capacity (Beds) *
@@ -1242,16 +2202,19 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                 </div>
               </div>
 
-              <div className="notice-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <div
+                className="notice-modal-footer"
+                style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem' }}
+              >
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="btn-light-secondary"
                   onClick={() => setIsRoomModalOpen(false)}
                   disabled={isSubmittingRoom}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary" disabled={isSubmittingRoom}>
+                <button type="submit" className="btn-navy-primary" disabled={isSubmittingRoom}>
                   {isSubmittingRoom ? 'Saving...' : editingRoom ? 'Update Room' : 'Create Room'}
                 </button>
               </div>
@@ -1260,10 +2223,163 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
         </div>
       )}
 
-      {/* 2. Allocate Student Modal */}
+      {/* ================================================================= */}
+      {/*              MODAL 7: VACATE ALLOCATION CONFIRMATION (PRESERVED)  */}
+      {/* ================================================================= */}
+      {vacateModalData && (
+        <div className="mgmt-modal-backdrop" onClick={() => setVacateModalData(null)}>
+          <div
+            className="mgmt-notice-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '440px', width: '92%' }}
+          >
+            <div className="notice-modal-header">
+              <div className="notice-icon-circle" style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
+                <UserMinus size={20} />
+              </div>
+              <h3 className="notice-modal-title">Vacate Resident</h3>
+              <button
+                type="button"
+                className="notice-close-btn"
+                onClick={() => setVacateModalData(null)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {vacateError && (
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FCA5A5',
+                    borderRadius: '6px',
+                    color: '#B91C1C',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  {vacateError}
+                </div>
+              )}
+
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#334155' }}>
+                Are you sure you want to vacate <strong>{vacateModalData.studentName}</strong> from{' '}
+                <strong>
+                  {vacateModalData.blockName} Room {vacateModalData.roomNumber}
+                </strong>
+                {vacateModalData.bedNumber ? ` (${vacateModalData.bedNumber})` : ''}?
+              </p>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748B' }}>
+                This will immediately free up the bed vacancy in PostgreSQL and update the student&apos;s allocation status.
+              </p>
+            </div>
+
+            <div
+              className="notice-modal-footer"
+              style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem' }}
+            >
+              <button
+                type="button"
+                className="btn-light-secondary"
+                onClick={() => setVacateModalData(null)}
+                disabled={isVacating}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-danger-card"
+                onClick={handleConfirmVacate}
+                disabled={isVacating}
+              >
+                {isVacating ? 'Vacating...' : 'Confirm Vacate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/*              MODAL 8: DELETE ROOM CONFIRMATION (PRESERVED)        */}
+      {/* ================================================================= */}
+      {deleteRoomTarget && (
+        <div className="mgmt-modal-backdrop" onClick={() => setDeleteRoomTarget(null)}>
+          <div
+            className="mgmt-notice-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '440px', width: '92%' }}
+          >
+            <div className="notice-modal-header">
+              <div className="notice-icon-circle" style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
+                <Trash2 size={20} />
+              </div>
+              <h3 className="notice-modal-title">Delete Room</h3>
+              <button
+                type="button"
+                className="notice-close-btn"
+                onClick={() => setDeleteRoomTarget(null)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {deleteRoomError && (
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FCA5A5',
+                    borderRadius: '6px',
+                    color: '#B91C1C',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  {deleteRoomError}
+                </div>
+              )}
+
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#334155' }}>
+                Are you sure you want to permanently delete Room{' '}
+                <strong>{deleteRoomTarget.roomNumber}</strong> in {deleteRoomTarget.block.name}?
+              </p>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748B' }}>
+                Rooms with active student allocations cannot be deleted.
+              </p>
+            </div>
+
+            <div
+              className="notice-modal-footer"
+              style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem' }}
+            >
+              <button
+                type="button"
+                className="btn-light-secondary"
+                onClick={() => setDeleteRoomTarget(null)}
+                disabled={isDeletingRoom}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-danger-card"
+                onClick={handleConfirmDeleteRoom}
+                disabled={isDeletingRoom}
+              >
+                {isDeletingRoom ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 9. Allocate Student Modal (Rooms Overview) */}
       {isAllocateModalOpen && (
         <div className="mgmt-modal-backdrop" onClick={() => setIsAllocateModalOpen(false)}>
-          <div className="mgmt-notice-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+          <div className="mgmt-notice-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px', width: '92%' }}>
             <div className="notice-modal-header">
               <div className="notice-icon-circle" style={{ backgroundColor: '#CCFBF1', color: '#0F766E' }}>
                 <UserPlus size={20} />
@@ -1296,7 +2412,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   </div>
                 )}
 
-                {/* Block Selection */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
                     1. Select Block *
@@ -1322,7 +2437,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   </select>
                 </div>
 
-                {/* Room Selection with Vacancy */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
                     2. Select Room (with Vacancies) *
@@ -1347,7 +2461,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   </select>
                 </div>
 
-                {/* Student Selection */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
                     3. Select Eligible Student *
@@ -1374,7 +2487,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   )}
                 </div>
 
-                {/* Optional Bed Number */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
                     4. Bed Assignment (Optional)
@@ -1390,10 +2502,10 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                 </div>
               </div>
 
-              <div className="notice-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <div className="notice-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem' }}>
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="btn-light-secondary"
                   onClick={() => setIsAllocateModalOpen(false)}
                   disabled={isSubmittingAllocation}
                 >
@@ -1401,9 +2513,8 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                 </button>
                 <button
                   type="submit"
-                  className="btn-primary"
-                  disabled={isSubmittingAllocation || availableRoomsForAllocation.length === 0 || eligibleStudents.length === 0}
-                  style={{ backgroundColor: '#0F766E' }}
+                  className="btn-navy-primary"
+                  disabled={isSubmittingAllocation || !allocateRoomId || !allocateStudentId}
                 >
                   {isSubmittingAllocation ? 'Allocating...' : 'Confirm Allocation'}
                 </button>
@@ -1413,12 +2524,12 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
         </div>
       )}
 
-      {/* 3. Reallocate Student Modal */}
+      {/* 10. Reallocate Student Modal */}
       {reallocateModalData && (
         <div className="mgmt-modal-backdrop" onClick={() => setReallocateModalData(null)}>
-          <div className="mgmt-notice-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+          <div className="mgmt-notice-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px', width: '92%' }}>
             <div className="notice-modal-header">
-              <div className="notice-icon-circle" style={{ backgroundColor: '#DBEAFE', color: '#2563EB' }}>
+              <div className="notice-icon-circle" style={{ backgroundColor: '#EEF2FF', color: '#151B54' }}>
                 <ArrowRightLeft size={20} />
               </div>
               <h3 className="notice-modal-title">Reallocate Student</h3>
@@ -1449,14 +2560,10 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   </div>
                 )}
 
-                <div style={{ backgroundColor: '#F8FAFC', padding: '10px 14px', borderRadius: '6px', fontSize: '0.85rem' }}>
-                  <div>
-                    <strong>Student:</strong> {reallocateModalData.studentName}
-                  </div>
-                  <div>
-                    <strong>Current Room:</strong> {reallocateModalData.currentBlockName} - Room {reallocateModalData.currentRoomNumber} ({reallocateModalData.currentBedNumber || 'Bed Assigned'})
-                  </div>
-                </div>
+                <p style={{ margin: 0, fontSize: '0.875rem', color: '#334155' }}>
+                  Reallocating <strong>{reallocateModalData.studentName}</strong> from{' '}
+                  <strong>{reallocateModalData.currentBlockName} Room {reallocateModalData.currentRoomNumber}</strong>.
+                </p>
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
@@ -1466,7 +2573,10 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                     value={targetBlockId}
                     onChange={(e) => {
                       setTargetBlockId(e.target.value);
-                      setTargetRoomId('');
+                      const vacant = rooms.filter(
+                        (r) => r.blockId === e.target.value && r.status === 'ACTIVE' && r.occupancy < r.capacity
+                      );
+                      setTargetRoomId(vacant.length > 0 ? vacant[0].id : '');
                     }}
                     className="mgmt-select"
                     required
@@ -1493,14 +2603,14 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                     required
                     style={{ width: '100%', height: '38px' }}
                   >
-                    <option value="">
-                      {availableTargetRooms.length === 0 ? 'No vacant rooms available' : 'Choose Target Room'}
-                    </option>
-                    {availableTargetRooms.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        Room {r.roomNumber} ({r.occupancy}/{r.capacity} occupied, {r.availableBeds} beds free)
-                      </option>
-                    ))}
+                    <option value="">Choose Target Room</option>
+                    {rooms
+                      .filter((r) => r.blockId === targetBlockId && r.status === 'ACTIVE' && r.occupancy < r.capacity)
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          Room {r.roomNumber} ({r.availableBeds} beds available)
+                        </option>
+                      ))}
                   </select>
                 </div>
 
@@ -1510,7 +2620,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   </label>
                   <input
                     type="text"
-                    placeholder="Leave empty to auto-assign next free bed"
+                    placeholder="e.g. Bed-1 (leave blank to auto-assign)"
                     value={newBedNumber}
                     onChange={(e) => setNewBedNumber(e.target.value)}
                     className="mgmt-input"
@@ -1519,10 +2629,10 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                 </div>
               </div>
 
-              <div className="notice-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <div className="notice-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem' }}>
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="btn-light-secondary"
                   onClick={() => setReallocateModalData(null)}
                   disabled={isReallocating}
                 >
@@ -1530,153 +2640,13 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                 </button>
                 <button
                   type="submit"
-                  className="btn-primary"
-                  disabled={isReallocating || availableTargetRooms.length === 0}
-                  style={{ backgroundColor: '#2563EB' }}
+                  className="btn-navy-primary"
+                  disabled={isReallocating || !targetRoomId}
                 >
                   {isReallocating ? 'Reallocating...' : 'Confirm Reallocation'}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* 4. Vacate Confirmation Modal */}
-      {vacateModalData && (
-        <div className="mgmt-modal-backdrop" onClick={() => setVacateModalData(null)}>
-          <div className="mgmt-notice-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
-            <div className="notice-modal-header">
-              <div className="notice-icon-circle" style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
-                <UserMinus size={20} />
-              </div>
-              <h3 className="notice-modal-title">Vacate Resident</h3>
-              <button
-                type="button"
-                className="notice-close-btn"
-                onClick={() => setVacateModalData(null)}
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="notice-modal-body">
-              {vacateError && (
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    backgroundColor: '#FEF2F2',
-                    border: '1px solid #FCA5A5',
-                    borderRadius: '6px',
-                    color: '#B91C1C',
-                    fontSize: '0.85rem',
-                    marginBottom: '0.75rem',
-                  }}
-                >
-                  {vacateError}
-                </div>
-              )}
-
-              <p style={{ fontSize: '0.92rem', color: '#334155' }}>
-                Are you sure you want to vacate{' '}
-                <strong>{vacateModalData.studentName}</strong> from{' '}
-                <strong>
-                  {vacateModalData.blockName}, Room {vacateModalData.roomNumber} ({vacateModalData.bedNumber || 'Assigned Bed'})
-                </strong>?
-              </p>
-              <p style={{ fontSize: '0.82rem', color: '#64748B', marginTop: '0.5rem' }}>
-                This student's room allocation will be updated to <em>VACATED</em> in PostgreSQL and their accommodation status will return to unallocated.
-              </p>
-            </div>
-
-            <div className="notice-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setVacateModalData(null)}
-                disabled={isVacating}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleConfirmVacate}
-                disabled={isVacating}
-                style={{ backgroundColor: '#DC2626' }}
-              >
-                {isVacating ? 'Vacating...' : 'Confirm Vacate'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 5. Delete Room Modal */}
-      {deleteRoomTarget && (
-        <div className="mgmt-modal-backdrop" onClick={() => setDeleteRoomTarget(null)}>
-          <div className="mgmt-notice-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
-            <div className="notice-modal-header">
-              <div className="notice-icon-circle" style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
-                <Trash2 size={20} />
-              </div>
-              <h3 className="notice-modal-title">Delete Room</h3>
-              <button
-                type="button"
-                className="notice-close-btn"
-                onClick={() => setDeleteRoomTarget(null)}
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="notice-modal-body">
-              {deleteRoomError && (
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    backgroundColor: '#FEF2F2',
-                    border: '1px solid #FCA5A5',
-                    borderRadius: '6px',
-                    color: '#B91C1C',
-                    fontSize: '0.85rem',
-                    marginBottom: '0.75rem',
-                  }}
-                >
-                  {deleteRoomError}
-                </div>
-              )}
-
-              <p style={{ fontSize: '0.92rem', color: '#334155' }}>
-                Are you sure you want to delete <strong>Room {deleteRoomTarget.roomNumber}</strong> in{' '}
-                <strong>{deleteRoomTarget.block.name}</strong>?
-              </p>
-              <p style={{ fontSize: '0.82rem', color: '#64748B', marginTop: '0.5rem' }}>
-                This room has 0 active student allocations and can be safely removed.
-              </p>
-            </div>
-
-            <div className="notice-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setDeleteRoomTarget(null)}
-                disabled={isDeletingRoom}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleConfirmDeleteRoom}
-                disabled={isDeletingRoom}
-                style={{ backgroundColor: '#DC2626' }}
-              >
-                {isDeletingRoom ? 'Deleting...' : 'Delete Room'}
-              </button>
-            </div>
           </div>
         </div>
       )}

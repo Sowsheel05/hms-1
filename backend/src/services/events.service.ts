@@ -88,7 +88,8 @@ export type RoomEventType =
   | 'ROOM_ALLOCATION_CHANGED'
   | 'STUDENT_ALLOCATED'
   | 'STUDENT_VACATED'
-  | 'STUDENT_REALLOCATED';
+  | 'STUDENT_REALLOCATED'
+  | 'ALLOCATION_REJECTED';
 
 export interface RoomDomainEvent {
   type: RoomEventType;

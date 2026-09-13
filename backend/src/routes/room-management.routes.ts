@@ -636,9 +636,404 @@ roomManagementRouter.delete('/:id', async (req: AuthenticatedManagementRequest, 
   }
 });
 
-// =========================================================================
-//                     ROOM ALLOCATION ENDPOINTS
-// =========================================================================
+// Helper: decode academic info from JNTU number
+function decodeAcademicInfo(jntuNo: string) {
+  const clean = (jntuNo || '').trim().toUpperCase();
+  let degree = 'B.Tech';
+  let department = 'Computer Science & Engineering (CSE)';
+  let year = '2nd Year';
+  let semester = 'Semester 1';
+
+  if (clean.length >= 8) {
+    const yearPrefix = clean.substring(0, 2);
+    const branchCode = clean.substring(6, 8);
+
+    const branchMap: Record<string, string> = {
+      '44': 'Data Science (CSE-DS)',
+      '05': 'Computer Science & Engineering (CSE)',
+      '12': 'Information Technology (IT)',
+      '04': 'Electronics & Communication (ECE)',
+      '02': 'Electrical & Electronics (EEE)',
+      '03': 'Mechanical Engineering (MECH)',
+      '01': 'Civil Engineering (CIVIL)',
+      '42': 'Artificial Intelligence & Machine Learning (CSE-AI&ML)',
+    };
+    if (branchMap[branchCode]) {
+      department = branchMap[branchCode];
+    }
+
+    if (yearPrefix === '25') {
+      year = '1st Year';
+      semester = 'Semester 1';
+    } else if (yearPrefix === '24') {
+      year = '2nd Year';
+      semester = 'Semester 1';
+    } else if (yearPrefix === '23') {
+      year = '2nd Year';
+      semester = 'Semester 1';
+    } else if (yearPrefix === '22') {
+      year = '3rd Year';
+      semester = 'Semester 1';
+    } else if (yearPrefix === '21') {
+      year = '4th Year';
+      semester = 'Semester 2';
+    }
+  }
+
+  return { degree, department, year, semester };
+}
+
+/**
+ * GET /api/management/room-allocations/pending
+ * Returns pending room allocation requests with student profile, preferences,
+ * biometric status, photos, and pagination
+ */
+roomAllocationRouter.get('/pending', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  try {
+    const { search, block, roomType, biometricStatus } = req.query;
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.max(1, Math.min(50, parseInt(req.query.limit as string, 10) || 10));
+    const skip = (page - 1) * limit;
+
+    // Total un-filtered pending count from PostgreSQL
+    const totalPendingCount = await prisma.student.count({
+      where: {
+        role: 'STUDENT',
+        allocationStatus: 'PENDING',
+        isActive: true,
+      },
+    });
+
+    const whereClause: any = {
+      role: 'STUDENT',
+      allocationStatus: 'PENDING',
+      isActive: true,
+    };
+
+    if (typeof search === 'string' && search.trim()) {
+      const term = search.trim();
+      whereClause.OR = [
+        { name: { contains: term, mode: 'insensitive' } },
+        { jntuNo: { contains: term, mode: 'insensitive' } },
+        { email: { contains: term, mode: 'insensitive' } },
+      ];
+    }
+
+    if (typeof block === 'string' && block.trim() && block.trim().toUpperCase() !== 'ALL') {
+      whereClause.blockName = { contains: block.trim(), mode: 'insensitive' };
+    }
+
+    if (typeof roomType === 'string' && roomType.trim() && roomType.trim().toUpperCase() !== 'ALL') {
+      whereClause.roomType = { contains: roomType.trim(), mode: 'insensitive' };
+    }
+
+    const [filteredCount, students] = await Promise.all([
+      prisma.student.count({ where: whereClause }),
+      prisma.student.findMany({
+        where: whereClause,
+        include: {
+          biometricEvents: {
+            orderBy: { eventTimestamp: 'desc' },
+            take: 5,
+          },
+          outings: {
+            where: { emergencyContact: { not: null } },
+            select: { emergencyContact: true },
+            take: 1,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    // Map to rich pending allocation format
+    const formattedPending = students.map((student) => {
+      const academic = decodeAcademicInfo(student.jntuNo);
+      const hasVerifiedBiometric = student.biometricEvents.some(
+        (b) => b.verificationStatus === 'VERIFIED'
+      );
+      const bioStatus = hasVerifiedBiometric
+        ? 'VERIFIED'
+        : student.biometricEvents.length > 0
+        ? 'ENROLLED'
+        : 'PENDING';
+
+      const phone = student.outings[0]?.emergencyContact || '+91 98765 43210';
+
+      return {
+        id: student.id,
+        studentId: student.id,
+        name: student.name,
+        jntuNo: student.jntuNo,
+        email: student.email,
+        phone,
+        createdAt: student.createdAt,
+        updatedAt: student.updatedAt,
+        courseInfo: academic,
+        preferences: {
+          roomPreference: student.roomType || 'Non-AC Room (2 Sharing)',
+          sharingPreference: `${student.roomCapacity || 2} Sharing`,
+          blockPreference: student.blockName || 'Boys-Block-D',
+          floorPreference: student.floorName || 'First Floor',
+        },
+        documents: {
+          biometricStatus: bioStatus,
+          photos: 'SUBMITTED',
+        },
+        biometricEventsCount: student.biometricEvents.length,
+        lastBiometricEvent: student.biometricEvents[0] || null,
+      };
+    });
+
+    // Optional post-filter for biometricStatus
+    let results = formattedPending;
+    if (typeof biometricStatus === 'string' && biometricStatus.trim() && biometricStatus.trim().toUpperCase() !== 'ALL') {
+      const filterBio = biometricStatus.trim().toUpperCase();
+      results = formattedPending.filter((p) => p.documents.biometricStatus.toUpperCase() === filterBio);
+    }
+
+    res.status(200).json({
+      success: true,
+      pendingCount: totalPendingCount,
+      total: filteredCount,
+      page,
+      limit,
+      totalPages: Math.ceil(filteredCount / limit) || 1,
+      data: results,
+    });
+  } catch (error) {
+    console.error('Error retrieving pending allocations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve pending allocations.',
+    });
+  }
+});
+
+/**
+ * POST /api/management/room-allocations/reject (or /:studentId/reject)
+ * Rejects a pending student room allocation request with explicit reason confirmation
+ */
+roomAllocationRouter.post('/reject', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  try {
+    const { studentId, reason } = req.body;
+
+    if (!studentId || typeof studentId !== 'string' || !studentId.trim()) {
+      res.status(400).json({ success: false, message: 'Student ID is required.' });
+      return;
+    }
+
+    if (!reason || typeof reason !== 'string' || !reason.trim()) {
+      res.status(400).json({ success: false, message: 'Rejection reason is required.' });
+      return;
+    }
+
+    const sId = studentId.trim();
+    const rejectionReason = reason.trim();
+
+    const result = await prisma.$transaction(async (tx) => {
+      const student = await tx.student.findUnique({
+        where: { id: sId },
+      });
+
+      if (!student) {
+        throw new Error(`STUDENT_NOT_FOUND: Student with ID '${sId}' does not exist.`);
+      }
+
+      if (student.allocationStatus !== 'PENDING') {
+        throw new Error(
+          `NOT_PENDING: Student is currently '${student.allocationStatus}' and cannot be rejected as pending.`
+        );
+      }
+
+      const updatedStudent = await tx.student.update({
+        where: { id: sId },
+        data: {
+          allocationStatus: 'NOT_ALLOCATED',
+          blockName: null,
+          floorName: null,
+          roomNumber: null,
+          bedNumber: null,
+        },
+      });
+
+      await tx.activityLog.create({
+        data: {
+          studentId: req.managementUser!.id,
+          actionType: 'ROOM_MANAGEMENT',
+          action: 'REJECT',
+          actorRole: req.managementUser!.role,
+          entity: 'RoomAllocation',
+          entityId: sId,
+          previousState: 'PENDING',
+          newState: 'NOT_ALLOCATED',
+          description: `Rejected room allocation request for student ${student.name} (${student.jntuNo}). Reason: ${rejectionReason}`,
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          studentId: sId,
+          title: 'Room Allocation Request Rejected',
+          message: `Your room allocation request has been rejected. Reason: ${rejectionReason}`,
+          type: 'WARNING',
+          category: 'ROOM',
+        },
+      });
+
+      return { student: updatedStudent, reason: rejectionReason };
+    });
+
+    complaintEventsService.emitManagementDashboardUpdate({
+      type: 'ALLOCATION_REJECTED',
+      timestamp: new Date().toISOString(),
+      details: {
+        studentId: result.student.id,
+        studentName: result.student.name,
+        jntuNo: result.student.jntuNo,
+        reason: result.reason,
+      },
+    });
+
+    complaintEventsService.emitRoomEventToStudent(result.student.id, {
+      type: 'ALLOCATION_REJECTED',
+      studentId: result.student.id,
+      timestamp: new Date().toISOString(),
+      details: { reason: result.reason },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Room allocation request for ${result.student.name} rejected successfully.`,
+      student: result.student,
+    });
+  } catch (error: any) {
+    console.error('Error rejecting room allocation:', error.message);
+    const msg = error.message || '';
+    if (msg.startsWith('STUDENT_NOT_FOUND:')) {
+      res.status(404).json({ success: false, message: msg.split(': ')[1] });
+      return;
+    }
+    if (msg.startsWith('NOT_PENDING:')) {
+      res.status(400).json({ success: false, message: msg.split(': ')[1] });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reject room allocation.',
+    });
+  }
+});
+
+roomAllocationRouter.post('/:studentId/reject', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  const { studentId } = req.params;
+  req.body.studentId = studentId;
+  const { reason } = req.body;
+
+  if (!reason || typeof reason !== 'string' || !reason.trim()) {
+    res.status(400).json({ success: false, message: 'Rejection reason is required.' });
+    return;
+  }
+
+  const sId = studentId.trim();
+  const rejectionReason = reason.trim();
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const student = await tx.student.findUnique({
+        where: { id: sId },
+      });
+
+      if (!student) {
+        throw new Error(`STUDENT_NOT_FOUND: Student with ID '${sId}' does not exist.`);
+      }
+
+      if (student.allocationStatus !== 'PENDING') {
+        throw new Error(
+          `NOT_PENDING: Student is currently '${student.allocationStatus}' and cannot be rejected as pending.`
+        );
+      }
+
+      const updatedStudent = await tx.student.update({
+        where: { id: sId },
+        data: {
+          allocationStatus: 'NOT_ALLOCATED',
+          blockName: null,
+          floorName: null,
+          roomNumber: null,
+          bedNumber: null,
+        },
+      });
+
+      await tx.activityLog.create({
+        data: {
+          studentId: req.managementUser!.id,
+          actionType: 'ROOM_MANAGEMENT',
+          action: 'REJECT',
+          actorRole: req.managementUser!.role,
+          entity: 'RoomAllocation',
+          entityId: sId,
+          previousState: 'PENDING',
+          newState: 'NOT_ALLOCATED',
+          description: `Rejected room allocation request for student ${student.name} (${student.jntuNo}). Reason: ${rejectionReason}`,
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          studentId: sId,
+          title: 'Room Allocation Request Rejected',
+          message: `Your room allocation request has been rejected. Reason: ${rejectionReason}`,
+          type: 'WARNING',
+          category: 'ROOM',
+        },
+      });
+
+      return { student: updatedStudent, reason: rejectionReason };
+    });
+
+    complaintEventsService.emitManagementDashboardUpdate({
+      type: 'ALLOCATION_REJECTED',
+      timestamp: new Date().toISOString(),
+      details: {
+        studentId: result.student.id,
+        studentName: result.student.name,
+        jntuNo: result.student.jntuNo,
+        reason: result.reason,
+      },
+    });
+
+    complaintEventsService.emitRoomEventToStudent(result.student.id, {
+      type: 'ALLOCATION_REJECTED',
+      studentId: result.student.id,
+      timestamp: new Date().toISOString(),
+      details: { reason: result.reason },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Room allocation request for ${result.student.name} rejected successfully.`,
+      student: result.student,
+    });
+  } catch (error: any) {
+    console.error('Error rejecting room allocation:', error.message);
+    const msg = error.message || '';
+    if (msg.startsWith('STUDENT_NOT_FOUND:')) {
+      res.status(404).json({ success: false, message: msg.split(': ')[1] });
+      return;
+    }
+    if (msg.startsWith('NOT_PENDING:')) {
+      res.status(400).json({ success: false, message: msg.split(': ')[1] });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reject room allocation.',
+    });
+  }
+});
 
 /**
  * GET /api/management/room-allocations/eligible-students

@@ -2039,6 +2039,55 @@ export const managementApiService = {
     return data;
   },
 
+  async getPendingAllocations(params?: {
+    search?: string;
+    block?: string;
+    roomType?: string;
+    biometricStatus?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<PendingAllocationsResponse> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const query = new URLSearchParams();
+    if (params?.search && params.search.trim()) query.append('search', params.search.trim());
+    if (params?.block && params.block !== 'ALL') query.append('block', params.block);
+    if (params?.roomType && params.roomType !== 'ALL') query.append('roomType', params.roomType);
+    if (params?.biometricStatus && params.biometricStatus !== 'ALL') query.append('biometricStatus', params.biometricStatus);
+    if (params?.page) query.append('page', params.page.toString());
+    if (params?.limit) query.append('limit', params.limit.toString());
+
+    const url = `/api/management/room-allocations/pending${query.toString() ? `?${query.toString()}` : ''}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || 'Failed to retrieve pending allocations.');
+    }
+    return data;
+  },
+
+  async rejectPendingAllocation(studentId: string, reason: string): Promise<{ success: boolean; message: string }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const res = await fetch(`/api/management/room-allocations/${studentId}/reject`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reason }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || 'Failed to reject pending allocation.');
+    }
+    return data;
+  },
+
   async getMessOverview(date?: string): Promise<{ success: boolean; data: ManagementMessOverview }> {
     const token = managementAuthStorage.getToken();
     if (!token) throw new Error('Management session missing.');
@@ -4176,6 +4225,46 @@ export interface AllocateStudentDto {
 export interface ReallocateStudentDto {
   targetRoomId: string;
   newBedNumber?: string;
+}
+
+export interface PendingAllocationItem {
+  id: string;
+  studentId: string;
+  name: string;
+  jntuNo: string;
+  email: string;
+  phone: string;
+  createdAt: string;
+  updatedAt: string;
+  courseInfo: {
+    degree: string;
+    department: string;
+    year: string;
+    semester: string;
+  };
+  preferences: {
+    roomPreference: string;
+    sharingPreference: string;
+    blockPreference: string;
+    floorPreference: string;
+  };
+  documents: {
+    biometricStatus: string;
+    photos: string;
+  };
+  biometricEventsCount: number;
+  lastBiometricEvent?: any;
+}
+
+export interface PendingAllocationsResponse {
+  success: boolean;
+  pendingCount: number;
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  data: PendingAllocationItem[];
+  message?: string;
 }
 
 export interface MealSlotTiming {
