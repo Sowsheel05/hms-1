@@ -35,6 +35,7 @@ const suites = [
   { name: 'Static Mess QR (Step 7)', script: 'test-student-mess-static-qr.cjs', expected: 20 },
   { name: 'Room Allocation (Step 3)', script: 'test-room-allocation-step3-api.cjs', expected: 21 },
   { name: 'Mess Management (Step 4)', script: 'test-mess-management-step4-api.cjs', expected: 18 },
+  { name: 'Outing Management (Step 5)', script: 'test-admin-outing-management-step5-api.cjs', expected: 18 },
 ];
 
 console.log('====================================================');

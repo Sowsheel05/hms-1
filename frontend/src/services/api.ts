@@ -4570,6 +4570,14 @@ export interface ManagementOutingStudent {
   roomNumber?: string | null;
   bedNumber?: string | null;
   roomType?: string | null;
+  gender?: string | null;
+  avatar?: string | null;
+  academic?: {
+    degree?: string;
+    department?: string;
+    year?: string;
+    semester?: string;
+  } | null;
 }
 
 export interface ManagementOutingItem {

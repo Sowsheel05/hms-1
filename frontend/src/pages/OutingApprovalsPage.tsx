@@ -14,12 +14,17 @@ import {
   X,
   User,
   Calendar,
-  ShieldCheck,
-  Radio,
   FileText,
   ChevronLeft,
   ChevronRight,
   Info,
+  MapPin,
+  Phone,
+  Mail,
+  AlertTriangle,
+  LayoutGrid,
+  List,
+  Building,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -43,11 +48,15 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
   const [isListLoading, setIsListLoading] = useState<boolean>(true);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
 
+  // View Mode: 'cards' is the authoritative default matching the reference
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+
   // Filters State
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [passTypeFilter, setPassTypeFilter] = useState<string>('ALL');
   const [blockFilter, setBlockFilter] = useState<string>('ALL');
+  const [genderFilter, setGenderFilter] = useState<string>('ALL');
   const [dateFilter, setDateFilter] = useState<string>('');
 
   // Residential Blocks for Filter
@@ -107,34 +116,41 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
         setStats(res.data);
       }
     } catch (err: any) {
-      console.error('Failed to load outing stats:', err);
+      console.error('Error loading outing statistics:', err);
     } finally {
       if (!silent) setIsStatsLoading(false);
     }
   }, []);
 
-  // Fetch Outings List
+  // Fetch Outing Requests with Filters
   const fetchOutings = useCallback(
-    async (page = 1, silent = false) => {
+    async (pageToLoad = 1, silent = false) => {
       if (!silent) setIsListLoading(true);
       try {
         const res = await managementApiService.getOutings({
-          status: statusFilter,
+          status: statusFilter !== 'ALL' ? statusFilter : undefined,
           search: searchTerm.trim() || undefined,
           passType: passTypeFilter !== 'ALL' ? passTypeFilter : undefined,
           blockId: blockFilter !== 'ALL' ? blockFilter : undefined,
           date: dateFilter || undefined,
-          page,
+          page: pageToLoad,
           limit: 10,
         });
 
         if (res.success) {
-          setOutings(res.data);
-          setPagination(res.pagination);
+          setOutings(res.data || []);
+          if (res.pagination) {
+            setPagination({
+              total: res.pagination.total,
+              page: res.pagination.page,
+              limit: res.pagination.limit,
+              totalPages: res.pagination.totalPages,
+            });
+          }
         }
       } catch (err: any) {
-        console.error('Failed to load outing requests:', err);
-        setToastMessage({ type: 'error', text: err.message || 'Failed to retrieve outings.' });
+        console.error('Error fetching outing requests:', err);
+        setToastMessage({ type: 'error', text: err.message || 'Failed to load outing requests.' });
       } finally {
         if (!silent) setIsListLoading(false);
       }
@@ -142,46 +158,56 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
     [statusFilter, searchTerm, passTypeFilter, blockFilter, dateFilter]
   );
 
-  // Trigger initial fetches and on filter change
+  // Initial Load
   useEffect(() => {
     fetchStats();
     fetchOutings(1);
   }, [fetchStats, fetchOutings]);
 
-  // Real-time SSE synchronization
+  // Real-time EventSource Setup
   useEffect(() => {
-    const unsubscribe = managementApiService.subscribeToEvents(
-      (event) => {
-        if (
-          event?.type === 'OUTING_APPROVED' ||
-          event?.type === 'OUTING_REJECTED' ||
-          event?.type === 'OUTING_CREATED' ||
-          event?.type === 'OUTING_EXIT_CONFIRMED' ||
-          event?.type === 'OUTING_RETURN_CONFIRMED' ||
-          event?.type === 'OUTING_STATS_UPDATED' ||
-          event?.type === 'BIOMETRIC_EVENT_RECORDED'
-        ) {
-          fetchStats(true);
-          fetchOutings(pagination.page, true);
-        }
-      },
-      (connected) => {
-        setIsLiveConnected(connected);
-      }
-    );
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource('/api/management/events');
+      es.onopen = () => setIsLiveConnected(true);
+      es.onerror = () => setIsLiveConnected(false);
 
-    return () => unsubscribe();
+      const handleRefreshEvent = () => {
+        fetchStats(true);
+        fetchOutings(pagination.page, true);
+      };
+
+      es.addEventListener('dashboard_update', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data?.type?.startsWith('OUTING_') || data?.type === 'OUTING_STATS_UPDATED') {
+            handleRefreshEvent();
+          }
+        } catch {
+          // ignore parsing error
+        }
+      });
+
+      es.addEventListener('outing_event', handleRefreshEvent);
+      es.addEventListener('biometric_movement', handleRefreshEvent);
+    } catch {
+      setIsLiveConnected(false);
+    }
+
+    return () => {
+      if (es) es.close();
+    };
   }, [fetchStats, fetchOutings, pagination.page]);
 
-  // Manual Refresh Handler
+  // Manual Sync
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all([fetchStats(), fetchOutings(pagination.page)]);
+    await Promise.all([fetchStats(true), fetchOutings(pagination.page, true)]);
     setIsRefreshing(false);
-    setToastMessage({ type: 'success', text: 'Outing data refreshed.' });
+    setToastMessage({ type: 'success', text: 'Outing records refreshed from PostgreSQL.' });
   };
 
-  // Inspect Outing Detail
+  // Inspect Detail
   const handleOpenDetail = async (outingId: string) => {
     setIsLoadingDetail(true);
     try {
@@ -190,7 +216,7 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
         setSelectedOutingDetail(res.data);
       }
     } catch (err: any) {
-      setToastMessage({ type: 'error', text: err.message || 'Failed to open outing detail.' });
+      setToastMessage({ type: 'error', text: err.message || 'Failed to load outing details.' });
     } finally {
       setIsLoadingDetail(false);
     }
@@ -255,6 +281,7 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
     setSearchTerm('');
     setPassTypeFilter('ALL');
     setBlockFilter('ALL');
+    setGenderFilter('ALL');
     setDateFilter('');
   };
 
@@ -345,9 +372,9 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
             <Footprints size={24} />
           </div>
           <div>
-            <h1 className="outing-main-title">Outing Approvals &amp; Gate Transit</h1>
+            <h1 className="outing-main-title">Outing Requests</h1>
             <p className="outing-sub-title">
-              Review and approve resident movement passes. Biometric gate correlations track physical exit and return.
+              Review and approve resident movement passes. Biometric turnstile scans track physical exit and return.
             </p>
           </div>
         </div>
@@ -355,7 +382,7 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
         <div className="outing-controls-group">
           <div className="live-indicator">
             <span className={`live-dot ${isLiveConnected ? 'connected' : 'disconnected'}`} />
-            <span className="live-text">{isLiveConnected ? 'Live Gate Stream' : 'Connecting...'}</span>
+            <span className="live-text">{isLiveConnected ? 'Live Realtime' : 'Connecting...'}</span>
           </div>
 
           <button
@@ -363,10 +390,10 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
             className="btn-secondary refresh-btn"
             onClick={handleManualRefresh}
             disabled={isRefreshing}
-            title="Refresh statistics and requests"
+            title="Refresh statistics and requests from PostgreSQL"
           >
             <RefreshCw size={15} className={isRefreshing ? 'spin' : ''} />
-            <span>{isRefreshing ? 'Syncing...' : 'Sync'}</span>
+            <span>{isRefreshing ? 'Syncing...' : 'Refresh'}</span>
           </button>
         </div>
       </div>
@@ -509,7 +536,7 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
             <Search size={16} className="search-icon" />
             <input
               type="text"
-              placeholder="Search by student name, JNTU No, request #..."
+              placeholder="Search by student name, JNTU No, destination..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="search-input"
@@ -562,6 +589,20 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
               </select>
             </div>
 
+            <div className="select-wrapper">
+              <label htmlFor="outing-gender-filter" className="sr-only">Hostel Scope</label>
+              <select
+                id="outing-gender-filter"
+                value={genderFilter}
+                onChange={(e) => setGenderFilter(e.target.value)}
+                className="filter-select"
+              >
+                <option value="ALL">All Hostels</option>
+                <option value="BOYS">Boys Hostel</option>
+                <option value="GIRLS">Girls Hostel</option>
+              </select>
+            </div>
+
             <div className="date-input-wrapper">
               <label htmlFor="outing-date-filter" className="sr-only">Filter by Date</label>
               <input
@@ -578,6 +619,7 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
               searchTerm ||
               passTypeFilter !== 'ALL' ||
               blockFilter !== 'ALL' ||
+              genderFilter !== 'ALL' ||
               dateFilter) && (
               <button
                 type="button"
@@ -588,10 +630,30 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
                 Reset
               </button>
             )}
+
+            {/* View Mode Switcher */}
+            <div className="view-mode-toggle" role="group" aria-label="View layout toggle">
+              <button
+                type="button"
+                className={`view-mode-btn ${viewMode === 'cards' ? 'active' : ''}`}
+                onClick={() => setViewMode('cards')}
+                title="Cards view"
+              >
+                <LayoutGrid size={15} />
+              </button>
+              <button
+                type="button"
+                className={`view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
+                onClick={() => setViewMode('table')}
+                title="Table view"
+              >
+                <List size={15} />
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Requests Table / Cards View */}
+        {/* Requests Cards / Table View */}
         {isListLoading ? (
           <div className="outing-loading-state">
             <RefreshCw size={28} className="spin" />
@@ -602,7 +664,7 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
             <Footprints size={40} className="empty-icon" />
             <h3>No Outing Requests Found</h3>
             <p>There are no resident outing records matching your selected filter criteria.</p>
-            {(statusFilter !== 'ALL' || searchTerm || passTypeFilter !== 'ALL' || blockFilter !== 'ALL' || dateFilter) && (
+            {(statusFilter !== 'ALL' || searchTerm || passTypeFilter !== 'ALL' || blockFilter !== 'ALL' || genderFilter !== 'ALL' || dateFilter) && (
               <button type="button" onClick={handleResetFilters} className="btn-secondary">
                 Clear Filters
               </button>
@@ -610,255 +672,347 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
           </div>
         ) : (
           <>
-            {/* Desktop Table View */}
-            <div className="outing-table-wrapper">
-              <table className="outing-table">
-                <thead>
-                  <tr>
-                    <th>Request #</th>
-                    <th>Student Resident</th>
-                    <th>Pass Type &amp; Destination</th>
-                    <th>Departure / Return</th>
-                    <th>Status</th>
-                    <th>Gate Transit Log</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {outings.map((item) => {
-                    const isPending = item.status === 'PENDING';
-                    const hasExit = Boolean(item.actualExitTime);
-                    const hasReturn = Boolean(item.actualReturnTime);
+            {/* 1. Authoritative Cards View (Primary) */}
+            {viewMode === 'cards' && (
+              <div className="outing-cards-grid">
+                {outings.map((item) => {
+                  const isPending = item.status === 'PENDING';
+                  const isEmergency = item.passType === 'EMERGENCY';
+                  const isRejected = item.status === 'REJECTED';
+                  const studentName = item.student?.name || 'Resident';
+                  const initials = studentName
+                    .split(' ')
+                    .filter(Boolean)
+                    .map((p) => p[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase();
 
-                    return (
-                      <tr key={item.id} className={`outing-row ${isPending ? 'pending-highlight' : ''}`}>
-                        {/* Request # */}
-                        <td>
-                          <div className="request-num-cell">
-                            <span className="request-num">{item.requestNumber || '—'}</span>
-                            <span className="applied-time">{formatDateOnly(item.createdAt)}</span>
+                  return (
+                    <article
+                      key={item.id}
+                      className={`outing-request-card ${isPending ? 'card-pending' : ''}`}
+                      aria-label={`Outing request for ${studentName}`}
+                    >
+                      {/* Top Bar */}
+                      <div className="card-top-bar">
+                        <div className="card-resident-ident">
+                          <div className="student-avatar-badge" aria-hidden="true">
+                            {initials}
                           </div>
-                        </td>
+                          <div className="resident-name-block">
+                            <h3 className="resident-full-name">{studentName}</h3>
+                            <div className="resident-pills-row">
+                              <span className="jntu-pill">{item.student?.jntuNo}</span>
+                              <span className="room-pill">
+                                <Building size={12} />
+                                {item.student?.blockName || 'Unassigned'} • Room {item.student?.roomNumber || '?'}
+                              </span>
+                              {item.student?.academic?.year && (
+                                <span className="academic-pill">{item.student.academic.year}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
 
-                        {/* Student Info */}
-                        <td>
-                          <div className="student-info-cell">
-                            <span className="student-name">{item.student?.name || 'Resident'}</span>
-                            <span className="student-sub">
-                              {item.student?.jntuNo} •{' '}
-                              {item.student?.blockName
-                                ? `${item.student.blockName} (R-${item.student.roomNumber || '?'})`
-                                : 'Unassigned'}
+                        <div className="card-status-meta">
+                          <div className="req-meta-row">
+                            <span className="req-number-tag">
+                              #{item.requestNumber || item.id.slice(0, 8)}
+                            </span>
+                            <span className="applied-date-text">
+                              Applied {formatDateOnly(item.createdAt)}
                             </span>
                           </div>
-                        </td>
 
-                        {/* Pass Details */}
-                        <td>
-                          <div className="pass-details-cell">
+                          <div className="tags-badges-row">
+                            {isEmergency && (
+                              <span className="pass-type-badge emergency-badge">
+                                <AlertTriangle size={12} />
+                                Medical / Emergency
+                              </span>
+                            )}
                             <span className="pass-type-badge">
                               {item.passType?.replace(/_/g, ' ')}
                             </span>
-                            <span className="destination-text" title={item.destination || ''}>
-                              {item.destination || 'Unspecified'}
-                            </span>
+                            {renderStatusBadge(item.status)}
                           </div>
-                        </td>
-
-                        {/* Schedule */}
-                        <td>
-                          <div className="schedule-cell">
-                            <div className="schedule-item">
-                              <span className="schedule-label">Out:</span>
-                              <span className="schedule-time">{formatDateTime(item.outDate)}</span>
-                            </div>
-                            <div className="schedule-item">
-                              <span className="schedule-label">Back:</span>
-                              <span className="schedule-time">{formatDateTime(item.returnDate)}</span>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Status */}
-                        <td>{renderStatusBadge(item.status)}</td>
-
-                        {/* Gate Transit Timings */}
-                        <td>
-                          <div className="transit-log-cell">
-                            {hasExit ? (
-                              <div className="transit-time exit">
-                                <LogOut size={12} />
-                                <span>Exit: {formatDateTime(item.actualExitTime)}</span>
-                              </div>
-                            ) : item.status === 'APPROVED' ? (
-                              <span className="transit-pending">Awaiting Gate Exit</span>
-                            ) : (
-                              <span className="transit-none">—</span>
-                            )}
-
-                            {hasReturn ? (
-                              <div className="transit-time return">
-                                <LogIn size={12} />
-                                <span>Return: {formatDateTime(item.actualReturnTime)}</span>
-                              </div>
-                            ) : hasExit ? (
-                              <span className="transit-pending">Currently Outside</span>
-                            ) : null}
-                          </div>
-                        </td>
-
-                        {/* Action Buttons */}
-                        <td style={{ textAlign: 'right' }}>
-                          <div className="action-buttons-group">
-                            {isPending ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="btn-action approve-btn"
-                                  onClick={() => setApprovingOuting(item)}
-                                  title="Approve Outing Pass"
-                                >
-                                  <Check size={14} />
-                                  <span>Approve</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn-action reject-btn"
-                                  onClick={() => {
-                                    setRejectingOuting(item);
-                                    setRejectionReason('');
-                                    setRejectionError('');
-                                  }}
-                                  title="Reject Outing Pass"
-                                >
-                                  <X size={14} />
-                                  <span>Reject</span>
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                type="button"
-                                className="btn-action view-btn"
-                                onClick={() => handleOpenDetail(item.id)}
-                                title="Inspect Complete Pass Details"
-                              >
-                                <Eye size={14} />
-                                <span>View</span>
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile Cards View (<768px) */}
-            <div className="outing-cards-container">
-              {outings.map((item) => {
-                const isPending = item.status === 'PENDING';
-
-                return (
-                  <div key={item.id} className={`outing-mobile-card ${isPending ? 'pending' : ''}`}>
-                    <div className="mobile-card-top">
-                      <div className="mobile-card-req">
-                        <span className="card-req-number">{item.requestNumber || item.id.slice(0, 8)}</span>
-                        <span className="card-applied-date">{formatDateOnly(item.createdAt)}</span>
+                        </div>
                       </div>
-                      <div>{renderStatusBadge(item.status)}</div>
-                    </div>
 
-                    <div className="mobile-card-body">
-                      <div className="mobile-student-row">
-                        <User size={15} className="mobile-icon" />
-                        <div>
-                          <strong>{item.student?.name || 'Resident'}</strong>
-                          <span className="mobile-jntu">
-                            {' '}
-                            ({item.student?.jntuNo}) • {item.student?.blockName || 'Block ?'} - Room {item.student?.roomNumber || '?'}
+                      {/* 4-Column / Multi-Row Responsive Info Grid */}
+                      <div className="card-info-grid">
+                        {/* 1. Destination & Purpose */}
+                        <div className="info-block">
+                          <span className="block-label">Destination &amp; Purpose</span>
+                          <div className="block-value dest-val">
+                            <MapPin size={14} className="val-icon" />
+                            <span>{item.destination || 'Unspecified destination'}</span>
+                          </div>
+                          <p className="purpose-desc-text">{item.purpose}</p>
+                        </div>
+
+                        {/* 2. Transit Window */}
+                        <div className="info-block">
+                          <span className="block-label">Scheduled Transit Window</span>
+                          <div className="transit-window-row">
+                            <Calendar size={14} className="val-icon" />
+                            <div className="window-times">
+                              <div className="time-item">
+                                <span className="time-lbl">Out:</span>
+                                <span className="time-val">{formatDateTime(item.outDate)}</span>
+                              </div>
+                              <div className="time-item">
+                                <span className="time-lbl">Back:</span>
+                                <span className="time-val">{formatDateTime(item.returnDate)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 3. Contact & Guardian */}
+                        <div className="info-block">
+                          <span className="block-label">Contact Information</span>
+                          <div className="contact-item">
+                            <Phone size={13} className="val-icon" />
+                            <span>{item.emergencyContact || 'No emergency contact'}</span>
+                          </div>
+                          <div className="contact-item">
+                            <Mail size={13} className="val-icon" />
+                            <span className="email-text">{item.student?.email || '—'}</span>
+                          </div>
+                        </div>
+
+                        {/* 4. Physical Gate Transit */}
+                        <div className="info-block">
+                          <span className="block-label">Gate Transit Log</span>
+                          {item.actualExitTime ? (
+                            <div className="transit-event exit">
+                              <LogOut size={13} />
+                              <span>Exit: {formatDateTime(item.actualExitTime)}</span>
+                            </div>
+                          ) : item.status === 'APPROVED' ? (
+                            <div className="transit-pending-note">
+                              <span>Awaiting Turnstile Exit</span>
+                            </div>
+                          ) : (
+                            <div className="transit-none-note">—</div>
+                          )}
+
+                          {item.actualReturnTime ? (
+                            <div className="transit-event return">
+                              <LogIn size={13} />
+                              <span>Return: {formatDateTime(item.actualReturnTime)}</span>
+                            </div>
+                          ) : item.actualExitTime ? (
+                            <div className="transit-outside-badge">Currently Outside</div>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {/* Rejection Alert Banner */}
+                      {isRejected && item.rejectionReason && (
+                        <div className="card-rejection-banner">
+                          <AlertTriangle size={15} className="rejection-icon" />
+                          <span>
+                            <strong>Rejection Reason:</strong> {item.rejectionReason}
                           </span>
                         </div>
-                      </div>
-
-                      <div className="mobile-detail-row">
-                        <span className="mobile-pass-type">{item.passType?.replace(/_/g, ' ')}</span>
-                        <span className="mobile-dest">To: {item.destination || 'Unspecified'}</span>
-                      </div>
-
-                      <div className="mobile-timing-grid">
-                        <div className="timing-box">
-                          <span className="timing-lbl">Expected Exit</span>
-                          <span className="timing-val">{formatDateTime(item.outDate)}</span>
-                        </div>
-                        <div className="timing-box">
-                          <span className="timing-lbl">Expected Return</span>
-                          <span className="timing-val">{formatDateTime(item.returnDate)}</span>
-                        </div>
-                      </div>
-
-                      {(item.actualExitTime || item.actualReturnTime) && (
-                        <div className="mobile-transit-box">
-                          {item.actualExitTime && (
-                            <div>
-                              <LogOut size={12} className="inline-icon" /> Exit recorded: {formatDateTime(item.actualExitTime)}
-                            </div>
-                          )}
-                          {item.actualReturnTime && (
-                            <div>
-                              <LogIn size={12} className="inline-icon" /> Return recorded: {formatDateTime(item.actualReturnTime)}
-                            </div>
-                          )}
-                        </div>
                       )}
 
-                      {item.rejectionReason && (
-                        <div className="mobile-rejection-box">
-                          <strong>Rejection Reason:</strong> {item.rejectionReason}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mobile-card-actions">
-                      {isPending ? (
-                        <>
+                      {/* Card Action Footer */}
+                      <div className="card-actions-footer">
+                        {isPending ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn-navy-primary btn-action"
+                              onClick={() => setApprovingOuting(item)}
+                              title="Approve Outing Pass"
+                            >
+                              <Check size={14} />
+                              <span>Approve</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-card-reject btn-action"
+                              onClick={() => {
+                                setRejectingOuting(item);
+                                setRejectionReason('');
+                                setRejectionError('');
+                              }}
+                              title="Reject Outing Pass"
+                            >
+                              <X size={14} />
+                              <span>Reject</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-light-secondary btn-action"
+                              onClick={() => handleOpenDetail(item.id)}
+                              title="Inspect Complete Pass Details"
+                            >
+                              <Eye size={14} />
+                              <span>Details</span>
+                            </button>
+                          </>
+                        ) : (
                           <button
                             type="button"
-                            className="btn-action approve-btn mobile-full"
-                            onClick={() => setApprovingOuting(item)}
+                            className="btn-light-secondary btn-action"
+                            onClick={() => handleOpenDetail(item.id)}
+                            title="Inspect Complete Pass Details"
                           >
-                            <Check size={14} />
-                            <span>Approve</span>
+                            <Eye size={14} />
+                            <span>View Complete Details</span>
                           </button>
-                          <button
-                            type="button"
-                            className="btn-action reject-btn mobile-full"
-                            onClick={() => {
-                              setRejectingOuting(item);
-                              setRejectionReason('');
-                              setRejectionError('');
-                            }}
-                          >
-                            <X size={14} />
-                            <span>Reject</span>
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn-action view-btn mobile-full"
-                          onClick={() => handleOpenDetail(item.id)}
-                        >
-                          <Eye size={14} />
-                          <span>View Complete Details</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 2. Table View (Alternative) */}
+            {viewMode === 'table' && (
+              <div className="outing-table-wrapper">
+                <table className="outing-table">
+                  <thead>
+                    <tr>
+                      <th>Request #</th>
+                      <th>Student Resident</th>
+                      <th>Pass Type &amp; Destination</th>
+                      <th>Departure / Return</th>
+                      <th>Status</th>
+                      <th>Gate Transit Log</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {outings.map((item) => {
+                      const isPending = item.status === 'PENDING';
+                      const hasExit = Boolean(item.actualExitTime);
+                      const hasReturn = Boolean(item.actualReturnTime);
+
+                      return (
+                        <tr key={item.id} className={`outing-row ${isPending ? 'pending-highlight' : ''}`}>
+                          <td>
+                            <div className="request-num-cell">
+                              <span className="request-num">{item.requestNumber || '—'}</span>
+                              <span className="applied-time">{formatDateOnly(item.createdAt)}</span>
+                            </div>
+                          </td>
+
+                          <td>
+                            <div className="student-info-cell">
+                              <span className="student-name">{item.student?.name || 'Resident'}</span>
+                              <span className="student-sub">
+                                {item.student?.jntuNo} •{' '}
+                                {item.student?.blockName
+                                  ? `${item.student.blockName} (R-${item.student.roomNumber || '?'})`
+                                  : 'Unassigned'}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td>
+                            <div className="pass-details-cell">
+                              <span className="pass-type-badge">
+                                {item.passType?.replace(/_/g, ' ')}
+                              </span>
+                              <span className="destination-text" title={item.destination || ''}>
+                                {item.destination || 'Unspecified'}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td>
+                            <div className="schedule-cell">
+                              <div className="schedule-item">
+                                <span className="schedule-label">Out:</span>
+                                <span className="schedule-time">{formatDateTime(item.outDate)}</span>
+                              </div>
+                              <div className="schedule-item">
+                                <span className="schedule-label">Back:</span>
+                                <span className="schedule-time">{formatDateTime(item.returnDate)}</span>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td>{renderStatusBadge(item.status)}</td>
+
+                          <td>
+                            <div className="transit-log-cell">
+                              {hasExit ? (
+                                <div className="transit-time exit">
+                                  <LogOut size={12} />
+                                  <span>Exit: {formatDateTime(item.actualExitTime)}</span>
+                                </div>
+                              ) : item.status === 'APPROVED' ? (
+                                <span className="transit-pending">Awaiting Gate Exit</span>
+                              ) : (
+                                <span className="transit-none">—</span>
+                              )}
+
+                              {hasReturn ? (
+                                <div className="transit-time return">
+                                  <LogIn size={12} />
+                                  <span>Return: {formatDateTime(item.actualReturnTime)}</span>
+                                </div>
+                              ) : hasExit ? (
+                                <span className="transit-pending">Currently Outside</span>
+                              ) : null}
+                            </div>
+                          </td>
+
+                          <td style={{ textAlign: 'right' }}>
+                            <div className="action-buttons-group">
+                              {isPending ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-action approve-btn"
+                                    onClick={() => setApprovingOuting(item)}
+                                    title="Approve Outing Pass"
+                                  >
+                                    <Check size={14} />
+                                    <span>Approve</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-action reject-btn"
+                                    onClick={() => {
+                                      setRejectingOuting(item);
+                                      setRejectionReason('');
+                                      setRejectionError('');
+                                    }}
+                                    title="Reject Outing Pass"
+                                  >
+                                    <X size={14} />
+                                    <span>Reject</span>
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn-action view-btn"
+                                  onClick={() => handleOpenDetail(item.id)}
+                                  title="Inspect Complete Pass Details"
+                                >
+                                  <Eye size={14} />
+                                  <span>View</span>
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {/* Pagination Controls */}
             {pagination.totalPages > 1 && (
@@ -1061,8 +1215,8 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
       {isLoadingDetail && (
         <div className="mgmt-modal-backdrop">
           <div className="mgmt-modal-card" style={{ padding: '2rem', textAlign: 'center', alignItems: 'center' }}>
-            <RefreshCw size={32} className="spin" style={{ color: '#1E3A8A', marginBottom: '1rem' }} />
-            <p style={{ margin: 0, fontWeight: 600, color: '#334155' }}>Loading outing details...</p>
+            <RefreshCw size={32} className="spin" style={{ color: '#151B54', marginBottom: '1rem' }} />
+            <p style={{ margin: 0, fontWeight: 600, color: '#334155' }}>Loading outing details from PostgreSQL...</p>
           </div>
         </div>
       )}
@@ -1151,42 +1305,67 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
                     <span className="cell-lbl">Destination</span>
                     <span className="cell-val">{selectedOutingDetail.destination}</span>
                   </div>
-                  <div className="info-cell full-width">
-                    <span className="cell-lbl">Purpose</span>
+                  <div className="info-cell" style={{ gridColumn: 'span 2' }}>
+                    <span className="cell-lbl">Stated Purpose</span>
                     <span className="cell-val">{selectedOutingDetail.purpose}</span>
                   </div>
-                  {selectedOutingDetail.remarks && (
-                    <div className="info-cell full-width">
-                      <span className="cell-lbl">Resident Remarks</span>
-                      <span className="cell-val">{selectedOutingDetail.remarks}</span>
-                    </div>
-                  )}
                   <div className="info-cell">
-                    <span className="cell-lbl">Approved Departure Time</span>
+                    <span className="cell-lbl">Scheduled Departure</span>
                     <span className="cell-val">{formatDateTime(selectedOutingDetail.outDate)}</span>
                   </div>
                   <div className="info-cell">
-                    <span className="cell-lbl">Approved Expected Return</span>
+                    <span className="cell-lbl">Scheduled Return</span>
                     <span className="cell-val">{formatDateTime(selectedOutingDetail.returnDate)}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Decision / Warden Audit */}
+              {/* Physical Gate Movement Audit */}
+              <div className="detail-section">
+                <h4 className="detail-section-title">
+                  <LogOut size={16} /> Physical Gate Transit Audit
+                </h4>
+                <div className="detail-info-grid">
+                  <div className="info-cell">
+                    <span className="cell-lbl">Actual Turnstile Exit</span>
+                    <span className="cell-val">
+                      {selectedOutingDetail.actualExitTime ? (
+                        <strong style={{ color: '#7C3AED' }}>{formatDateTime(selectedOutingDetail.actualExitTime)}</strong>
+                      ) : (
+                        'Not yet exited'
+                      )}
+                    </span>
+                  </div>
+                  <div className="info-cell">
+                    <span className="cell-lbl">Actual Turnstile Return</span>
+                    <span className="cell-val">
+                      {selectedOutingDetail.actualReturnTime ? (
+                        <strong style={{ color: '#059669' }}>{formatDateTime(selectedOutingDetail.actualReturnTime)}</strong>
+                      ) : selectedOutingDetail.actualExitTime ? (
+                        <strong style={{ color: '#D97706' }}>Currently Outside</strong>
+                      ) : (
+                        '—'
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Administrative Decision Audit */}
               {(selectedOutingDetail.approvedBy || selectedOutingDetail.rejectedBy) && (
                 <div className="detail-section">
                   <h4 className="detail-section-title">
-                    <ShieldCheck size={16} /> Decision &amp; Warden Audit
+                    <CheckCircle2 size={16} /> Administrative Decision Trail
                   </h4>
                   <div className="detail-info-grid">
                     {selectedOutingDetail.approvedBy && (
                       <>
                         <div className="info-cell">
                           <span className="cell-lbl">Approved By</span>
-                          <span className="cell-val font-semibold">{selectedOutingDetail.approvedBy}</span>
+                          <span className="cell-val">{selectedOutingDetail.approvedBy}</span>
                         </div>
                         <div className="info-cell">
-                          <span className="cell-lbl">Approved Timestamp</span>
+                          <span className="cell-lbl">Approved At</span>
                           <span className="cell-val">{formatDateTime(selectedOutingDetail.approvedAt)}</span>
                         </div>
                       </>
@@ -1195,90 +1374,26 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
                       <>
                         <div className="info-cell">
                           <span className="cell-lbl">Rejected By</span>
-                          <span className="cell-val font-semibold text-danger">{selectedOutingDetail.rejectedBy}</span>
+                          <span className="cell-val">{selectedOutingDetail.rejectedBy}</span>
                         </div>
                         <div className="info-cell">
-                          <span className="cell-lbl">Rejection Timestamp</span>
+                          <span className="cell-lbl">Rejected At</span>
                           <span className="cell-val">{formatDateTime(selectedOutingDetail.rejectedAt)}</span>
                         </div>
-                        <div className="info-cell full-width">
-                          <span className="cell-lbl">Official Rejection Reason</span>
-                          <span className="cell-val text-danger">{selectedOutingDetail.rejectionReason}</span>
+                        <div className="info-cell" style={{ gridColumn: 'span 2' }}>
+                          <span className="cell-lbl">Rejection Reason</span>
+                          <span className="cell-val" style={{ color: '#DC2626', fontWeight: 600 }}>
+                            {selectedOutingDetail.rejectionReason}
+                          </span>
                         </div>
                       </>
                     )}
                   </div>
                 </div>
               )}
-
-              {/* Biometric Transit Gate Verification */}
-              <div className="detail-section">
-                <h4 className="detail-section-title">
-                  <Radio size={16} /> Biometric Gate Verification Logs
-                </h4>
-                <div className="transit-cards-grid">
-                  <div className={`transit-status-box ${selectedOutingDetail.actualExitTime ? 'completed' : 'waiting'}`}>
-                    <div className="transit-box-header">
-                      <LogOut size={16} />
-                      <span>Physical Exit Gate</span>
-                    </div>
-                    <div className="transit-box-body">
-                      {selectedOutingDetail.actualExitTime ? (
-                        <>
-                          <div className="transit-box-time">{formatDateTime(selectedOutingDetail.actualExitTime)}</div>
-                          <span className="transit-tag verified">Verified Turnstile Exit</span>
-                        </>
-                      ) : (
-                        <div className="transit-box-empty">No exit scan recorded yet</div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className={`transit-status-box ${selectedOutingDetail.actualReturnTime ? 'completed' : 'waiting'}`}>
-                    <div className="transit-box-header">
-                      <LogIn size={16} />
-                      <span>Physical Entry Gate</span>
-                    </div>
-                    <div className="transit-box-body">
-                      {selectedOutingDetail.actualReturnTime ? (
-                        <>
-                          <div className="transit-box-time">{formatDateTime(selectedOutingDetail.actualReturnTime)}</div>
-                          <span className="transit-tag verified">Verified Turnstile Entry</span>
-                        </>
-                      ) : (
-                        <div className="transit-box-empty">No return scan recorded yet</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
 
             <div className="modal-footer">
-              {selectedOutingDetail.status === 'PENDING' && (
-                <div className="footer-left-actions">
-                  <button
-                    type="button"
-                    className="btn-action approve-btn"
-                    onClick={() => {
-                      setApprovingOuting(selectedOutingDetail);
-                    }}
-                  >
-                    <Check size={14} /> Approve Pass
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-action reject-btn"
-                    onClick={() => {
-                      setRejectingOuting(selectedOutingDetail);
-                      setRejectionReason('');
-                      setRejectionError('');
-                    }}
-                  >
-                    <X size={14} /> Reject Pass
-                  </button>
-                </div>
-              )}
               <button
                 type="button"
                 className="btn-secondary"

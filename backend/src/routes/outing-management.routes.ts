@@ -6,6 +6,7 @@ import {
 } from '../middleware/management.middleware';
 import { complaintEventsService } from '../services/events.service';
 import { notificationService } from '../services/notification.service';
+import { decodeAcademicInfo } from './mess-management.routes';
 
 const router = Router();
 
@@ -62,7 +63,9 @@ router.get('/stats', async (req: AuthenticatedManagementRequest, res: Response):
         total,
         pending,
         approved,
+        approvedToday: approved,
         active: activeOutings,
+        activeOutings,
         returned,
         rejected,
         todayOutgoing,
@@ -90,6 +93,8 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
       search,
       passType,
       blockId,
+      gender,
+      year,
       date,
       page = '1',
       limit = '25',
@@ -148,7 +153,7 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
       }
     }
 
-    // Block ID filter (students who have an active allocation in this block or matching blockName)
+    // Block ID filter
     if (blockId && blockId !== 'ALL') {
       where.student = {
         ...(where.student || {}),
@@ -161,6 +166,46 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
           },
         },
       };
+    }
+
+    // Gender / Hostel filter
+    if (gender && gender !== 'ALL') {
+      const g = gender.toUpperCase();
+      const pattern = (g === 'GIRLS' || g === 'FEMALE') ? 'girl' : 'boy';
+      where.student = {
+        ...(where.student || {}),
+        OR: [
+          { blockName: { contains: pattern, mode: 'insensitive' } },
+          {
+            roomAllocations: {
+              some: {
+                status: 'ACTIVE',
+                room: {
+                  block: {
+                    name: { contains: pattern, mode: 'insensitive' },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      };
+    }
+
+    // Academic Year filter
+    if (year && year !== 'ALL') {
+      let prefix = '';
+      if (year.includes('1')) prefix = '25';
+      else if (year.includes('2')) prefix = '24';
+      else if (year.includes('3')) prefix = '22';
+      else if (year.includes('4')) prefix = '21';
+
+      if (prefix) {
+        where.student = {
+          ...(where.student || {}),
+          jntuNo: { startsWith: prefix, mode: 'insensitive' },
+        };
+      }
     }
 
     const [totalCount, outings] = await Promise.all([
@@ -198,6 +243,15 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
       const blockName = activeAllocation?.room?.block?.name || outing.student?.blockName || null;
       const roomNumber = activeAllocation?.room?.roomNumber || outing.student?.roomNumber || null;
       const bedNumber = activeAllocation?.bedNumber || outing.student?.bedNumber || null;
+      const academic = decodeAcademicInfo(outing.student?.jntuNo || '');
+      const initials = (outing.student?.name || 'ST')
+        .split(' ')
+        .filter(Boolean)
+        .map((part: string) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
+      const derivedGender = (blockName || '').toLowerCase().includes('girl') ? 'FEMALE' : (blockName || '').toLowerCase().includes('boy') ? 'MALE' : null;
 
       return {
         id: outing.id,
@@ -220,15 +274,19 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
         rawStatus: outing.status,
         createdAt: outing.createdAt.toISOString(),
         updatedAt: outing.updatedAt.toISOString(),
+        avatar: initials,
         student: outing.student
           ? {
               id: outing.student.id,
               name: outing.student.name,
               jntuNo: outing.student.jntuNo,
               email: outing.student.email,
+              gender: derivedGender,
+              avatar: initials,
               blockName,
               roomNumber,
               bedNumber,
+              academic,
             }
           : null,
       };
@@ -321,6 +379,9 @@ router.get('/:id', async (req: AuthenticatedManagementRequest, res: Response): P
     ]);
 
     const activeAlloc = outing.student?.roomAllocations?.[0];
+    const blockName = activeAlloc?.room?.block?.name || outing.student?.blockName || null;
+    const derivedGender = (blockName || '').toLowerCase().includes('girl') ? 'FEMALE' : (blockName || '').toLowerCase().includes('boy') ? 'MALE' : null;
+    const initials = (outing.student?.name || 'ST').split(' ').filter(Boolean).map((p: string) => p[0]).join('').slice(0, 2).toUpperCase();
 
     res.json({
       success: true,
@@ -345,16 +406,20 @@ router.get('/:id', async (req: AuthenticatedManagementRequest, res: Response): P
         rawStatus: outing.status,
         createdAt: outing.createdAt.toISOString(),
         updatedAt: outing.updatedAt.toISOString(),
+        avatar: initials,
         student: outing.student
           ? {
               id: outing.student.id,
               name: outing.student.name,
               jntuNo: outing.student.jntuNo,
               email: outing.student.email,
-              blockName: activeAlloc?.room?.block?.name || outing.student.blockName || null,
+              gender: derivedGender,
+              avatar: initials,
+              blockName,
               roomNumber: activeAlloc?.room?.roomNumber || outing.student.roomNumber || null,
               bedNumber: activeAlloc?.bedNumber || outing.student.bedNumber || null,
               roomType: activeAlloc?.room?.roomType || outing.student.roomType || null,
+              academic: decodeAcademicInfo(outing.student.jntuNo),
             }
           : null,
         monthlyUsageCount: monthlyCount,
