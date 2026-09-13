@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, LogOut, ChevronDown, RotateCw, Radio, Shield } from 'lucide-react';
+import { Menu, LogOut, ChevronDown, RotateCw, Radio, Shield, QrCode } from 'lucide-react';
 import { ManagementUser } from '../services/api';
 
 interface ManagementHeaderProps {
@@ -151,8 +151,11 @@ export const ManagementHeader: React.FC<ManagementHeaderProps> = ({
             cursor: 'pointer',
           }}
           title="Biometric QR / Gate Scan Status"
+          role="button"
+          tabIndex={0}
+          aria-label="Biometric Scanner Status"
         >
-          <Radio size={16} />
+          <QrCode size={18} />
         </div>
 
         {/* Management User Profile Menu */}

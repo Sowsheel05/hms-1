@@ -1450,6 +1450,8 @@ export interface ManagementUser {
 
 export interface ResidentPresenceMetrics {
   totalResidents: number;
+  totalStudents?: number;
+  newStudentsThisWeek?: number;
   activeResidents: number;
   currentlyInside: number;
   currentlyOutside: number;

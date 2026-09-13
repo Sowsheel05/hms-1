@@ -2,6 +2,8 @@ import { prisma } from './prisma.service';
 
 export interface ResidentPresenceMetrics {
   totalResidents: number;
+  totalStudents?: number;
+  newStudentsThisWeek?: number;
   activeResidents: number;
   currentlyInside: number;
   currentlyOutside: number;
@@ -118,6 +120,15 @@ export class ManagementService {
     const totalResidents = students.length;
     const allocatedStudents = students.filter((s) => s.allocationStatus === 'ALLOCATED');
     const activeResidents = allocatedStudents.length;
+
+    // Calculate new students added within the last 7 days
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const newStudentsThisWeek = await prisma.student.count({
+      where: {
+        ...studentWhere,
+        createdAt: { gte: oneWeekAgo },
+      },
+    });
 
     // 2. Fetch Active Suspensions
     const activeSuspensionRecords = await prisma.suspension.findMany({
@@ -435,6 +446,8 @@ export class ManagementService {
     return {
       residents: {
         totalResidents,
+        totalStudents: totalResidents,
+        newStudentsThisWeek,
         activeResidents,
         currentlyInside,
         currentlyOutside,

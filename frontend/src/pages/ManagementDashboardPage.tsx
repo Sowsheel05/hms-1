@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users,
-  UserCheck,
-  UserX,
   BedDouble,
   Footprints,
   FileText,
   AlertCircle,
-  ShieldAlert,
   Clock,
   Fingerprint,
   RotateCw,
@@ -16,24 +13,57 @@ import {
   Activity,
   CheckCircle2,
   Layers,
+  Building,
+  Wrench,
+  Receipt,
+  Cpu,
+  UtensilsCrossed,
+  History,
+  ClipboardList,
+  CreditCard,
+  Landmark,
+  Bell,
 } from 'lucide-react';
 import {
   managementApiService,
   ManagementDashboardData,
   AttentionItem,
 } from '../services/api';
+import { useManagementAuth } from '../context/ManagementAuthContext';
 
 interface ManagementDashboardPageProps {
+  onNavigate?: (path: string) => void;
   onModuleNotice?: (moduleName: string) => void;
   onRefreshStateChange?: (isRefreshing: boolean, isConnected: boolean) => void;
   registerRefreshHandler?: (refreshFn: () => void) => void;
 }
 
+const ADMIN_MODULES = [
+  { id: 'blocks', title: 'Block Management', path: '/management/blocks', icon: Building },
+  { id: 'rooms', title: 'Room Allocation', path: '/management/rooms', icon: BedDouble },
+  { id: 'maintenance', title: 'Maintenance', path: '/management/complaints', icon: Wrench },
+  { id: 'biometric', title: 'Biometric Tracking', path: '/management/devices', icon: Fingerprint },
+  { id: 'outings', title: 'Outing Requests', path: '/management/outings', icon: Footprints },
+  { id: 'devices', title: 'Device Management', path: '/management/devices', icon: Cpu },
+  { id: 'billing', title: 'Guest Billing', path: '/management/guest-billing', icon: Receipt },
+  { id: 'mess', title: 'Mess Management', path: '/management/mess', icon: UtensilsCrossed },
+  { id: 'leaves', title: 'Leaves & Suspension', path: '/management/leaves', icon: FileText },
+  { id: 'complaints', title: 'Complaints', path: '/management/complaints', icon: AlertCircle },
+  { id: 'logs', title: 'Log History', path: '/management/log-history', icon: History },
+  { id: 'outing-logs', title: 'Outing Log History', path: '/management/outing-logs', icon: ClipboardList },
+  { id: 'users', title: 'User Management', path: '/management/users', icon: Users },
+  { id: 'fee-management', title: 'Fee Management', path: '/management/fee-management', icon: CreditCard },
+  { id: 'fee-collection', title: 'Fee Collection', path: '/management/fee-collection', icon: Landmark },
+  { id: 'notifications', title: 'Notifications', path: '/management/notifications', icon: Bell },
+];
+
 export const ManagementDashboardPage: React.FC<ManagementDashboardPageProps> = ({
+  onNavigate,
   onModuleNotice,
   onRefreshStateChange,
   registerRefreshHandler,
 }) => {
+  const { user } = useManagementAuth();
   const [data, setData] = useState<ManagementDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -114,17 +144,18 @@ export const ManagementDashboardPage: React.FC<ManagementDashboardPageProps> = (
   if (isLoading && !data) {
     return (
       <div className="management-dashboard-view" aria-busy="true">
-        <div className="mgmt-loading-hero skeleton-block" />
-        <div className="mgmt-kpi-grid">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="mgmt-kpi-card skeleton-card" />
+        <div className="admin-dash-hero skeleton-block" style={{ height: '56px', borderRadius: '12px' }} />
+        <div className="admin-summary-grid">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="admin-summary-card skeleton-card" style={{ minHeight: '115px' }} />
           ))}
         </div>
-        <div className="mgmt-analytics-grid">
-          <div className="mgmt-card skeleton-panel" />
-          <div className="mgmt-card skeleton-panel" />
+        <div className="admin-section-heading skeleton-block" style={{ height: '24px', width: '200px', margin: '1.25rem 0 0.85rem' }} />
+        <div className="admin-modules-grid">
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="admin-module-card skeleton-card" style={{ minHeight: '105px' }} />
+          ))}
         </div>
-        <div className="mgmt-card skeleton-panel" style={{ height: '240px' }} />
       </div>
     );
   }
@@ -182,8 +213,123 @@ export const ManagementDashboardPage: React.FC<ManagementDashboardPageProps> = (
 
   return (
     <div className="management-dashboard-view">
+      {/* Admin Dashboard Header (Step 1) */}
+      <div className="admin-dash-hero">
+        <h1 className="admin-dash-title">Admin Dashboard</h1>
+        <p className="admin-dash-subtitle">
+          Welcome back, {user?.name || 'Administrator'}
+        </p>
+      </div>
+
+      {/* Four Primary Summary Cards (Screenshot-Accurate) */}
+      <section className="admin-summary-grid" aria-label="Summary Overview">
+        {/* Card 1: Total Students */}
+        <div className="admin-summary-card card-students">
+          <div className="summary-card-header">
+            <span className="summary-card-title">Total Students</span>
+            <div className="summary-card-icon-wrap icon-blue">
+              <Users size={18} />
+            </div>
+          </div>
+          <div className="summary-card-value">
+            {residents.totalStudents ?? residents.totalResidents}
+          </div>
+          <div className="summary-card-status status-neutral">
+            {residents.newStudentsThisWeek && residents.newStudentsThisWeek > 0
+              ? `+${residents.newStudentsThisWeek} NEW THIS WEEK`
+              : 'NO NEW STUDENTS THIS WEEK'}
+          </div>
+        </div>
+
+        {/* Card 2: Rooms */}
+        <div className="admin-summary-card card-rooms">
+          <div className="summary-card-header">
+            <span className="summary-card-title">Rooms</span>
+            <div className="summary-card-icon-wrap icon-emerald">
+              <BedDouble size={18} />
+            </div>
+          </div>
+          <div className="summary-card-value">
+            {rooms.totalRooms}
+          </div>
+          <div className="summary-card-status status-positive">
+            {rooms.occupancyPercentage}% OCCUPIED
+          </div>
+        </div>
+
+        {/* Card 3: Maintenance */}
+        <div className="admin-summary-card card-maintenance">
+          <div className="summary-card-header">
+            <span className="summary-card-title">Maintenance</span>
+            <div className="summary-card-icon-wrap icon-amber">
+              <Wrench size={18} />
+            </div>
+          </div>
+          <div className="summary-card-value">
+            {requests.openComplaints}
+          </div>
+          <div className="summary-card-status status-warning">
+            PENDING REQUESTS
+          </div>
+        </div>
+
+        {/* Card 4: Outings */}
+        <div className="admin-summary-card card-outings">
+          <div className="summary-card-header">
+            <span className="summary-card-title">Outings</span>
+            <div className="summary-card-icon-wrap icon-indigo">
+              <Footprints size={18} />
+            </div>
+          </div>
+          <div className="summary-card-value">
+            {requests.pendingOutings}
+          </div>
+          <div className="summary-card-status status-warning">
+            AWAITING APPROVAL
+          </div>
+        </div>
+      </section>
+
+      {/* Management Modules Section */}
+      <section className="admin-modules-section" aria-label="Management Modules">
+        <h2 className="admin-section-heading">Management Modules</h2>
+
+        <div className="admin-modules-grid">
+          {ADMIN_MODULES.map((mod) => {
+            const Icon = mod.icon;
+            return (
+              <div
+                key={mod.id}
+                className="admin-module-card"
+                onClick={() => {
+                  if (onNavigate) {
+                    onNavigate(mod.path);
+                  } else if (onModuleNotice) {
+                    onModuleNotice(mod.title);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (onNavigate) onNavigate(mod.path);
+                  }
+                }}
+                aria-label={`Navigate to ${mod.title}`}
+              >
+                <div className="module-card-icon-wrap">
+                  <Icon size={24} className="module-card-icon" />
+                </div>
+                <span className="module-card-title">{mod.title}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       {/* Operational Meta Bar */}
-      <div className="mgmt-meta-bar">
+      <div className="mgmt-meta-bar" style={{ marginTop: '0.75rem' }}>
         <div className="mgmt-meta-left">
           <span className="mgmt-meta-badge">
             <Activity size={13} />
@@ -214,91 +360,6 @@ export const ManagementDashboardPage: React.FC<ManagementDashboardPageProps> = (
           </button>
         </div>
       </div>
-
-      {/* 8 KPI Cards */}
-      <section className="mgmt-kpi-grid" aria-label="Key Operational Indicators">
-        <div className="mgmt-kpi-card card-blue">
-          <div className="mgmt-kpi-header">
-            <span className="mgmt-kpi-label">Total Residents</span>
-            <div className="mgmt-kpi-icon-wrap icon-blue"><Users size={18} /></div>
-          </div>
-          <div className="mgmt-kpi-value">{residents.totalResidents}</div>
-          <div className="mgmt-kpi-context">{residents.activeResidents} active bed allocations</div>
-        </div>
-
-        <div className="mgmt-kpi-card card-emerald">
-          <div className="mgmt-kpi-header">
-            <span className="mgmt-kpi-label">Currently Inside</span>
-            <div className="mgmt-kpi-icon-wrap icon-emerald"><UserCheck size={18} /></div>
-          </div>
-          <div className="mgmt-kpi-value">{residents.currentlyInside}</div>
-          <div className="mgmt-kpi-context">
-            <span className="text-emerald">{insidePct}% of residents</span>
-          </div>
-        </div>
-
-        <div className="mgmt-kpi-card card-amber">
-          <div className="mgmt-kpi-header">
-            <span className="mgmt-kpi-label">Currently Outside</span>
-            <div className="mgmt-kpi-icon-wrap icon-amber"><UserX size={18} /></div>
-          </div>
-          <div className="mgmt-kpi-value">{residents.currentlyOutside}</div>
-          <div className="mgmt-kpi-context">{requests.outOutings} on active gate pass</div>
-        </div>
-
-        <div className="mgmt-kpi-card card-indigo">
-          <div className="mgmt-kpi-header">
-            <span className="mgmt-kpi-label">Room Occupancy</span>
-            <div className="mgmt-kpi-icon-wrap icon-indigo"><BedDouble size={18} /></div>
-          </div>
-          <div className="mgmt-kpi-value">{rooms.occupancyPercentage}%</div>
-          <div className="mgmt-kpi-context">{rooms.allocatedBeds} / {rooms.totalCapacity} beds filled</div>
-        </div>
-
-        <div className="mgmt-kpi-card card-teal">
-          <div className="mgmt-kpi-header">
-            <span className="mgmt-kpi-label">Pending Outings</span>
-            <div className="mgmt-kpi-icon-wrap icon-teal"><Footprints size={18} /></div>
-          </div>
-          <div className="mgmt-kpi-value">{requests.pendingOutings}</div>
-          <div className="mgmt-kpi-context">
-            <span className={requests.pendingOutings > 0 ? 'text-amber' : 'text-slate'}>
-              {requests.pendingOutings > 0 ? 'Action required' : 'All caught up'}
-            </span>
-          </div>
-        </div>
-
-        <div className="mgmt-kpi-card card-violet">
-          <div className="mgmt-kpi-header">
-            <span className="mgmt-kpi-label">Pending Leaves</span>
-            <div className="mgmt-kpi-icon-wrap icon-violet"><FileText size={18} /></div>
-          </div>
-          <div className="mgmt-kpi-value">{requests.pendingLeaves}</div>
-          <div className="mgmt-kpi-context">{requests.activeLeaves} on active leave</div>
-        </div>
-
-        <div className="mgmt-kpi-card card-rose">
-          <div className="mgmt-kpi-header">
-            <span className="mgmt-kpi-label">Open Complaints</span>
-            <div className="mgmt-kpi-icon-wrap icon-rose"><AlertCircle size={18} /></div>
-          </div>
-          <div className="mgmt-kpi-value">{requests.openComplaints}</div>
-          <div className="mgmt-kpi-context">{requests.inProgressComplaints} in progress</div>
-        </div>
-
-        <div className="mgmt-kpi-card card-crimson">
-          <div className="mgmt-kpi-header">
-            <span className="mgmt-kpi-label">Suspended</span>
-            <div className="mgmt-kpi-icon-wrap icon-crimson"><ShieldAlert size={18} /></div>
-          </div>
-          <div className="mgmt-kpi-value">{residents.suspended}</div>
-          <div className="mgmt-kpi-context">
-            <span className={residents.suspended > 0 ? 'text-crimson font-medium' : 'text-slate'}>
-              {residents.suspended > 0 ? 'Restricted access' : 'No active suspensions'}
-            </span>
-          </div>
-        </div>
-      </section>
 
       {/* Requires Attention Section */}
       <section className="mgmt-section" aria-label="Actionable Operational Items">

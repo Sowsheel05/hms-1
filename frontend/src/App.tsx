@@ -313,6 +313,7 @@ const AuthenticatedManagementApp: React.FC<{
             <BlockManagementPage onNavigate={onNavigate} />
           ) : (
             <ManagementDashboardPage
+              onNavigate={onNavigate}
               onModuleNotice={(name) => setModuleNotice(name)}
               onRefreshStateChange={(refreshing, connected) => {
                 setIsRefreshing(refreshing);
