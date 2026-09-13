@@ -7,9 +7,8 @@ import {
   Edit2,
   Trash2,
   CheckCircle2,
-  XCircle,
   AlertTriangle,
-  Users,
+  XCircle,
   X,
   Info,
 } from 'lucide-react';
@@ -20,15 +19,6 @@ import {
   UpdateBlockDto,
 } from '../services/api';
 import { useManagementAuth } from '../context/ManagementAuthContext';
-
-const BLOCK_SCREENSHOT_STATS: Record<string, { capacity: number; occupied: number; vacant: number; maintenance: number; vacancyRate: string }> = {
-  'BB-A': { capacity: 60, occupied: 60, vacant: 0, maintenance: 0, vacancyRate: '0%' },
-  'BB-B': { capacity: 61, occupied: 33, vacant: 28, maintenance: 0, vacancyRate: '45.9%' },
-  'BB-C': { capacity: 32, occupied: 10, vacant: 22, maintenance: 0, vacancyRate: '68.8%' },
-  'BB-D': { capacity: 48, occupied: 18, vacant: 30, maintenance: 0, vacancyRate: '62.5%' },
-  'GB-A': { capacity: 170, occupied: 30, vacant: 140, maintenance: 0, vacancyRate: '82.4%' },
-  'GB-B': { capacity: 169, occupied: 80, vacant: 89, maintenance: 0, vacancyRate: '52.7%' },
-};
 
 interface BlockManagementPageProps {
   onNavigate?: (path: string) => void;
@@ -69,7 +59,7 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
-  // Toast / notification
+  // Toast / notification feedback
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
@@ -95,7 +85,7 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
       });
       setBlocks(response.blocks || []);
     } catch (err: any) {
-      console.error('Failed to load blocks:', err);
+      console.error('Failed to load blocks from PostgreSQL:', err);
       setError(err.message || 'Unable to load hostel blocks from database.');
     } finally {
       setIsLoading(false);
@@ -103,19 +93,21 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
     }
   }, [searchTerm, statusFilter]);
 
-  // Initial load & filter effect
+  // Initial load & filter change
   useEffect(() => {
     fetchBlocks(false);
   }, [fetchBlocks]);
 
-  // Real-time SSE synchronization: Automatically refetch on block domain events
+  // Real-time SSE synchronization: Automatically refetch on authoritative block events
   useEffect(() => {
     const unsubscribe = managementApiService.subscribeToEvents((event) => {
       if (
         event?.type === 'BLOCK_CREATED' ||
         event?.type === 'BLOCK_UPDATED' ||
         event?.type === 'BLOCK_STATUS_CHANGED' ||
-        event?.type === 'BLOCK_DELETED'
+        event?.type === 'BLOCK_DELETED' ||
+        event?.type === 'ROOM_ALLOCATED' ||
+        event?.type === 'ROOM_DEALLOCATED'
       ) {
         fetchBlocks(true);
       }
@@ -124,33 +116,31 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
     return () => unsubscribe();
   }, [fetchBlocks]);
 
-  // Summary Metrics computed directly from authoritative block records
-  const summaryMetrics = useMemo(() => {
+  // Summary counts for filter pills
+  const counts = useMemo(() => {
     const total = blocks.length;
     const active = blocks.filter((b) => b.status === 'ACTIVE').length;
     const inactive = blocks.filter((b) => b.status === 'INACTIVE').length;
-    const totalResidents = blocks.reduce((acc, b) => acc + (b.activeResidents || 0), 0);
-    const totalRooms = blocks.reduce((acc, b) => acc + (b.totalRooms || 0), 0);
-
-    return { total, active, inactive, totalResidents, totalRooms };
+    return { total, active, inactive };
   }, [blocks]);
 
-  // Filtered blocks for client display
+  // Filtered blocks for display with optional role scoping
   const displayBlocks = useMemo(() => {
     return blocks.filter((b) => {
       // Role-based hostel scoping for Chief Warden Boys / Girls
-      if (user?.role === 'CHIEF_WARDEN_BOYS' && !b.name.toLowerCase().includes('boys')) {
+      if (user?.role === 'CHIEF_WARDEN_BOYS' && !b.name.toLowerCase().includes('boys') && !b.code.toLowerCase().startsWith('bb')) {
         return false;
       }
-      if (user?.role === 'CHIEF_WARDEN_GIRLS' && !b.name.toLowerCase().includes('girls')) {
+      if (user?.role === 'CHIEF_WARDEN_GIRLS' && !b.name.toLowerCase().includes('girls') && !b.code.toLowerCase().startsWith('gb')) {
         return false;
       }
 
+      const term = searchTerm.trim().toLowerCase();
       const matchesSearch =
-        !searchTerm.trim() ||
-        b.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        b.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (b.description && b.description.toLowerCase().includes(searchTerm.toLowerCase()));
+        !term ||
+        b.name.toLowerCase().includes(term) ||
+        b.code.toLowerCase().includes(term) ||
+        (b.description && b.description.toLowerCase().includes(term));
 
       const matchesStatus = statusFilter === 'ALL' || b.status === statusFilter;
 
@@ -236,18 +226,6 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
     }
   };
 
-  // Quick Status Toggle (Active <-> Inactive)
-  const handleToggleStatus = async (block: Block) => {
-    const nextStatus: 'ACTIVE' | 'INACTIVE' = block.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-    try {
-      await managementApiService.updateBlock(block.id, { status: nextStatus });
-      showToast(`Block '${block.name}' set to ${nextStatus}.`);
-      fetchBlocks(true);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to update block status.', 'error');
-    }
-  };
-
   // Open Delete Confirmation Modal
   const handleOpenDelete = (block: Block) => {
     setDeleteModalBlock(block);
@@ -273,6 +251,19 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
     }
   };
 
+  // Extract decorative block initial / letter
+  const getDecorativeLetter = (block: Block): string => {
+    const parts = block.code.split('-');
+    if (parts.length > 1 && parts[parts.length - 1].length <= 2) {
+      return parts[parts.length - 1];
+    }
+    const nameParts = block.name.split('-');
+    if (nameParts.length > 1 && nameParts[nameParts.length - 1].length <= 2) {
+      return nameParts[nameParts.length - 1];
+    }
+    return block.code.charAt(0) || 'B';
+  };
+
   return (
     <div className="block-management-view">
       {/* Toast feedback banner */}
@@ -295,16 +286,16 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
         </div>
       )}
 
-      {/* Header section */}
+      {/* Top Header Section */}
       <div className="block-page-header">
         <div className="block-header-info">
           <div className="block-header-tag">
-            <Building size={14} />
+            <Building size={13} />
             <span>Hostel Infrastructure</span>
           </div>
           <h1 className="block-page-title">Block Management</h1>
           <p className="block-page-desc">
-            Configure, organize, and monitor hostel blocks, residential wings, and structural zones.
+            Configure, monitor, and manage residential blocks, capacity, and occupancy.
           </p>
         </div>
 
@@ -325,58 +316,12 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
             type="button"
             onClick={handleOpenCreate}
             className="btn-primary block-add-btn"
-            aria-label="Add new hostel block"
+            id="add-block-btn"
+            aria-label="Add new block"
           >
             <Plus size={16} />
-            <span>+ Add New Block</span>
+            <span>+ Add Block</span>
           </button>
-        </div>
-      </div>
-
-      {/* Summary KPI Cards */}
-      <div className="block-kpi-grid" aria-label="Block Operational Summary">
-        <div className="block-kpi-card card-navy">
-          <div className="block-kpi-header">
-            <span className="block-kpi-label">Total Blocks</span>
-            <div className="block-kpi-icon-wrap icon-navy">
-              <Building size={18} />
-            </div>
-          </div>
-          <div className="block-kpi-val">{summaryMetrics.total}</div>
-          <div className="block-kpi-context">Configured structural facilities</div>
-        </div>
-
-        <div className="block-kpi-card card-emerald">
-          <div className="block-kpi-header">
-            <span className="block-kpi-label">Active Blocks</span>
-            <div className="block-kpi-icon-wrap icon-emerald">
-              <CheckCircle2 size={18} />
-            </div>
-          </div>
-          <div className="block-kpi-val">{summaryMetrics.active}</div>
-          <div className="block-kpi-context">Open for residential allocation</div>
-        </div>
-
-        <div className="block-kpi-card card-amber">
-          <div className="block-kpi-header">
-            <span className="block-kpi-label">Inactive / In Renovation</span>
-            <div className="block-kpi-icon-wrap icon-amber">
-              <XCircle size={18} />
-            </div>
-          </div>
-          <div className="block-kpi-val">{summaryMetrics.inactive}</div>
-          <div className="block-kpi-context">Maintenance or offline wings</div>
-        </div>
-
-        <div className="block-kpi-card card-indigo">
-          <div className="block-kpi-header">
-            <span className="block-kpi-label">Assigned Residents</span>
-            <div className="block-kpi-icon-wrap icon-indigo">
-              <Users size={18} />
-            </div>
-          </div>
-          <div className="block-kpi-val">{summaryMetrics.totalResidents}</div>
-          <div className="block-kpi-context">Students allocated across all blocks</div>
         </div>
       </div>
 
@@ -385,6 +330,7 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
         <div className="block-search-wrap">
           <Search size={16} className="search-icon" aria-hidden="true" />
           <input
+            id="block-search-input"
             type="text"
             className="block-search-input"
             placeholder="Search blocks by name, code, or description..."
@@ -411,25 +357,25 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
               onClick={() => setStatusFilter('ALL')}
               className={`filter-pill ${statusFilter === 'ALL' ? 'active' : ''}`}
             >
-              All ({blocks.length})
+              All ({counts.total})
             </button>
             <button
               type="button"
               onClick={() => setStatusFilter('ACTIVE')}
               className={`filter-pill ${statusFilter === 'ACTIVE' ? 'active' : ''}`}
             >
-              Active ({summaryMetrics.active})
+              Active ({counts.active})
             </button>
             <button
               type="button"
               onClick={() => setStatusFilter('INACTIVE')}
               className={`filter-pill ${statusFilter === 'INACTIVE' ? 'active' : ''}`}
             >
-              Inactive ({summaryMetrics.inactive})
+              Inactive ({counts.inactive})
             </button>
           </div>
 
-          <div className="block-filter-select-wrap">
+          <div className="block-status-select-wrap">
             <select
               id="block-status-select-filter"
               className="block-status-select"
@@ -437,9 +383,9 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
               onChange={(e) => setStatusFilter(e.target.value as any)}
               aria-label="Filter blocks by status"
             >
-              <option value="ALL">All Blocks ({blocks.length})</option>
-              <option value="ACTIVE">Active Only ({summaryMetrics.active})</option>
-              <option value="INACTIVE">Inactive Only ({summaryMetrics.inactive})</option>
+              <option value="ALL">All Blocks ({counts.total})</option>
+              <option value="ACTIVE">Active ({counts.active})</option>
+              <option value="INACTIVE">Inactive ({counts.inactive})</option>
             </select>
           </div>
         </div>
@@ -447,9 +393,9 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
 
       {/* Loading Skeleton */}
       {isLoading && blocks.length === 0 && (
-        <div className="block-grid" aria-busy="true">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="block-card skeleton-card" style={{ height: '220px' }} />
+        <div className="block-card-grid" aria-busy="true">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="campusstay-block-card skeleton-card" style={{ height: '240px' }} />
           ))}
         </div>
       )}
@@ -460,28 +406,15 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
           <AlertTriangle size={36} className="mgmt-error-icon" />
           <h3 className="mgmt-error-title">Unable to Load Blocks</h3>
           <p className="mgmt-error-msg">{error}</p>
-          {error.includes('Management session') || error.includes('log in') ? (
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = '/management/login';
-              }}
-              className="btn-primary"
-              style={{ marginTop: '0.75rem' }}
-            >
-              Sign In to Management
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => fetchBlocks(false)}
-              className="btn-primary"
-              style={{ marginTop: '0.75rem' }}
-            >
-              <RotateCw size={14} style={{ marginRight: 6 }} />
-              Retry
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => fetchBlocks(false)}
+            className="btn-primary"
+            style={{ marginTop: '0.75rem' }}
+          >
+            <RotateCw size={14} style={{ marginRight: 6 }} />
+            Retry
+          </button>
         </div>
       )}
 
@@ -513,191 +446,114 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
           ) : (
             <button type="button" className="btn-primary" onClick={handleOpenCreate}>
               <Plus size={16} />
-              <span>+ Add New Block</span>
+              <span>+ Add Block</span>
             </button>
           )}
         </div>
       )}
 
-      {/* Block Cards Grid matching CampusStay reference screenshot */}
+      {/* Responsive Block Cards Grid matching reference screenshot */}
       {!isLoading && displayBlocks.length > 0 && (
-        <div className="block-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }} aria-label="Hostel Block Cards">
+        <div className="block-card-grid" aria-label="Hostel Block Cards">
           {displayBlocks.map((block) => {
             const isActive = block.status === 'ACTIVE';
-            const isBoys = block.name.toLowerCase().includes('boys') || block.code.startsWith('BB');
-            const fallbackStats = BLOCK_SCREENSHOT_STATS[block.code] || {
-              capacity: block.totalRooms ? block.totalRooms * 2 : 50,
-              occupied: block.activeResidents || 0,
-              vacant: Math.max(0, (block.totalRooms ? block.totalRooms * 2 : 50) - (block.activeResidents || 0)),
-              maintenance: 0,
-              vacancyRate: '20.0%',
-            };
+            const isBoys =
+              block.name.toLowerCase().includes('boys') ||
+              block.code.toUpperCase().startsWith('BB') ||
+              (!block.name.toLowerCase().includes('girls') && !block.code.toUpperCase().startsWith('GB'));
+
+            // Authoritative PostgreSQL statistics
+            const totalCapacity = block.totalCapacity ?? 0;
+            const occupied = block.occupied ?? 0;
+            const vacant = block.vacant ?? Math.max(0, totalCapacity - occupied - (block.maintenance ?? 0));
+            const maintenance = block.maintenance ?? 0;
+            const vacancyRate = block.vacancyRate ?? (totalCapacity > 0 ? `${Math.round((vacant / totalCapacity) * 100)}%` : '0%');
+            const decorativeLetter = getDecorativeLetter(block);
 
             return (
               <div
                 key={block.id}
                 className="campusstay-block-card"
-                style={{
-                  position: 'relative',
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: '12px',
-                  border: '1px solid #E2E8F0',
-                  padding: '1.25rem',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                }}
+                data-block-id={block.id}
+                data-block-code={block.code}
               >
+                {/* Decorative Watermark Initial */}
+                <span className="block-decorative-watermark" aria-hidden="true">
+                  {decorativeLetter}
+                </span>
+
                 {/* Top Section */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0F172A', margin: 0 }}>
+                  <div className="block-card-top-section">
+                    <div className="block-card-identity">
+                      <h3 className="block-card-name-text">
                         {block.name}
                       </h3>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          marginTop: '4px',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          fontSize: '0.78rem',
-                          fontWeight: 500,
-                          backgroundColor: '#EEF2FF',
-                          color: '#4338CA',
-                        }}
-                      >
+                      <span className={`block-hostel-type-badge ${isBoys ? 'boys' : 'girls'}`}>
                         {isBoys ? 'Boys Hostel' : 'Girls Hostel'}
                       </span>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span
-                        style={{
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          backgroundColor: isActive ? '#10B981' : '#F1F5F9',
-                          color: isActive ? '#FFFFFF' : '#64748B',
-                        }}
-                      >
+                    <div className="block-card-status-wrap">
+                      <span className={`block-status-pill-badge ${isActive ? 'active' : 'inactive'}`}>
                         {isActive ? 'Active' : 'Inactive'}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '2.5rem',
-                          fontWeight: 800,
-                          color: '#E2E8F0',
-                          lineHeight: 1,
-                          userSelect: 'none',
-                        }}
-                      >
-                        {isBoys ? 'B' : 'G'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Metrics Rows matching screenshot */}
-                  <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.9rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748B' }}>Total Capacity</span>
-                      <span style={{ fontWeight: 600, color: '#0F172A' }}>{fallbackStats.capacity}</span>
+                  {/* Metrics Rows matching screenshot structure */}
+                  <div className="block-metrics-list">
+                    <div className="block-metric-row">
+                      <span className="block-metric-label">Total Capacity</span>
+                      <span className="block-metric-value">{totalCapacity}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748B' }}>Occupied</span>
-                      <span style={{ fontWeight: 600, color: '#0F172A' }}>{fallbackStats.occupied}</span>
+                    <div className="block-metric-row">
+                      <span className="block-metric-label">Occupied</span>
+                      <span className="block-metric-value">{occupied}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748B' }}>Vacant</span>
-                      <span style={{ fontWeight: 600, color: '#0F172A' }}>{fallbackStats.vacant}</span>
+                    <div className="block-metric-row">
+                      <span className="block-metric-label">Vacant</span>
+                      <span className="block-metric-value">{vacant}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748B' }}>Maintenance</span>
-                      <span style={{ fontWeight: 600, color: '#0F172A' }}>{fallbackStats.maintenance}</span>
+                    <div className="block-metric-row">
+                      <span className="block-metric-label">Maintenance</span>
+                      <span className="block-metric-value">{maintenance}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748B' }}>Vacancy Rate</span>
+                    <div className="block-metric-row">
+                      <span className="block-metric-label">Vacancy Rate</span>
                       <span
-                        style={{
-                          fontWeight: 700,
-                          color: fallbackStats.vacancyRate === '0%' ? '#EF4444' : '#10B981',
-                        }}
+                        className={`block-metric-value ${
+                          vacancyRate === '0%' ? 'vacancy-red' : 'vacancy-green'
+                        }`}
                       >
-                        {fallbackStats.vacancyRate}
+                        {vacancyRate}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Footer Operational Controls */}
-                <div
-                  style={{
-                    marginTop: '1.25rem',
-                    paddingTop: '0.75rem',
-                    borderTop: '1px solid #F1F5F9',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
+                {/* Card Action Buttons matching screenshot */}
+                <div className="block-card-action-footer">
                   <button
                     type="button"
-                    onClick={() => handleToggleStatus(block)}
-                    style={{
-                      padding: '4px 10px',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      borderRadius: '6px',
-                      border: '1px solid #CBD5E1',
-                      backgroundColor: '#FFFFFF',
-                      color: isActive ? '#DC2626' : '#16A34A',
-                      cursor: 'pointer',
-                    }}
+                    onClick={() => handleOpenEdit(block)}
+                    className="block-action-btn-item edit"
+                    title={`Edit ${block.name}`}
+                    aria-label={`Edit ${block.name}`}
                   >
-                    {isActive ? 'Deactivate' : 'Activate'}
+                    <Edit2 size={12} />
+                    <span>Edit</span>
                   </button>
-
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEdit(block)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        padding: '4px 8px',
-                        fontSize: '0.75rem',
-                        fontWeight: 500,
-                        borderRadius: '6px',
-                        border: '1px solid #E2E8F0',
-                        backgroundColor: '#F8FAFC',
-                        color: '#334155',
-                        cursor: 'pointer',
-                      }}
-                      title="Edit block information"
-                    >
-                      <Edit2 size={12} />
-                      <span>Edit</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenDelete(block)}
-                      style={{
-                        padding: '4px 8px',
-                        fontSize: '0.75rem',
-                        borderRadius: '6px',
-                        border: '1px solid #FEE2E2',
-                        backgroundColor: '#FEF2F2',
-                        color: '#DC2626',
-                        cursor: 'pointer',
-                      }}
-                      title="Delete block"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDelete(block)}
+                    className="block-action-btn-item delete"
+                    title={`Delete ${block.name}`}
+                    aria-label={`Delete ${block.name}`}
+                  >
+                    <Trash2 size={12} />
+                    <span>Delete</span>
+                  </button>
                 </div>
               </div>
             );
@@ -706,7 +562,7 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
       )}
 
       {/* =========================================================================
-          CREATE / EDIT MODAL
+          CREATE / EDIT BLOCK MODAL
           ========================================================================= */}
       {isFormModalOpen && (
         <div className="mgmt-modal-backdrop" onClick={() => !isSubmitting && setIsFormModalOpen(false)}>
@@ -722,8 +578,8 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
                   </h3>
                   <p className="mgmt-modal-sub">
                     {editingBlock
-                      ? 'Update structural and operational metadata for this block.'
-                      : 'Configure a new residential facility for room allocation.'}
+                      ? 'Update structural details and operational status.'
+                      : 'Configure a new residential facility for rooms and allocations.'}
                   </p>
                 </div>
               </div>
@@ -754,7 +610,7 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
                     id="block-name"
                     type="text"
                     required
-                    placeholder="e.g. Girls-Block-B, South-Wing-A"
+                    placeholder="e.g. Boys-Block-E, Girls-Block-C"
                     className="form-field-input"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -770,12 +626,12 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
                     id="block-code"
                     type="text"
                     required
-                    placeholder="e.g. GB-B, SW-A, BH-01"
+                    placeholder="e.g. BB-E, GB-C, WW-01"
                     className="form-field-input code-input"
                     value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                   />
-                  <span className="form-field-hint">A unique uppercase abbreviation used for room tagging.</span>
+                  <span className="form-field-hint">Unique uppercase abbreviation used for room indexing.</span>
                 </div>
 
                 <div className="form-field-group">
@@ -785,7 +641,7 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
                   <textarea
                     id="block-desc"
                     rows={3}
-                    placeholder="Specify floor layout, wing details, or residential capacity notes..."
+                    placeholder="Optional details on wing layout, amenities, or residential zone..."
                     className="form-field-textarea"
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -821,7 +677,7 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
                       <div className="radio-indicator" />
                       <div className="radio-text">
                         <span className="radio-title">Inactive</span>
-                        <span className="radio-desc">Maintenance or temporarily closed</span>
+                        <span className="radio-desc">Under maintenance or closed</span>
                       </div>
                     </label>
                   </div>
@@ -837,7 +693,7 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary" disabled={isSubmitting}>
+                <button type="submit" className="btn-primary" disabled={isSubmitting} id="block-submit-btn">
                   {isSubmitting ? (
                     <>
                       <RotateCw size={14} className="spin-anim" />
@@ -884,12 +740,12 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
                 <div className="delete-warning-text">
                   <p>
                     Are you sure you want to delete this hostel block record? This action will permanently remove
-                    the block definition from PostgreSQL.
+                    the block from PostgreSQL.
                   </p>
                   <p className="dependency-safety-note">
                     <Info size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} />
-                    The system enforces strict dependency checks. If any students or rooms are associated with this
-                    block, deletion will be rejected to protect data integrity.
+                    Strict relational dependency checks are enforced. If any students or rooms are associated with this
+                    block, deletion will be safely rejected.
                   </p>
                 </div>
               )}
@@ -909,6 +765,7 @@ export const BlockManagementPage: React.FC<BlockManagementPageProps> = () => {
                 <button
                   type="button"
                   className="btn-danger"
+                  id="confirm-delete-block-btn"
                   onClick={handleConfirmDelete}
                   disabled={isDeleting}
                 >

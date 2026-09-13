@@ -4028,6 +4028,11 @@ export interface Block {
   activeResidents?: number;
   totalRooms?: number;
   totalAllocations?: number;
+  totalCapacity?: number;
+  occupied?: number;
+  vacant?: number;
+  maintenance?: number;
+  vacancyRate?: string;
   createdAt: string;
   updatedAt: string;
 }

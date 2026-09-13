@@ -7142,6 +7142,62 @@ input[type="checkbox"] {
   font-weight: 700;
 }
 
+/* Responsive Management Header & Drawer Scroll Rules */
+@media (max-width: 768px) {
+  .management-header {
+    height: 60px !important;
+    padding: 0 1rem !important;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: #FFFFFF !important;
+    border-bottom: 1px solid #E2E8F0 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  }
+
+  .management-header .desktop-header-title {
+    display: none !important;
+  }
+
+  .management-header .desktop-header-control {
+    display: none !important;
+  }
+
+  .management-header .mobile-hamburger-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    margin-right: 0;
+    color: #1E293B;
+  }
+
+  .management-header .header-left-section {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .management-header .header-right-section {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .management-header .profile-text-desktop {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .management-sidebar.drawer-open .management-sidebar-nav {
+    overflow-y: auto !important;
+    flex: 1;
+    padding-bottom: 2.5rem !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 /* Management Dashboard View */
 .management-dashboard-view {
   display: flex;
@@ -7198,10 +7254,10 @@ input[type="checkbox"] {
 }
 
 .admin-summary-card {
-  background: #FFFFFF;
+  background: #F8FAFC;
   border: 1px solid #E2E8F0;
-  border-radius: 18px;
-  padding: 1.15rem 1.15rem;
+  border-radius: 20px;
+  padding: 1.2rem 1.15rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
   display: flex;
   flex-direction: column;
@@ -7233,9 +7289,9 @@ input[type="checkbox"] {
 }
 
 .summary-card-icon-wrap {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7335,14 +7391,14 @@ input[type="checkbox"] {
 .admin-module-card {
   background: #FFFFFF;
   border: 1px solid #E2E8F0;
-  border-radius: 18px;
+  border-radius: 20px;
   padding: 1.25rem 0.85rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  min-height: 108px;
+  min-height: 110px;
   transition: all 0.18s ease;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
   user-select: none;
@@ -7361,8 +7417,8 @@ input[type="checkbox"] {
 }
 
 .module-card-icon-wrap {
-  width: 48px;
-  height: 48px;
+  width: 50px;
+  height: 50px;
   border-radius: 14px;
   background: #F8FAFC;
   border: 1px solid #F1F5F9;
@@ -7389,8 +7445,12 @@ input[type="checkbox"] {
 }
 
 @media (max-width: 380px) {
+  .admin-summary-grid {
+    gap: 0.65rem;
+  }
   .admin-summary-card {
-    padding: 0.85rem 0.75rem;
+    padding: 0.95rem 0.75rem;
+    border-radius: 16px;
   }
   .summary-card-value {
     font-size: 1.55rem;
@@ -7401,13 +7461,17 @@ input[type="checkbox"] {
   .summary-card-status {
     font-size: 0.62rem;
   }
+  .admin-modules-grid {
+    gap: 0.65rem;
+  }
   .admin-module-card {
     padding: 1rem 0.5rem;
-    min-height: 96px;
+    min-height: 98px;
+    border-radius: 16px;
   }
   .module-card-icon-wrap {
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
   }
   .module-card-title {
     font-size: 0.78rem;
@@ -9515,7 +9579,7 @@ input[type="checkbox"] {
   }
 
   .block-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -18539,3 +18603,328 @@ input[type="checkbox"] {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   Admin Portal Step 2 — Block Management (Authoritative & Screenshot-Accurate)
+   ========================================================================== */
+
+.block-management-view {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0;
+  width: 100%;
+}
+
+/* Authoritative Responsive Grid: Desktop (multi-column) & Mobile (strictly 2 columns) */
+.block-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 1.25rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+  .block-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 1rem !important;
+  }
+}
+
+@media (max-width: 639px) {
+  .block-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.65rem !important;
+  }
+}
+
+/* Screenshot-Accurate Block Card */
+.campusstay-block-card {
+  position: relative;
+  background-color: #FFFFFF;
+  border-radius: 14px;
+  border: 1px solid #E2E8F0;
+  padding: 1.2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 2px 6px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.campusstay-block-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.07);
+  border-color: #CBD5E1;
+}
+
+/* Card Header: Name, Hostel Type & Status */
+.block-card-top-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.block-card-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.block-card-name-text {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0F172A;
+  margin: 0;
+  word-break: break-word;
+  line-height: 1.25;
+}
+
+.block-hostel-type-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2.5px 8px;
+  border-radius: 6px;
+  font-size: 0.725rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.block-hostel-type-badge.boys {
+  background-color: #EEF2FF;
+  color: #4338CA;
+  border: 1px solid #E0E7FF;
+}
+
+.block-hostel-type-badge.girls {
+  background-color: #FDF2F8;
+  color: #BE185D;
+  border: 1px solid #FCE7F3;
+}
+
+.block-card-status-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.block-status-pill-badge {
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 0.725rem;
+  font-weight: 700;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+
+.block-status-pill-badge.active {
+  background-color: #10B981;
+  color: #FFFFFF;
+}
+
+.block-status-pill-badge.inactive {
+  background-color: #F1F5F9;
+  color: #64748B;
+  border: 1px solid #E2E8F0;
+}
+
+/* Decorative Watermark Initial in Background */
+.block-decorative-watermark {
+  font-size: 2.45rem;
+  font-weight: 900;
+  color: #F1F5F9;
+  line-height: 1;
+  user-select: none;
+  pointer-events: none;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  z-index: 0;
+  opacity: 0.8;
+}
+
+/* Statistics Rows */
+.block-metrics-list {
+  margin-top: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.875rem;
+  position: relative;
+  z-index: 1;
+}
+
+.block-metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.block-metric-label {
+  color: #64748B;
+  font-size: 0.825rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.block-metric-value {
+  font-weight: 600;
+  color: #0F172A;
+  font-size: 0.85rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.block-metric-value.vacancy-red {
+  color: #EF4444;
+  font-weight: 700;
+}
+
+.block-metric-value.vacancy-green {
+  color: #10B981;
+  font-weight: 700;
+}
+
+/* Card Action Footer: Edit & Delete Buttons */
+.block-card-action-footer {
+  margin-top: 1.15rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #F1F5F9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.block-action-btn-item {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 10px;
+  font-size: 0.775rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 32px;
+  text-decoration: none;
+  border: 1px solid transparent;
+  user-select: none;
+}
+
+.block-action-btn-item.edit {
+  background-color: #F8FAFC;
+  border-color: #E2E8F0;
+  color: #334155;
+}
+
+.block-action-btn-item.edit:hover {
+  background-color: #F1F5F9;
+  border-color: #CBD5E1;
+  color: #0F172A;
+}
+
+.block-action-btn-item.delete {
+  background-color: #FEF2F2;
+  border-color: #FEE2E2;
+  color: #DC2626;
+}
+
+.block-action-btn-item.delete:hover {
+  background-color: #FEE2E2;
+  border-color: #FECACA;
+  color: #B91C1C;
+}
+
+/* Mobile Compact Optimization (320px - 480px) */
+@media (max-width: 480px) {
+  .campusstay-block-card {
+    padding: 0.8rem 0.65rem;
+    border-radius: 12px;
+  }
+
+  .block-card-name-text {
+    font-size: 0.88rem;
+  }
+
+  .block-hostel-type-badge {
+    font-size: 0.65rem;
+    padding: 1.5px 5px;
+  }
+
+  .block-status-pill-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+  }
+
+  .block-decorative-watermark {
+    font-size: 1.6rem;
+    right: 4px;
+    top: 4px;
+    opacity: 0.55;
+  }
+
+  .block-metrics-list {
+    margin-top: 0.85rem;
+    gap: 6px;
+  }
+
+  .block-metric-label {
+    font-size: 0.68rem;
+  }
+
+  .block-metric-value {
+    font-size: 0.72rem;
+  }
+
+  .block-card-action-footer {
+    margin-top: 0.85rem;
+    padding-top: 0.6rem;
+    gap: 5px;
+  }
+
+  .block-action-btn-item {
+    font-size: 0.7rem;
+    padding: 5px 3px;
+    min-height: 28px;
+    gap: 3px;
+  }
+}
+
+@media (max-width: 360px) {
+  .campusstay-block-card {
+    padding: 0.65rem 0.5rem;
+  }
+
+  .block-card-name-text {
+    font-size: 0.82rem;
+  }
+
+  .block-metric-label {
+    font-size: 0.64rem;
+  }
+
+  .block-metric-value {
+    font-size: 0.68rem;
+  }
+
+  .block-action-btn-item {
+    font-size: 0.65rem;
+    padding: 4px 2px;
+  }
+}
+

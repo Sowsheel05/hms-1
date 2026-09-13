@@ -310,6 +310,107 @@ async function runTests() {
     });
   });
 
+  // 16. Authoritative statistics calculation from PostgreSQL Room and Allocation models
+  await test('16. Authoritative statistics (totalCapacity, occupied, vacant, maintenance, vacancyRate) calculated from DB', async () => {
+    const res = await getJson('/management/blocks', wardenToken);
+    assert.strictEqual(res.status, 200);
+    assert(Array.isArray(res.data.blocks));
+
+    for (const b of res.data.blocks) {
+      assert(typeof b.totalCapacity === 'number', 'totalCapacity must be a number');
+      assert(typeof b.occupied === 'number', 'occupied must be a number');
+      assert(typeof b.vacant === 'number', 'vacant must be a number');
+      assert(typeof b.maintenance === 'number', 'maintenance must be a number');
+      assert(typeof b.vacancyRate === 'string', 'vacancyRate must be a string formatted with %');
+      assert(b.vacancyRate.endsWith('%'), 'vacancyRate must end with %');
+
+      // Verify formula: vacant = total capacity - occupied - maintenance (bounded >= 0)
+      const expectedVacant = Math.max(0, b.totalCapacity - b.occupied - b.maintenance);
+      assert.strictEqual(b.vacant, expectedVacant, `Vacant calculation mismatch for block ${b.name}`);
+    }
+  });
+
+  // 17. Admin account RBAC authentication and management
+  let adminToken = '';
+  await test('17. Admin account (ADMIN01) authenticates and has full Block Management authorization', async () => {
+    const loginRes = await postJson('/management/auth/login', {
+      username: 'ADMIN01',
+      password: 'Password@123',
+    });
+    assert.strictEqual(loginRes.status, 200);
+    assert(loginRes.data.token);
+    adminToken = loginRes.data.token;
+
+    const res = await getJson('/management/blocks', adminToken);
+    assert.strictEqual(res.status, 200);
+    assert(res.data.blocks.length >= 1);
+  });
+
+  // 18. Room dependency protection blocks deletion even if student count is 0
+  await test('18. Deleting block with configured rooms is rejected with 409 Conflict', async () => {
+    // Boys-Block-A has room 201 with 0 student allocations
+    const bbA = await prisma.block.findUnique({
+      where: { code: 'BB-A' },
+      include: { rooms: true },
+    });
+    assert(bbA, 'Boys-Block-A must exist');
+    assert(bbA.rooms.length > 0, 'Boys-Block-A must have at least 1 room configured');
+
+    const delRes = await deleteJson(`/management/blocks/${bbA.id}`, adminToken);
+    assert.strictEqual(delRes.status, 409, 'Must return 409 Conflict when rooms exist');
+    assert.strictEqual(delRes.data.success, false);
+    assert.match(delRes.data.message, /room/i);
+    assert(delRes.data.dependentRoomCount >= 1);
+  });
+
+  // 19. Attempted deletion audit logging
+  await test('19. Blocked deletion attempts are recorded in ActivityLog', async () => {
+    const attemptedLog = await prisma.activityLog.findFirst({
+      where: {
+        actionType: 'BLOCK_MANAGEMENT',
+        description: { contains: 'Blocked deletion' },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    assert(attemptedLog, 'ActivityLog must record blocked deletion attempt');
+  });
+
+  // 20. Admin transactional creation, update, and clean deletion lifecycle
+  await test('20. Complete Admin lifecycle: create block, verify stats, update, and safely delete', async () => {
+    const testCode = `ADM-${Date.now().toString(36).toUpperCase()}`;
+    const createRes = await postJson(
+      '/management/blocks',
+      {
+        name: 'Admin Experimental Block',
+        code: testCode,
+        description: 'Temporary block for Admin lifecycle test',
+        status: 'ACTIVE',
+      },
+      adminToken
+    );
+    assert.strictEqual(createRes.status, 201);
+    const newId = createRes.data.block.id;
+    assert.strictEqual(createRes.data.block.totalCapacity, 0);
+    assert.strictEqual(createRes.data.block.occupied, 0);
+    assert.strictEqual(createRes.data.block.vacant, 0);
+    assert.strictEqual(createRes.data.block.vacancyRate, '0%');
+
+    // Update
+    const updateRes = await putJson(
+      `/management/blocks/${newId}`,
+      { name: 'Admin Experimental Block Updated', status: 'INACTIVE' },
+      adminToken
+    );
+    assert.strictEqual(updateRes.status, 200);
+    assert.strictEqual(updateRes.data.block.name, 'Admin Experimental Block Updated');
+    assert.strictEqual(updateRes.data.block.status, 'INACTIVE');
+
+    // Clean delete
+    const delRes = await deleteJson(`/management/blocks/${newId}`, adminToken);
+    assert.strictEqual(delRes.status, 200);
+    assert.strictEqual(delRes.data.deletedId, newId);
+  });
+
   await prisma.$disconnect();
 
   console.log(`\n====================================================`);

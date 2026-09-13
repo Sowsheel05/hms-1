@@ -105,7 +105,7 @@ export const ManagementHeader: React.FC<ManagementHeaderProps> = ({
           <Menu size={22} />
         </button>
 
-        <div className="header-title-wrapper">
+        <div className="header-title-wrapper desktop-header-title">
           <h1 className="header-page-title">{pageTitle}</h1>
           <p className="header-page-subtitle">{pageSubtitle}</p>
         </div>
@@ -114,7 +114,7 @@ export const ManagementHeader: React.FC<ManagementHeaderProps> = ({
       <div className="header-right-section">
         {/* Real-time SSE Pulse Badge */}
         <div
-          className={`realtime-badge ${isRealtimeConnected ? 'connected' : 'disconnected'}`}
+          className={`realtime-badge desktop-header-control ${isRealtimeConnected ? 'connected' : 'disconnected'}`}
           title={isRealtimeConnected ? 'Authoritative real-time SSE stream connected' : 'Connecting to real-time events...'}
         >
           <Radio size={13} className={isRealtimeConnected ? 'pulse-icon' : ''} />
@@ -127,7 +127,7 @@ export const ManagementHeader: React.FC<ManagementHeaderProps> = ({
             type="button"
             onClick={onRefresh}
             disabled={isRefreshing}
-            className="sync-btn"
+            className="sync-btn desktop-header-control"
             title="Refresh dashboard metrics from PostgreSQL"
             aria-label="Refresh metrics"
           >
