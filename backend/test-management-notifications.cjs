@@ -81,7 +81,7 @@ async function runAdminNotificationsSuite() {
   let sampleStudent = null;
   let sampleStudentB = null;
   let createdNotificationId = '';
-  const testRunTag = `TEST-${Date.now().toString().slice(-4)}`;
+  const testRunTag = `TEST-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
   // Find sample students
   sampleStudent = await prisma.student.findFirst({ where: { jntuNo: '25331A05H7' } });
