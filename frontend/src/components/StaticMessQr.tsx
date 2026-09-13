@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
-import { QrCode, ShieldCheck, Maximize2, X, Info, UtensilsCrossed, CheckCircle2 } from 'lucide-react';
+import { QrCode, ShieldCheck, Maximize2, X, Info, UtensilsCrossed } from 'lucide-react';
 
 export const STATIC_MESS_QR_PAYLOAD = 'HMS_MESS_ENTRY';
 export const STATIC_MESS_ENTRY_POINT = '/mess/verify';
@@ -154,7 +154,6 @@ interface StaticMessQrModalProps {
  */
 export const StaticMessQrModal: React.FC<StaticMessQrModalProps> = ({
   payload = STATIC_MESS_QR_PAYLOAD,
-  entryPoint = STATIC_MESS_ENTRY_POINT,
   onClose,
 }) => {
   const [modalQrUrl, setModalQrUrl] = useState<string>('');
@@ -237,28 +236,6 @@ export const StaticMessQrModal: React.FC<StaticMessQrModalProps> = ({
                   <QrCode size={64} className="qr-spin-placeholder" />
                 </div>
               )}
-            </div>
-            <div className="qr-stage-tag">
-              <CheckCircle2 size={13} />
-              <span>PERMANENT STATIC ENTRY POINT</span>
-            </div>
-          </div>
-
-          <div className="mess-qr-modal-alert">
-            <Info size={16} className="modal-alert-icon" />
-            <div className="modal-alert-text">
-              <strong>Server-Authoritative Check:</strong> Your current Mess indent is checked during verification. This QR code acts as the permanent verification gateway and contains no private credentials.
-            </div>
-          </div>
-
-          <div className="mess-qr-meta-row">
-            <div className="qr-meta-item">
-              <span className="qr-meta-lbl">TARGET SYSTEM</span>
-              <span className="qr-meta-val">HMS Mess Verification</span>
-            </div>
-            <div className="qr-meta-item">
-              <span className="qr-meta-lbl">ENTRY POINT</span>
-              <span className="qr-meta-val"><code>{entryPoint}</code></span>
             </div>
           </div>
         </div>
