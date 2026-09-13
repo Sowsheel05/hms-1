@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import {
   LayoutDashboard,
-  Fingerprint,
   Bed,
   UtensilsCrossed,
   Footprints,
@@ -23,7 +22,6 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { id: 'biometric', label: 'Biometric Tracking', path: '/biometric', icon: Fingerprint },
   { id: 'room', label: 'My Room', path: '/my-room', icon: Bed },
   { id: 'mess', label: 'Mess Tokens', path: '/mess-tokens', icon: UtensilsCrossed },
   { id: 'outings', label: 'Outing Requests', path: '/outing-requests', icon: Footprints },

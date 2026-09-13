@@ -5,7 +5,7 @@ import {
   Utensils,
   Calendar,
   Footprints,
-  Fingerprint,
+  FileText,
   AlertCircle,
   ArrowRight,
   RefreshCw,
@@ -284,13 +284,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
 
           <button
             type="button"
-            onClick={() => onNavigate('/biometric')}
-            className="btn-quick-action action-biometric"
+            onClick={() => onNavigate('/leaves')}
+            className="btn-quick-action action-leaves"
           >
             <div className="action-icon-wrap">
-              <Fingerprint size={22} />
+              <FileText size={22} />
             </div>
-            <span className="action-title">Biometric</span>
+            <span className="action-title">Leaves</span>
           </button>
 
           <button

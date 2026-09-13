@@ -9,7 +9,6 @@ import { OutingRequestsPage } from './pages/OutingRequestsPage';
 import { ComplaintsPage } from './pages/ComplaintsPage';
 import { LeavesPage } from './pages/LeavesPage';
 import { NotificationsPage } from './pages/NotificationsPage';
-import { BiometricPage } from './pages/BiometricPage';
 import { Sidebar } from './components/Sidebar';
 import { DashboardHeader } from './components/DashboardHeader';
 import { PlaceholderModule } from './components/PlaceholderModule';
@@ -80,7 +79,6 @@ const AuthenticatedApp: React.FC<{
 
   const getPageTitle = (path: string) => {
     if (path === '/dashboard') return 'Dashboard';
-    if (path === '/biometric') return 'Biometric Tracking';
     if (path === '/my-room') return 'My Room';
     if (path === '/mess-tokens') return 'Mess Tokens';
     if (path === '/outing-requests') return 'Outing Requests';
@@ -145,10 +143,6 @@ const AuthenticatedApp: React.FC<{
             />
           )}
 
-          {currentPath === '/biometric' && (
-            <BiometricPage />
-          )}
-
           {isKnownPlaceholderRoute && (
             <PlaceholderModule
               moduleName={ROUTE_MODULE_NAMES[currentPath]}
@@ -158,7 +152,6 @@ const AuthenticatedApp: React.FC<{
 
           {!isKnownPlaceholderRoute &&
             currentPath !== '/dashboard' &&
-            currentPath !== '/biometric' &&
             currentPath !== '/my-room' &&
             currentPath !== '/mess-tokens' &&
             currentPath !== '/outing-requests' &&
