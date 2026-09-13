@@ -38,6 +38,7 @@ const suites = [
   { name: 'Outing Management (Step 5)', script: 'test-admin-outing-management-step5-api.cjs', expected: 18 },
   { name: 'Leaves & Suspension (Step 6)', script: 'test-admin-leaves-suspension-step6-api.cjs', expected: 20 },
   { name: 'Complaints Mgmt (Step 7)', script: 'test-admin-complaints-maintenance-step7-api.cjs', expected: 26 },
+  { name: 'Guest Billing (Step 8)', script: 'test-admin-guest-billing-step8-api.cjs', expected: 36 },
 ];
 
 console.log('====================================================');

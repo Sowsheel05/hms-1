@@ -297,7 +297,7 @@ async function runTests() {
 
     // 19. SUSPENSION MANAGEMENT: Create Disciplinary Suspension
     console.log('[TEST 19] Enforcing hostel suspension for student via /management/suspensions...');
-    const suspStart = new Date();
+    const suspStart = new Date(Date.now() - 60000); // 1 min in past so startDate <= now is guaranteed
     const suspEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days suspension
     const createSuspRes = await fetch(`${BASE_URL}/management/suspensions`, {
       method: 'POST',
