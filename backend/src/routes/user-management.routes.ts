@@ -8,6 +8,7 @@ import {
 } from '../middleware/management.middleware';
 import { auditService } from '../services/audit.service';
 import { complaintEventsService } from '../services/events.service';
+import { notificationService } from '../services/notification.service';
 
 export const userManagementRouter = Router();
 
@@ -150,6 +151,8 @@ userManagementRouter.get('/', async (req: AuthenticatedManagementRequest, res: R
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
     const roleFilter = typeof req.query.role === 'string' ? req.query.role.trim() : '';
     const statusFilter = typeof req.query.status === 'string' ? req.query.status.trim().toUpperCase() : '';
+    const blockFilter = typeof req.query.block === 'string' ? req.query.block.trim() : (typeof req.query.blockName === 'string' ? req.query.blockName.trim() : '');
+    const academicFilter = typeof req.query.academicYear === 'string' ? req.query.academicYear.trim() : (typeof req.query.branch === 'string' ? req.query.branch.trim() : '');
 
     const where: any = {};
 
@@ -165,6 +168,14 @@ userManagementRouter.get('/', async (req: AuthenticatedManagementRequest, res: R
       where.isActive = true;
     } else if (statusFilter === 'DISABLED' || statusFilter === 'INACTIVE') {
       where.isActive = false;
+    }
+
+    if (blockFilter && blockFilter !== 'ALL') {
+      where.blockName = { contains: blockFilter, mode: 'insensitive' };
+    }
+
+    if (academicFilter && academicFilter !== 'ALL') {
+      where.jntuNo = { contains: academicFilter, mode: 'insensitive' };
     }
 
     if (search) {
@@ -385,6 +396,20 @@ userManagementRouter.post('/', async (req: AuthenticatedManagementRequest, res: 
         },
       });
 
+      // Welcome notification to new user
+      await notificationService.createNotification(
+        {
+          studentId: newUser.id,
+          title: 'Welcome to Hostel Portal',
+          message: `Your account (${newUser.jntuNo}) has been created with role ${newUser.role}.`,
+          type: 'SUCCESS',
+          category: 'SYSTEM',
+          priority: 'NORMAL',
+          createdBy: requester.jntuNo,
+        },
+        tx
+      );
+
       return newUser;
     });
 
@@ -406,6 +431,13 @@ userManagementRouter.post('/', async (req: AuthenticatedManagementRequest, res: 
       user: sanitizeUser(result),
     });
   } catch (error: any) {
+    if (error.code === 'P2002') {
+      res.status(409).json({
+        success: false,
+        message: 'A user account with this identifier or email already exists.',
+      });
+      return;
+    }
     console.error('Error creating user account:', error);
     res.status(500).json({ success: false, message: 'Failed to create user account.', error: error.message });
   }
@@ -533,6 +565,21 @@ userManagementRouter.put('/:id', async (req: AuthenticatedManagementRequest, res
         },
       });
 
+      if (isRoleChange) {
+        await notificationService.createNotification(
+          {
+            studentId: updated.id,
+            title: 'Account Role Updated',
+            message: `Your account role has been updated from ${oldRole} to ${updated.role} by administration.`,
+            type: 'INFO',
+            category: 'SYSTEM',
+            priority: 'HIGH',
+            createdBy: requester.jntuNo,
+          },
+          tx
+        );
+      }
+
       return updated;
     });
 
@@ -555,6 +602,10 @@ userManagementRouter.put('/:id', async (req: AuthenticatedManagementRequest, res
       user: sanitizeUser(result),
     });
   } catch (error: any) {
+    if (error.code === 'P2002') {
+      res.status(409).json({ success: false, message: 'Email address is already in use.' });
+      return;
+    }
     console.error('Error updating user:', error);
     res.status(500).json({ success: false, message: 'Failed to update user account.', error: error.message });
   }
@@ -643,6 +694,20 @@ userManagementRouter.post('/:id/disable', async (req: AuthenticatedManagementReq
         },
       });
 
+      // Notification to affected user
+      await notificationService.createNotification(
+        {
+          studentId: updated.id,
+          title: 'Account Deactivated',
+          message: `Your account has been deactivated by administration. Reason: ${reason || 'Administrative action'}`,
+          type: 'WARNING',
+          category: 'SYSTEM',
+          priority: 'URGENT',
+          createdBy: requester.jntuNo,
+        },
+        tx
+      );
+
       return updated;
     });
 
@@ -719,6 +784,20 @@ userManagementRouter.post('/:id/enable', async (req: AuthenticatedManagementRequ
           }),
         },
       });
+
+      // Notification to restored user
+      await notificationService.createNotification(
+        {
+          studentId: updated.id,
+          title: 'Account Reactivated',
+          message: 'Your hostel account has been restored and activated.',
+          type: 'SUCCESS',
+          category: 'SYSTEM',
+          priority: 'NORMAL',
+          createdBy: requester.jntuNo,
+        },
+        tx
+      );
 
       return updated;
     });
@@ -815,6 +894,20 @@ userManagementRouter.post('/:id/reset-password', async (req: AuthenticatedManage
           }),
         },
       });
+
+      // Notification to user
+      await notificationService.createNotification(
+        {
+          studentId: target.id,
+          title: 'Security Alert: Password Reset',
+          message: 'Your account password has been reset by administration. All active sessions have been terminated.',
+          type: 'WARNING',
+          category: 'SYSTEM',
+          priority: 'URGENT',
+          createdBy: requester.jntuNo,
+        },
+        tx
+      );
     });
 
     // Real-time SSE post-commit

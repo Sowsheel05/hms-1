@@ -17271,6 +17271,7 @@ input[type="checkbox"] {
 
 .user-data-table {
   width: 100%;
+  min-width: 980px;
   border-collapse: collapse;
   font-size: 0.85rem;
   text-align: left;
@@ -17433,6 +17434,8 @@ input[type="checkbox"] {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  min-width: 140px;
+  justify-content: flex-end;
 }
 
 .user-action-btn {

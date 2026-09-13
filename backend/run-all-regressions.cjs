@@ -40,6 +40,7 @@ const suites = [
   { name: 'Complaints Mgmt (Step 7)', script: 'test-admin-complaints-maintenance-step7-api.cjs', expected: 26 },
   { name: 'Guest Billing (Step 8)', script: 'test-admin-guest-billing-step8-api.cjs', expected: 36 },
   { name: 'Log History (Step 9)', script: 'test-admin-log-history-step9-api.cjs', expected: 26 },
+  { name: 'User Management (Step 10)', script: 'test-admin-user-management-step10-api.cjs', expected: 34 },
 ];
 
 console.log('====================================================');
