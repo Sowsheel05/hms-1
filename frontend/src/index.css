@@ -20658,6 +20658,141 @@ input[type="checkbox"] {
   }
 }
 
+.modal-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-right: auto;
+}
+
+/* ==========================================================================
+   CARDS GRID & CARDS VIEW FOR LEAVES & SUSPENSIONS
+   ========================================================================== */
+
+.leaves-cards-grid,
+.susp-cards-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.leave-request-card,
+.suspension-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.leave-request-card:hover,
+.suspension-card:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  border-color: #CBD5E1;
+}
+
+.leave-request-card.card-pending {
+  border-left: 4px solid #D97706;
+  background: #FFFDF9;
+}
+
+.leave-request-card.card-active {
+  border-left: 4px solid #059669;
+}
+
+.leave-request-card.card-rejected {
+  border-left: 4px solid #DC2626;
+}
+
+.suspension-card.card-active-susp {
+  border-left: 4px solid #DC2626;
+  background: #FFFBFB;
+}
+
+.suspension-card.card-lifted-susp {
+  border-left: 4px solid #059669;
+}
+
+.suspension-card.card-expired-susp {
+  border-left: 4px solid #94A3B8;
+}
+
+.card-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding-top: 0.6rem;
+  border-top: 1px solid #F1F5F9;
+}
+
+.card-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+.card-action-btn.view-act {
+  background: #F1F5F9;
+  color: #334155;
+  border-color: #E2E8F0;
+}
+.card-action-btn.view-act:hover {
+  background: #E2E8F0;
+  color: #0F172A;
+}
+
+.card-action-btn.approve-act {
+  background: #151B54;
+  color: #FFFFFF;
+}
+.card-action-btn.approve-act:hover {
+  background: #1e2570;
+}
+
+.card-action-btn.reject-act {
+  background: #FEF2F2;
+  color: #DC2626;
+  border-color: #FECACA;
+}
+.card-action-btn.reject-act:hover {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+.card-action-btn.lift-act {
+  background: #ECFDF5;
+  color: #059669;
+  border-color: #A7F3D0;
+}
+.card-action-btn.lift-act:hover {
+  background: #D1FAE5;
+  color: #047857;
+}
+
+.card-action-btn.edit-act {
+  background: #EFF6FF;
+  color: #2563EB;
+  border-color: #BFDBFE;
+}
+.card-action-btn.edit-act:hover {
+  background: #DBEAFE;
+}
+
 /* ==========================================================================
    HMS ADMIN STEP 5 — OUTING REQUESTS CARD VIEW & RESPONSIVE DESIGN
    ========================================================================== */

@@ -36,6 +36,7 @@ const suites = [
   { name: 'Room Allocation (Step 3)', script: 'test-room-allocation-step3-api.cjs', expected: 21 },
   { name: 'Mess Management (Step 4)', script: 'test-mess-management-step4-api.cjs', expected: 18 },
   { name: 'Outing Management (Step 5)', script: 'test-admin-outing-management-step5-api.cjs', expected: 18 },
+  { name: 'Leaves & Suspension (Step 6)', script: 'test-admin-leaves-suspension-step6-api.cjs', expected: 20 },
 ];
 
 console.log('====================================================');
@@ -56,6 +57,7 @@ for (const suite of suites) {
       output.match(/Passed:\s*(\d+)/i) ||
       output.match(/TEST RESULTS:\s*(\d+)\s*PASSED/i) ||
       output.match(/RESULTS:\s*(\d+)\s*PASSED/i) ||
+      output.match(/STEP 6 TEST SUMMARY:\s*(\d+)\s*PASSED/i) ||
       output.match(/(\d+)\/(\d+)\s*tests passed/i) ||
       output.match(/SUITE:\s*(\d+)\/(\d+)\s*TESTS PASSED/i) ||
       output.match(/COMPLETE:\s*(\d+)\/(\d+)\s*TESTS PASSED/i) ||

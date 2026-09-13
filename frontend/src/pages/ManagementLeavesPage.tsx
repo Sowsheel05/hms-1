@@ -23,6 +23,10 @@ import {
   PlusCircle,
   Unlock,
   AlertCircle,
+  Building,
+  LayoutGrid,
+  List,
+  Edit2,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -41,6 +45,9 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
   // Active Navigation Tab
   const [activeTab, setActiveTab] = useState<'leaves' | 'suspensions'>('leaves');
 
+  // Authoritative View Mode (Cards / Table)
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+
   // Statistics State
   const [stats, setStats] = useState<LeaveStats | null>(null);
   const [isStatsLoading, setIsStatsLoading] = useState<boolean>(true);
@@ -55,6 +62,8 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
   const [leaveCategoryFilter, setLeaveCategoryFilter] = useState<string>('ALL');
   const [leaveSearchTerm, setLeaveSearchTerm] = useState<string>('');
   const [leaveBlockFilter, setLeaveBlockFilter] = useState<string>('ALL');
+  const [leaveGenderFilter, setLeaveGenderFilter] = useState<string>('ALL');
+  const [leaveYearFilter, setLeaveYearFilter] = useState<string>('ALL');
   const [leaveDateFilter, setLeaveDateFilter] = useState<string>('');
 
   // Suspensions State
@@ -65,6 +74,9 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
   // Suspension Filters
   const [suspStatusFilter, setSuspStatusFilter] = useState<string>('ALL');
   const [suspSearchTerm, setSuspSearchTerm] = useState<string>('');
+  const [suspBlockFilter, setSuspBlockFilter] = useState<string>('ALL');
+  const [suspGenderFilter, setSuspGenderFilter] = useState<string>('ALL');
+  const [suspYearFilter, setSuspYearFilter] = useState<string>('ALL');
 
   // Blocks for filter
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -103,6 +115,14 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
   const [newSuspRemarks, setNewSuspRemarks] = useState<string>('');
   const [createSuspError, setCreateSuspError] = useState<string>('');
   const [isSubmittingSusp, setIsSubmittingSusp] = useState<boolean>(false);
+
+  // Modals: Edit Suspension
+  const [editingSuspension, setEditingSuspension] = useState<ManagementSuspensionItem | null>(null);
+  const [editSuspReason, setEditSuspReason] = useState<string>('');
+  const [editSuspEndDate, setEditSuspEndDate] = useState<string>('');
+  const [editSuspRemarks, setEditSuspRemarks] = useState<string>('');
+  const [editSuspError, setEditSuspError] = useState<string>('');
+  const [isSubmittingEditSusp, setIsSubmittingEditSusp] = useState<boolean>(false);
 
   // Modals: Lift / End Suspension
   const [endingSuspension, setEndingSuspension] = useState<ManagementSuspensionItem | null>(null);
@@ -154,11 +174,13 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
       if (!silent) setIsLeavesLoading(true);
       try {
         const res = await managementApiService.getLeaves({
-          status: leaveStatusFilter,
-          category: leaveCategoryFilter,
-          search: leaveSearchTerm,
-          blockId: leaveBlockFilter,
-          date: leaveDateFilter,
+          status: leaveStatusFilter !== 'ALL' ? leaveStatusFilter : undefined,
+          category: leaveCategoryFilter !== 'ALL' ? leaveCategoryFilter : undefined,
+          search: leaveSearchTerm.trim() || undefined,
+          blockId: leaveBlockFilter !== 'ALL' ? leaveBlockFilter : undefined,
+          gender: leaveGenderFilter !== 'ALL' ? leaveGenderFilter : undefined,
+          year: leaveYearFilter !== 'ALL' ? leaveYearFilter : undefined,
+          date: leaveDateFilter || undefined,
           page,
           limit: 10,
         });
@@ -180,7 +202,7 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
         if (!silent) setIsLeavesLoading(false);
       }
     },
-    [leaveStatusFilter, leaveCategoryFilter, leaveSearchTerm, leaveBlockFilter, leaveDateFilter]
+    [leaveStatusFilter, leaveCategoryFilter, leaveSearchTerm, leaveBlockFilter, leaveGenderFilter, leaveYearFilter, leaveDateFilter]
   );
 
   // Fetch Suspensions List
@@ -189,8 +211,11 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
       if (!silent) setIsSuspensionsLoading(true);
       try {
         const res = await managementApiService.getSuspensions({
-          status: suspStatusFilter,
-          search: suspSearchTerm,
+          status: suspStatusFilter !== 'ALL' ? suspStatusFilter : undefined,
+          search: suspSearchTerm.trim() || undefined,
+          blockId: suspBlockFilter !== 'ALL' ? suspBlockFilter : undefined,
+          gender: suspGenderFilter !== 'ALL' ? suspGenderFilter : undefined,
+          year: suspYearFilter !== 'ALL' ? suspYearFilter : undefined,
           page,
           limit: 10,
         });
@@ -212,7 +237,7 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
         if (!silent) setIsSuspensionsLoading(false);
       }
     },
-    [suspStatusFilter, suspSearchTerm]
+    [suspStatusFilter, suspSearchTerm, suspBlockFilter, suspGenderFilter, suspYearFilter]
   );
 
   // Initial Data Fetch
@@ -403,6 +428,43 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
       setToastMessage({ type: 'error', text: err.message || 'Failed to lift suspension.' });
     } finally {
       setIsSubmittingEndSusp(false);
+    }
+  };
+
+  // Confirm Edit Suspension
+  const handleConfirmEditSuspension = async () => {
+    if (!editingSuspension) return;
+    if (!editSuspReason || editSuspReason.trim().length < 5) {
+      setEditSuspError('Reason must be at least 5 characters.');
+      return;
+    }
+    if (!editSuspEndDate) {
+      setEditSuspError('End date is required.');
+      return;
+    }
+    if (new Date(editSuspEndDate) <= new Date(editingSuspension.startDate)) {
+      setEditSuspError('End date must be strictly after start date.');
+      return;
+    }
+
+    setIsSubmittingEditSusp(true);
+    try {
+      const res = await managementApiService.updateSuspension(editingSuspension.id, {
+        reason: editSuspReason.trim(),
+        endDate: new Date(editSuspEndDate).toISOString(),
+        remarks: editSuspRemarks.trim() || undefined,
+      });
+      setToastMessage({
+        type: 'success',
+        text: res.message || 'Disciplinary suspension updated successfully.',
+      });
+      setEditingSuspension(null);
+      fetchStats(true);
+      fetchSuspensions(suspPagination.page, true);
+    } catch (err: any) {
+      setEditSuspError(err.message || 'Failed to update suspension.');
+    } finally {
+      setIsSubmittingEditSusp(false);
     }
   };
 
@@ -787,6 +849,38 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
                 </select>
               </div>
 
+              {/* Gender / Hostel Filter */}
+              <div className="filter-select-group">
+                <label htmlFor="leave-gender-select" className="filter-label">Hostel:</label>
+                <select
+                  id="leave-gender-select"
+                  value={leaveGenderFilter}
+                  onChange={(e) => setLeaveGenderFilter(e.target.value)}
+                  className="leaves-select"
+                >
+                  <option value="ALL">All Hostels</option>
+                  <option value="BOYS">Boys Hostel</option>
+                  <option value="GIRLS">Girls Hostel</option>
+                </select>
+              </div>
+
+              {/* Academic Year Filter */}
+              <div className="filter-select-group">
+                <label htmlFor="leave-year-select" className="filter-label">Year:</label>
+                <select
+                  id="leave-year-select"
+                  value={leaveYearFilter}
+                  onChange={(e) => setLeaveYearFilter(e.target.value)}
+                  className="leaves-select"
+                >
+                  <option value="ALL">All Years</option>
+                  <option value="1">1st Year</option>
+                  <option value="2">2nd Year</option>
+                  <option value="3">3rd Year</option>
+                  <option value="4">4th Year</option>
+                </select>
+              </div>
+
               {/* Date Filter */}
               <div className="filter-select-group">
                 <label htmlFor="leave-date-select" className="filter-label">Date:</label>
@@ -804,6 +898,8 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
                 leaveCategoryFilter !== 'ALL' ||
                 leaveSearchTerm !== '' ||
                 leaveBlockFilter !== 'ALL' ||
+                leaveGenderFilter !== 'ALL' ||
+                leaveYearFilter !== 'ALL' ||
                 leaveDateFilter !== '') && (
                 <button
                   type="button"
@@ -813,16 +909,40 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
                     setLeaveCategoryFilter('ALL');
                     setLeaveSearchTerm('');
                     setLeaveBlockFilter('ALL');
+                    setLeaveGenderFilter('ALL');
+                    setLeaveYearFilter('ALL');
                     setLeaveDateFilter('');
                   }}
                 >
                   Reset
                 </button>
               )}
+
+              {/* View Mode Switcher */}
+              <div className="view-mode-toggle" role="group" aria-label="View layout toggle">
+                <button
+                  type="button"
+                  className={`view-mode-btn ${viewMode === 'cards' ? 'active' : ''}`}
+                  onClick={() => setViewMode('cards')}
+                  title="Card View"
+                  id="btn-leave-cards-view"
+                >
+                  <LayoutGrid size={15} />
+                </button>
+                <button
+                  type="button"
+                  className={`view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
+                  onClick={() => setViewMode('table')}
+                  title="Table View"
+                  id="btn-leave-table-view"
+                >
+                  <List size={15} />
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Desktop Table Container */}
+          {/* Leaves Cards / Table Container */}
           <div className="leaves-table-card">
             {isLeavesLoading ? (
               <div className="leaves-loading-state">
@@ -836,210 +956,400 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
                 </div>
                 <h3>No Leave Requests Found</h3>
                 <p>
-                  {leaveStatusFilter !== 'ALL' || leaveSearchTerm
+                  {leaveStatusFilter !== 'ALL' || leaveSearchTerm || leaveCategoryFilter !== 'ALL'
                     ? 'No records match the selected search criteria.'
                     : 'There are currently no leave applications registered in the system.'}
                 </p>
               </div>
             ) : (
               <>
-                {/* Responsive Desktop Table */}
-                <div className="leaves-table-wrapper">
-                  <table className="leaves-table">
-                    <thead>
-                      <tr>
-                        <th>Request #</th>
-                        <th>Student Details</th>
-                        <th>Room</th>
-                        <th>Category</th>
-                        <th>Destination</th>
-                        <th>Leave Dates</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {leaves.map((item) => (
-                        <tr key={item.id} className={`leave-row status-${item.effectiveStatus.toLowerCase()}`}>
-                          {/* Request Number */}
-                          <td className="cell-req-num">
-                            <span className="req-code">{item.requestNumber || item.id.slice(0, 8)}</span>
-                            <span className="cell-date-sub">{formatDate(item.createdAt)}</span>
-                          </td>
+                {/* 1. Authoritative Cards View (Primary Default) */}
+                {viewMode === 'cards' ? (
+                  <div className="leaves-cards-grid">
+                    {leaves.map((item) => {
+                      const isPending = item.effectiveStatus === 'PENDING';
+                      const studentName = item.student?.name || 'Student';
+                      const initials = item.avatar || studentName
+                        .split(' ')
+                        .filter(Boolean)
+                        .map((p) => p[0])
+                        .join('')
+                        .slice(0, 2)
+                        .toUpperCase();
 
-                          {/* Student Details */}
-                          <td className="cell-student">
-                            <div className="student-info-group">
-                              <span className="student-name">{item.student?.name || 'Unknown Student'}</span>
-                              <span className="student-jntu">{item.student?.jntuNo || '—'}</span>
+                      return (
+                        <article
+                          key={item.id}
+                          className={`leave-request-card ${
+                            isPending
+                              ? 'card-pending'
+                              : item.effectiveStatus === 'ACTIVE'
+                              ? 'card-active'
+                              : item.effectiveStatus === 'REJECTED'
+                              ? 'card-rejected'
+                              : ''
+                          }`}
+                          aria-label={`Leave application for ${studentName}`}
+                        >
+                          {/* Top Bar */}
+                          <div className="card-top-bar">
+                            <div className="card-resident-ident">
+                              <div className="student-avatar-badge" aria-hidden="true">
+                                {initials}
+                              </div>
+                              <div className="resident-name-block">
+                                <h3 className="resident-full-name">{studentName}</h3>
+                                <div className="resident-pills-row">
+                                  <span className="jntu-pill">{item.student?.jntuNo || '—'}</span>
+                                  <span className="room-pill">
+                                    <Building size={12} />
+                                    {item.student?.blockName || 'Hostel'} • Room {item.student?.roomNumber || '?'}
+                                  </span>
+                                  {item.student?.academic?.year && (
+                                    <span className="academic-pill">{item.student.academic.year}</span>
+                                  )}
+                                  {item.student?.academic?.department && (
+                                    <span className="jntu-pill">{item.student.academic.department}</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </td>
 
-                          {/* Block & Room */}
-                          <td className="cell-room">
-                            <span className="room-badge">
-                              {item.student?.blockName || 'Hostel'} - {item.student?.roomNumber ? `R-${item.student.roomNumber}` : '—'}
-                            </span>
-                            {item.student?.bedNumber && (
-                              <span className="cell-sub-info">Bed {item.student.bedNumber}</span>
-                            )}
-                          </td>
+                            <div className="card-status-meta">
+                              <div className="req-meta-row">
+                                <span className="req-number-tag">
+                                  #{item.requestNumber || item.id.slice(0, 8)}
+                                </span>
+                                <span className="applied-date-text">
+                                  Applied {formatDate(item.createdAt)}
+                                </span>
+                              </div>
 
-                          {/* Category */}
-                          <td className="cell-category">
-                            <span className={`category-tag ${item.leaveType.toLowerCase()}`}>
-                              {formatLeaveCategory(item.leaveType)}
-                            </span>
-                          </td>
-
-                          {/* Destination */}
-                          <td className="cell-destination">
-                            <div className="destination-text" title={item.destination}>
-                              <MapPin size={12} className="dest-icon" />
-                              <span>{item.destination}</span>
+                              <div className="tags-badges-row">
+                                <span className={`category-tag ${item.leaveType.toLowerCase()}`}>
+                                  {formatLeaveCategory(item.leaveType)}
+                                </span>
+                                {renderLeaveStatusBadge(item.effectiveStatus)}
+                              </div>
                             </div>
-                          </td>
+                          </div>
 
-                          {/* Leave Dates */}
-                          <td className="cell-dates">
-                            <div className="dates-range-group">
-                              <span className="date-main">
-                                {formatDate(item.startDate)} → {formatDate(item.endDate)}
-                              </span>
-                              <span className="duration-pill">{item.durationDays} {item.durationDays === 1 ? 'day' : 'days'}</span>
+                          {/* 4-Column Responsive Info Grid */}
+                          <div className="card-info-grid">
+                            {/* 1. Destination & Reason */}
+                            <div className="info-block">
+                              <span className="block-label">Destination &amp; Reason</span>
+                              <div className="block-value dest-val">
+                                <MapPin size={14} className="val-icon" />
+                                <span>{item.destination || 'Unspecified destination'}</span>
+                              </div>
+                              <p className="purpose-desc-text">{item.reason}</p>
                             </div>
-                          </td>
 
-                          {/* Effective Status */}
-                          <td className="cell-status">
-                            {renderLeaveStatusBadge(item.effectiveStatus)}
-                          </td>
+                            {/* 2. Leave Schedule & Duration */}
+                            <div className="info-block">
+                              <span className="block-label">Scheduled Leave Period</span>
+                              <div className="transit-window-row">
+                                <Calendar size={14} className="val-icon" />
+                                <div className="window-times">
+                                  <div className="time-item">
+                                    <span className="time-lbl">From:</span>
+                                    <span className="time-val">{formatDate(item.startDate)}</span>
+                                  </div>
+                                  <div className="time-item">
+                                    <span className="time-lbl">To:</span>
+                                    <span className="time-val">{formatDate(item.endDate)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <span className="duration-pill mt-1">{item.durationDays} {item.durationDays === 1 ? 'day' : 'days'} duration</span>
+                            </div>
 
-                          {/* Actions */}
-                          <td className="cell-actions">
-                            <div className="action-buttons-group">
-                              {/* View Details */}
-                              <button
-                                type="button"
-                                className="action-btn view-btn"
-                                title="View Leave Details"
-                                onClick={() => handleOpenLeaveDetail(item.id)}
-                                aria-label="View Details"
-                              >
-                                <Eye size={15} />
-                              </button>
-
-                              {/* Approve (Only for PENDING) */}
-                              {item.effectiveStatus === 'PENDING' && (
-                                <button
-                                  type="button"
-                                  className="action-btn approve-btn"
-                                  title="Approve Leave Request"
-                                  onClick={() => setApprovingLeave(item)}
-                                  aria-label="Approve Request"
-                                >
-                                  <Check size={15} />
-                                </button>
+                            {/* 3. Contact Details */}
+                            <div className="info-block">
+                              <span className="block-label">Contact Information</span>
+                              <div className="contact-item">
+                                <Phone size={13} className="val-icon" />
+                                <span>{item.emergencyContact || 'No emergency contact'}</span>
+                              </div>
+                              {item.student?.email && (
+                                <div className="contact-item">
+                                  <User size={13} className="val-icon" />
+                                  <span className="truncate">{item.student.email}</span>
+                                </div>
                               )}
+                            </div>
 
-                              {/* Reject (Only for PENDING) */}
-                              {item.effectiveStatus === 'PENDING' && (
+                            {/* 4. Decision / Audit Status */}
+                            <div className="info-block">
+                              <span className="block-label">Decision &amp; Audit</span>
+                              {item.effectiveStatus === 'APPROVED' ? (
+                                <div className="audit-note approved-note">
+                                  <CheckCircle2 size={13} />
+                                  <span>Approved by {item.approvedBy || 'Hostel Warden'} on {formatDate(item.approvedAt)}</span>
+                                </div>
+                              ) : item.effectiveStatus === 'REJECTED' ? (
+                                <div className="audit-note rejected-note">
+                                  <XCircle size={13} />
+                                  <span>Rejected by {item.rejectedBy || 'Hostel Warden'}: {item.rejectionReason}</span>
+                                </div>
+                              ) : item.effectiveStatus === 'PENDING' ? (
+                                <div className="audit-note pending-note">
+                                  <Clock size={13} />
+                                  <span>Awaiting Management Authorization</span>
+                                </div>
+                              ) : (
+                                <div className="audit-note">
+                                  <span>Status: {item.effectiveStatus}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Card Actions Bar */}
+                          <div className="card-actions-row">
+                            <button
+                              type="button"
+                              className="card-action-btn view-act"
+                              onClick={() => handleOpenLeaveDetail(item.id)}
+                              title="View Full Details"
+                            >
+                              <Eye size={14} />
+                              <span>View Details</span>
+                            </button>
+
+                            {item.effectiveStatus === 'PENDING' && (
+                              <>
                                 <button
                                   type="button"
-                                  className="action-btn reject-btn"
-                                  title="Reject Leave Request"
+                                  className="card-action-btn approve-act"
+                                  onClick={() => setApprovingLeave(item)}
+                                  title="Authorize Leave Request"
+                                >
+                                  <Check size={14} />
+                                  <span>Approve</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="card-action-btn reject-act"
                                   onClick={() => {
                                     setRejectingLeave(item);
                                     setRejectionReason('');
                                     setRejectionError('');
                                   }}
-                                  aria-label="Reject Request"
+                                  title="Decline Leave Request"
                                 >
-                                  <X size={15} />
+                                  <X size={14} />
+                                  <span>Reject</span>
                                 </button>
-                              )}
-                            </div>
-                          </td>
+                              </>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* 2. Structured Table View */
+                  <div className="leaves-table-wrapper">
+                    <table className="leaves-table">
+                      <thead>
+                        <tr>
+                          <th>Request #</th>
+                          <th>Student Details</th>
+                          <th>Room</th>
+                          <th>Category</th>
+                          <th>Destination</th>
+                          <th>Leave Dates</th>
+                          <th>Status</th>
+                          <th>Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {leaves.map((item) => (
+                          <tr key={item.id} className={`leave-row status-${item.effectiveStatus.toLowerCase()}`}>
+                            {/* Request Number */}
+                            <td className="cell-req-num">
+                              <span className="req-code">{item.requestNumber || item.id.slice(0, 8)}</span>
+                              <span className="cell-date-sub">{formatDate(item.createdAt)}</span>
+                            </td>
 
-                {/* Mobile Cards View (<768px) */}
-                <div className="leaves-mobile-cards-view">
-                  {leaves.map((item) => (
-                    <div key={item.id} className="leave-mobile-card">
-                      <div className="mobile-card-header">
-                        <div>
-                          <span className="mobile-req-code">{item.requestNumber || item.id.slice(0, 8)}</span>
-                          <h4 className="mobile-student-name">{item.student?.name}</h4>
-                          <span className="mobile-jntu">{item.student?.jntuNo}</span>
+                            {/* Student Details */}
+                            <td className="cell-student">
+                              <div className="student-info-group">
+                                <span className="student-name">{item.student?.name || 'Unknown Student'}</span>
+                                <span className="student-jntu">{item.student?.jntuNo || '—'}</span>
+                              </div>
+                            </td>
+
+                            {/* Block & Room */}
+                            <td className="cell-room">
+                              <span className="room-badge">
+                                {item.student?.blockName || 'Hostel'} - {item.student?.roomNumber ? `R-${item.student.roomNumber}` : '—'}
+                              </span>
+                              {item.student?.bedNumber && (
+                                <span className="cell-sub-info">Bed {item.student.bedNumber}</span>
+                              )}
+                            </td>
+
+                            {/* Category */}
+                            <td className="cell-category">
+                              <span className={`category-tag ${item.leaveType.toLowerCase()}`}>
+                                {formatLeaveCategory(item.leaveType)}
+                              </span>
+                            </td>
+
+                            {/* Destination */}
+                            <td className="cell-destination">
+                              <div className="destination-text" title={item.destination}>
+                                <MapPin size={12} className="dest-icon" />
+                                <span>{item.destination}</span>
+                              </div>
+                            </td>
+
+                            {/* Leave Dates */}
+                            <td className="cell-dates">
+                              <div className="dates-range-group">
+                                <span className="date-main">
+                                  {formatDate(item.startDate)} → {formatDate(item.endDate)}
+                                </span>
+                                <span className="duration-pill">{item.durationDays} {item.durationDays === 1 ? 'day' : 'days'}</span>
+                              </div>
+                            </td>
+
+                            {/* Effective Status */}
+                            <td className="cell-status">
+                              {renderLeaveStatusBadge(item.effectiveStatus)}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="cell-actions">
+                              <div className="action-buttons-group">
+                                {/* View Details */}
+                                <button
+                                  type="button"
+                                  className="action-btn view-btn"
+                                  title="View Leave Details"
+                                  onClick={() => handleOpenLeaveDetail(item.id)}
+                                  aria-label="View Details"
+                                >
+                                  <Eye size={15} />
+                                </button>
+
+                                {/* Approve (Only for PENDING) */}
+                                {item.effectiveStatus === 'PENDING' && (
+                                  <button
+                                    type="button"
+                                    className="action-btn approve-btn"
+                                    title="Approve Leave Request"
+                                    onClick={() => setApprovingLeave(item)}
+                                    aria-label="Approve Request"
+                                  >
+                                    <Check size={15} />
+                                  </button>
+                                )}
+
+                                {/* Reject (Only for PENDING) */}
+                                {item.effectiveStatus === 'PENDING' && (
+                                  <button
+                                    type="button"
+                                    className="action-btn reject-btn"
+                                    title="Reject Leave Request"
+                                    onClick={() => {
+                                      setRejectingLeave(item);
+                                      setRejectionReason('');
+                                      setRejectionError('');
+                                    }}
+                                    aria-label="Reject Request"
+                                  >
+                                    <X size={15} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Mobile Cards View (<768px for Table fallback) */}
+                {viewMode === 'table' && (
+                  <div className="leaves-mobile-cards-view">
+                    {leaves.map((item) => (
+                      <div key={item.id} className="leave-mobile-card">
+                        <div className="mobile-card-header">
+                          <div>
+                            <span className="mobile-req-code">{item.requestNumber || item.id.slice(0, 8)}</span>
+                            <h4 className="mobile-student-name">{item.student?.name}</h4>
+                            <span className="mobile-jntu">{item.student?.jntuNo}</span>
+                          </div>
+                          <div>{renderLeaveStatusBadge(item.effectiveStatus)}</div>
                         </div>
-                        <div>{renderLeaveStatusBadge(item.effectiveStatus)}</div>
+
+                        <div className="mobile-card-body">
+                          <div className="mobile-detail-row">
+                            <span className="row-label">Category:</span>
+                            <span className="row-val font-semibold">{formatLeaveCategory(item.leaveType)}</span>
+                          </div>
+                          <div className="mobile-detail-row">
+                            <span className="row-label">Destination:</span>
+                            <span className="row-val">{item.destination}</span>
+                          </div>
+                          <div className="mobile-detail-row">
+                            <span className="row-label">Dates:</span>
+                            <span className="row-val">
+                              {formatDate(item.startDate)} → {formatDate(item.endDate)} ({item.durationDays}d)
+                            </span>
+                          </div>
+                          <div className="mobile-detail-row">
+                            <span className="row-label">Room:</span>
+                            <span className="row-val">
+                              {item.student?.blockName || 'Hostel'} - Room {item.student?.roomNumber || '—'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="mobile-card-actions">
+                          <button
+                            type="button"
+                            className="btn-secondary mobile-act-btn"
+                            onClick={() => handleOpenLeaveDetail(item.id)}
+                          >
+                            <Eye size={14} />
+                            <span>Details</span>
+                          </button>
+
+                          {item.effectiveStatus === 'PENDING' && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn-success mobile-act-btn"
+                                onClick={() => setApprovingLeave(item)}
+                              >
+                                <Check size={14} />
+                                <span>Approve</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-danger mobile-act-btn"
+                                onClick={() => {
+                                  setRejectingLeave(item);
+                                  setRejectionReason('');
+                                  setRejectionError('');
+                                }}
+                              >
+                                <X size={14} />
+                                <span>Reject</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-
-                      <div className="mobile-card-body">
-                        <div className="mobile-detail-row">
-                          <span className="row-label">Category:</span>
-                          <span className="row-val font-semibold">{formatLeaveCategory(item.leaveType)}</span>
-                        </div>
-                        <div className="mobile-detail-row">
-                          <span className="row-label">Destination:</span>
-                          <span className="row-val">{item.destination}</span>
-                        </div>
-                        <div className="mobile-detail-row">
-                          <span className="row-label">Dates:</span>
-                          <span className="row-val">
-                            {formatDate(item.startDate)} → {formatDate(item.endDate)} ({item.durationDays}d)
-                          </span>
-                        </div>
-                        <div className="mobile-detail-row">
-                          <span className="row-label">Room:</span>
-                          <span className="row-val">
-                            {item.student?.blockName || 'Hostel'} - Room {item.student?.roomNumber || '—'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mobile-card-actions">
-                        <button
-                          type="button"
-                          className="btn-secondary mobile-act-btn"
-                          onClick={() => handleOpenLeaveDetail(item.id)}
-                        >
-                          <Eye size={14} />
-                          <span>Details</span>
-                        </button>
-
-                        {item.effectiveStatus === 'PENDING' && (
-                          <>
-                            <button
-                              type="button"
-                              className="btn-success mobile-act-btn"
-                              onClick={() => setApprovingLeave(item)}
-                            >
-                              <Check size={14} />
-                              <span>Approve</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-danger mobile-act-btn"
-                              onClick={() => {
-                                setRejectingLeave(item);
-                                setRejectionReason('');
-                                setRejectionError('');
-                              }}
-                            >
-                              <X size={14} />
-                              <span>Reject</span>
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Pagination Controls */}
                 <div className="leaves-pagination-bar">
@@ -1121,6 +1431,99 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
                     <option value="EXPIRED">Expired</option>
                   </select>
                 </div>
+
+                {/* Block Filter */}
+                <div className="filter-select-group">
+                  <label htmlFor="susp-block-select" className="filter-label">Block:</label>
+                  <select
+                    id="susp-block-select"
+                    value={suspBlockFilter}
+                    onChange={(e) => setSuspBlockFilter(e.target.value)}
+                    className="leaves-select"
+                  >
+                    <option value="ALL">All Blocks</option>
+                    {blocks.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} ({b.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Gender / Hostel Filter */}
+                <div className="filter-select-group">
+                  <label htmlFor="susp-gender-select" className="filter-label">Hostel:</label>
+                  <select
+                    id="susp-gender-select"
+                    value={suspGenderFilter}
+                    onChange={(e) => setSuspGenderFilter(e.target.value)}
+                    className="leaves-select"
+                  >
+                    <option value="ALL">All Hostels</option>
+                    <option value="BOYS">Boys Hostel</option>
+                    <option value="GIRLS">Girls Hostel</option>
+                  </select>
+                </div>
+
+                {/* Academic Year Filter */}
+                <div className="filter-select-group">
+                  <label htmlFor="susp-year-select" className="filter-label">Year:</label>
+                  <select
+                    id="susp-year-select"
+                    value={suspYearFilter}
+                    onChange={(e) => setSuspYearFilter(e.target.value)}
+                    className="leaves-select"
+                  >
+                    <option value="ALL">All Years</option>
+                    <option value="1">1st Year</option>
+                    <option value="2">2nd Year</option>
+                    <option value="3">3rd Year</option>
+                    <option value="4">4th Year</option>
+                  </select>
+                </div>
+
+                {/* Reset Filters */}
+                {(suspSearchTerm !== '' ||
+                  suspStatusFilter !== 'ALL' ||
+                  suspBlockFilter !== 'ALL' ||
+                  suspGenderFilter !== 'ALL' ||
+                  suspYearFilter !== 'ALL') && (
+                  <button
+                    type="button"
+                    className="btn-text reset-filters-btn"
+                    onClick={() => {
+                      setSuspSearchTerm('');
+                      setSuspStatusFilter('ALL');
+                      setSuspBlockFilter('ALL');
+                      setSuspGenderFilter('ALL');
+                      setSuspYearFilter('ALL');
+                    }}
+                  >
+                    Reset
+                  </button>
+                )}
+
+                {/* View Mode Switcher */}
+                <div className="view-mode-toggle" role="group" aria-label="Suspensions layout toggle">
+                  <button
+                    type="button"
+                    className={`view-mode-btn ${viewMode === 'cards' ? 'active' : ''}`}
+                    onClick={() => setViewMode('cards')}
+                    title="Card View"
+                    id="btn-susp-cards-view"
+                  >
+                    <LayoutGrid size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
+                    onClick={() => setViewMode('table')}
+                    title="Table View"
+                    id="btn-susp-table-view"
+                  >
+                    <List size={15} />
+                  </button>
+                </div>
               </div>
 
               {/* Enforce New Suspension Button */}
@@ -1139,7 +1542,7 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
             </div>
           </div>
 
-          {/* Suspensions Table Card */}
+          {/* Suspensions Cards / Table Card */}
           <div className="leaves-table-card">
             {isSuspensionsLoading ? (
               <div className="leaves-loading-state">
@@ -1153,166 +1556,362 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
                 </div>
                 <h3>No Disciplinary Suspensions</h3>
                 <p>
-                  {suspSearchTerm || suspStatusFilter !== 'ALL'
+                  {suspSearchTerm || suspStatusFilter !== 'ALL' || suspBlockFilter !== 'ALL'
                     ? 'No suspensions match the selected filter criteria.'
                     : 'There are currently no students under hostel disciplinary suspension.'}
                 </p>
               </div>
             ) : (
               <>
-                <div className="leaves-table-wrapper">
-                  <table className="leaves-table">
-                    <thead>
-                      <tr>
-                        <th>Student</th>
-                        <th>Room Location</th>
-                        <th>Reason for Suspension</th>
-                        <th>Effective Period</th>
-                        <th>Enforced By</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {suspensions.map((susp) => (
-                        <tr key={susp.id} className={`susp-row status-${susp.effectiveStatus.toLowerCase()}`}>
-                          {/* Student */}
-                          <td className="cell-student">
-                            <div className="student-info-group">
-                              <span className="student-name">{susp.student?.name || 'Unknown Student'}</span>
-                              <span className="student-jntu">{susp.student?.jntuNo || '—'}</span>
+                {/* 1. Authoritative Suspensions Cards View */}
+                {viewMode === 'cards' ? (
+                  <div className="susp-cards-grid">
+                    {suspensions.map((susp) => {
+                      const isActive = susp.status === 'ACTIVE';
+                      const studentName = susp.student?.name || 'Student';
+                      const initials = susp.avatar || studentName
+                        .split(' ')
+                        .filter(Boolean)
+                        .map((p) => p[0])
+                        .join('')
+                        .slice(0, 2)
+                        .toUpperCase();
+
+                      const durationDays = Math.max(
+                        1,
+                        Math.ceil((new Date(susp.endDate).getTime() - new Date(susp.startDate).getTime()) / (1000 * 60 * 60 * 24))
+                      );
+
+                      return (
+                        <article
+                          key={susp.id}
+                          className={`suspension-card ${
+                            isActive
+                              ? 'card-active-susp'
+                              : susp.status === 'LIFTED'
+                              ? 'card-lifted-susp'
+                              : 'card-expired-susp'
+                          }`}
+                          aria-label={`Suspension record for ${studentName}`}
+                        >
+                          {/* Top Bar */}
+                          <div className="card-top-bar">
+                            <div className="card-resident-ident">
+                              <div className="student-avatar-badge" aria-hidden="true">
+                                {initials}
+                              </div>
+                              <div className="resident-name-block">
+                                <h3 className="resident-full-name">{studentName}</h3>
+                                <div className="resident-pills-row">
+                                  <span className="jntu-pill">{susp.student?.jntuNo || '—'}</span>
+                                  <span className="room-pill">
+                                    <Building size={12} />
+                                    {susp.student?.blockName || 'Hostel'} • Room {susp.student?.roomNumber || '?'}
+                                  </span>
+                                  {susp.student?.academic?.year && (
+                                    <span className="academic-pill">{susp.student.academic.year}</span>
+                                  )}
+                                  {susp.student?.academic?.department && (
+                                    <span className="jntu-pill">{susp.student.academic.department}</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </td>
 
-                          {/* Room Location */}
-                          <td className="cell-room">
-                            <span className="room-badge">
-                              {susp.student?.blockName || 'Hostel'} - R-{susp.student?.roomNumber || '—'}
-                            </span>
-                          </td>
-
-                          {/* Reason */}
-                          <td className="cell-susp-reason">
-                            <div className="reason-truncate" title={susp.reason}>
-                              {susp.reason}
+                            <div className="card-status-meta">
+                              <div className="req-meta-row">
+                                <span className="applied-date-text">
+                                  Enforced {formatDate(susp.createdAt)}
+                                </span>
+                              </div>
+                              <div className="tags-badges-row">
+                                {renderSuspensionStatusBadge(susp.effectiveStatus)}
+                              </div>
                             </div>
-                            {susp.remarks && (
-                              <span className="cell-remarks-sub" title={susp.remarks}>
-                                Note: {susp.remarks}
-                              </span>
-                            )}
-                          </td>
+                          </div>
 
-                          {/* Period */}
-                          <td className="cell-dates">
-                            <span className="date-main">
-                              {formatDate(susp.startDate)} → {formatDate(susp.endDate)}
-                            </span>
-                            <span className="cell-date-sub">Created {formatDate(susp.createdAt)}</span>
-                          </td>
+                          {/* 4-Column Responsive Info Grid */}
+                          <div className="card-info-grid">
+                            {/* 1. Infraction Reason */}
+                            <div className="info-block">
+                              <span className="block-label">Infraction / Reason</span>
+                              <div className="block-value dest-val text-danger">
+                                <ShieldAlert size={14} className="val-icon" />
+                                <span>{susp.reason}</span>
+                              </div>
+                              {susp.remarks && (
+                                <p className="purpose-desc-text mt-1">Note: {susp.remarks}</p>
+                              )}
+                            </div>
 
-                          {/* Created By */}
-                          <td className="cell-creator">
-                            <span className="creator-text">{susp.createdBy || 'Hostel Authority'}</span>
-                          </td>
+                            {/* 2. Suspension Window */}
+                            <div className="info-block">
+                              <span className="block-label">Effective Suspension Period</span>
+                              <div className="transit-window-row">
+                                <Calendar size={14} className="val-icon" />
+                                <div className="window-times">
+                                  <div className="time-item">
+                                    <span className="time-lbl">Start:</span>
+                                    <span className="time-val">{formatDate(susp.startDate)}</span>
+                                  </div>
+                                  <div className="time-item">
+                                    <span className="time-lbl">End:</span>
+                                    <span className="time-val">{formatDate(susp.endDate)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <span className="duration-pill mt-1">{durationDays} day(s) sanction</span>
+                            </div>
 
-                          {/* Status */}
-                          <td className="cell-status">
-                            {renderSuspensionStatusBadge(susp.effectiveStatus)}
-                          </td>
+                            {/* 3. Student Residential Context */}
+                            <div className="info-block">
+                              <span className="block-label">Resident Details</span>
+                              <div className="contact-item">
+                                <Building size={13} className="val-icon" />
+                                <span>{susp.student?.blockName || 'Hostel'} - Room {susp.student?.roomNumber || '—'}</span>
+                              </div>
+                              {susp.student?.email && (
+                                <div className="contact-item">
+                                  <User size={13} className="val-icon" />
+                                  <span className="truncate">{susp.student.email}</span>
+                                </div>
+                              )}
+                            </div>
 
-                          {/* Actions */}
-                          <td className="cell-actions">
-                            <div className="action-buttons-group">
-                              {susp.status === 'ACTIVE' && (
+                            {/* 4. Enforcing Authority & Resolution */}
+                            <div className="info-block">
+                              <span className="block-label">Authority &amp; Resolution</span>
+                              <div className="contact-item">
+                                <UserCheck size={13} className="val-icon" />
+                                <span>Enforced by {susp.createdBy || 'Hostel Warden'}</span>
+                              </div>
+                              {susp.liftedAt && (
+                                <div className="audit-note approved-note mt-1">
+                                  <ShieldCheck size={13} />
+                                  <span>Lifted on {formatDate(susp.liftedAt)} by {susp.liftedBy || 'Warden'}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Card Actions Bar */}
+                          <div className="card-actions-row">
+                            {isActive && (
+                              <>
                                 <button
                                   type="button"
-                                  className="action-btn lift-btn"
-                                  title="Lift / Resolve Suspension"
+                                  className="card-action-btn edit-act"
+                                  onClick={() => {
+                                    setEditingSuspension(susp);
+                                    setEditSuspReason(susp.reason);
+                                    setEditSuspEndDate(new Date(susp.endDate).toISOString().split('T')[0]);
+                                    setEditSuspRemarks(susp.remarks || '');
+                                    setEditSuspError('');
+                                  }}
+                                  title="Edit Suspension Terms"
+                                >
+                                  <Edit2 size={13} />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="card-action-btn lift-act"
                                   onClick={() => {
                                     setEndingSuspension(susp);
                                     setEndSuspRemarks('');
                                   }}
-                                  aria-label="Lift Suspension"
+                                  title="Lift / Resolve Disciplinary Suspension"
                                 >
-                                  <Unlock size={15} />
-                                  <span>Lift</span>
+                                  <Unlock size={14} />
+                                  <span>Lift Suspension</span>
                                 </button>
-                              )}
-                              {susp.status === 'LIFTED' && (
-                                <span className="lifted-note" title={`Lifted by ${susp.liftedBy || 'Authority'} on ${formatDate(susp.liftedAt)}`}>
-                                  Lifted on {formatDate(susp.liftedAt)}
+                              </>
+                            )}
+                            {susp.status === 'LIFTED' && (
+                              <span className="lifted-note">
+                                Resolved &amp; restored to good standing
+                              </span>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* 2. Structured Table View */
+                  <div className="leaves-table-wrapper">
+                    <table className="leaves-table">
+                      <thead>
+                        <tr>
+                          <th>Student</th>
+                          <th>Room Location</th>
+                          <th>Reason for Suspension</th>
+                          <th>Effective Period</th>
+                          <th>Enforced By</th>
+                          <th>Status</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {suspensions.map((susp) => (
+                          <tr key={susp.id} className={`susp-row status-${susp.effectiveStatus.toLowerCase()}`}>
+                            {/* Student */}
+                            <td className="cell-student">
+                              <div className="student-info-group">
+                                <span className="student-name">{susp.student?.name || 'Unknown Student'}</span>
+                                <span className="student-jntu">{susp.student?.jntuNo || '—'}</span>
+                              </div>
+                            </td>
+
+                            {/* Room Location */}
+                            <td className="cell-room">
+                              <span className="room-badge">
+                                {susp.student?.blockName || 'Hostel'} - R-{susp.student?.roomNumber || '—'}
+                              </span>
+                            </td>
+
+                            {/* Reason */}
+                            <td className="cell-susp-reason">
+                              <div className="reason-truncate" title={susp.reason}>
+                                {susp.reason}
+                              </div>
+                              {susp.remarks && (
+                                <span className="cell-remarks-sub" title={susp.remarks}>
+                                  Note: {susp.remarks}
                                 </span>
                               )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                            </td>
 
-                {/* Mobile Suspensions Cards */}
-                <div className="leaves-mobile-cards-view">
-                  {suspensions.map((susp) => (
-                    <div key={susp.id} className="leave-mobile-card susp-card">
-                      <div className="mobile-card-header">
-                        <div>
-                          <h4 className="mobile-student-name">{susp.student?.name}</h4>
-                          <span className="mobile-jntu">{susp.student?.jntuNo}</span>
-                        </div>
-                        <div>{renderSuspensionStatusBadge(susp.effectiveStatus)}</div>
-                      </div>
+                            {/* Period */}
+                            <td className="cell-dates">
+                              <span className="date-main">
+                                {formatDate(susp.startDate)} → {formatDate(susp.endDate)}
+                              </span>
+                              <span className="cell-date-sub">Created {formatDate(susp.createdAt)}</span>
+                            </td>
 
-                      <div className="mobile-card-body">
-                        <div className="mobile-detail-row">
-                          <span className="row-label">Reason:</span>
-                          <span className="row-val font-semibold text-danger">{susp.reason}</span>
-                        </div>
-                        <div className="mobile-detail-row">
-                          <span className="row-label">Period:</span>
-                          <span className="row-val">
-                            {formatDate(susp.startDate)} → {formatDate(susp.endDate)}
-                          </span>
-                        </div>
-                        <div className="mobile-detail-row">
-                          <span className="row-label">Enforced By:</span>
-                          <span className="row-val">{susp.createdBy || 'Hostel Authority'}</span>
-                        </div>
-                        {susp.remarks && (
-                          <div className="mobile-detail-row">
-                            <span className="row-label">Remarks:</span>
-                            <span className="row-val">{susp.remarks}</span>
+                            {/* Created By */}
+                            <td className="cell-creator">
+                              <span className="creator-text">{susp.createdBy || 'Hostel Authority'}</span>
+                            </td>
+
+                            {/* Status */}
+                            <td className="cell-status">
+                              {renderSuspensionStatusBadge(susp.effectiveStatus)}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="cell-actions">
+                              <div className="action-buttons-group">
+                                {susp.status === 'ACTIVE' && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="action-btn edit-btn"
+                                      title="Edit Suspension"
+                                      onClick={() => {
+                                        setEditingSuspension(susp);
+                                        setEditSuspReason(susp.reason);
+                                        setEditSuspEndDate(new Date(susp.endDate).toISOString().split('T')[0]);
+                                        setEditSuspRemarks(susp.remarks || '');
+                                        setEditSuspError('');
+                                      }}
+                                      aria-label="Edit Suspension"
+                                    >
+                                      <Edit2 size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="action-btn lift-btn"
+                                      title="Lift / Resolve Suspension"
+                                      onClick={() => {
+                                        setEndingSuspension(susp);
+                                        setEndSuspRemarks('');
+                                      }}
+                                      aria-label="Lift Suspension"
+                                    >
+                                      <Unlock size={15} />
+                                      <span>Lift</span>
+                                    </button>
+                                  </>
+                                )}
+                                {susp.status === 'LIFTED' && (
+                                  <span className="lifted-note" title={`Lifted by ${susp.liftedBy || 'Authority'} on ${formatDate(susp.liftedAt)}`}>
+                                    Lifted on {formatDate(susp.liftedAt)}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Mobile Suspensions Cards (<768px for Table fallback) */}
+                {viewMode === 'table' && (
+                  <div className="leaves-mobile-cards-view">
+                    {suspensions.map((susp) => (
+                      <div key={susp.id} className="leave-mobile-card susp-card">
+                        <div className="mobile-card-header">
+                          <div>
+                            <h4 className="mobile-student-name">{susp.student?.name}</h4>
+                            <span className="mobile-jntu">{susp.student?.jntuNo}</span>
                           </div>
-                        )}
-                        {susp.liftedAt && (
+                          <div>{renderSuspensionStatusBadge(susp.effectiveStatus)}</div>
+                        </div>
+
+                        <div className="mobile-card-body">
                           <div className="mobile-detail-row">
-                            <span className="row-label">Lifted:</span>
-                            <span className="row-val text-success">
-                              On {formatDate(susp.liftedAt)} by {susp.liftedBy || 'Authority'}
+                            <span className="row-label">Reason:</span>
+                            <span className="row-val font-semibold text-danger">{susp.reason}</span>
+                          </div>
+                          <div className="mobile-detail-row">
+                            <span className="row-label">Period:</span>
+                            <span className="row-val">
+                              {formatDate(susp.startDate)} → {formatDate(susp.endDate)}
                             </span>
                           </div>
+                          <div className="mobile-detail-row">
+                            <span className="row-label">Enforced By:</span>
+                            <span className="row-val">{susp.createdBy || 'Hostel Authority'}</span>
+                          </div>
+                          {susp.remarks && (
+                            <div className="mobile-detail-row">
+                              <span className="row-label">Remarks:</span>
+                              <span className="row-val">{susp.remarks}</span>
+                            </div>
+                          )}
+                          {susp.liftedAt && (
+                            <div className="mobile-detail-row">
+                              <span className="row-label">Lifted:</span>
+                              <span className="row-val text-success">
+                                On {formatDate(susp.liftedAt)} by {susp.liftedBy || 'Authority'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {susp.status === 'ACTIVE' && (
+                          <div className="mobile-card-actions">
+                            <button
+                              type="button"
+                              className="btn-secondary mobile-act-btn lift-act"
+                              onClick={() => {
+                                setEndingSuspension(susp);
+                                setEndSuspRemarks('');
+                              }}
+                            >
+                              <Unlock size={14} />
+                              <span>Lift Suspension</span>
+                            </button>
+                          </div>
                         )}
                       </div>
-
-                      {susp.status === 'ACTIVE' && (
-                        <div className="mobile-card-actions">
-                          <button
-                            type="button"
-                            className="btn-secondary mobile-act-btn lift-act"
-                            onClick={() => {
-                              setEndingSuspension(susp);
-                              setEndSuspRemarks('');
-                            }}
-                          >
-                            <Unlock size={14} />
-                            <span>Lift Suspension</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Suspensions Pagination */}
                 <div className="leaves-pagination-bar">
@@ -1773,17 +2372,36 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
                 <label htmlFor="susp-student-id" className="form-label required">
                   Student Database ID or JNTU / Select Student:
                 </label>
+                {leaves.length > 0 && (
+                  <select
+                    className="leaves-select mb-2"
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setNewSuspStudentId(e.target.value);
+                      }
+                    }}
+                    value={newSuspStudentId}
+                    id="susp-student-quick-pick"
+                  >
+                    <option value="">-- Quick Pick from Leave Applicants --</option>
+                    {Array.from(new Map(leaves.filter((l) => l.student?.id).map((l) => [l.student!.id, l.student!])).values()).map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.name} ({st.jntuNo}) - {st.blockName || 'Hostel'} R-{st.roomNumber || '?'}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <input
                   type="text"
                   id="susp-student-id"
                   className="leaves-input"
-                  placeholder="Enter Student ID (e.g. from leave request or student profile)"
+                  placeholder="Enter Student ID (e.g. from quick-pick above or student profile)"
                   value={newSuspStudentId}
                   onChange={(e) => setNewSuspStudentId(e.target.value)}
                   required
                 />
                 <span className="field-hint">
-                  Tip: Copy the Student ID from any student leave application or use student details.
+                  Tip: Select from the quick-pick dropdown above or enter student UUID directly.
                 </span>
               </div>
 
@@ -1972,6 +2590,114 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
                   <>
                     <Unlock size={14} />
                     <span>Confirm Lift</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: EDIT SUSPENSION */}
+      {editingSuspension && (
+        <div className="mgmt-modal-backdrop" onClick={() => setEditingSuspension(null)}>
+          <div className="mgmt-modal confirmation-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="header-title-group text-primary">
+                <Edit2 size={20} />
+                <h3>Modify Disciplinary Suspension</h3>
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setEditingSuspension(null)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {editSuspError && (
+                <div className="form-error-banner">
+                  <AlertCircle size={16} />
+                  <span>{editSuspError}</span>
+                </div>
+              )}
+
+              <p className="confirm-text">
+                Modifying active suspension terms for{' '}
+                <strong>{editingSuspension.student?.name}</strong> ({editingSuspension.student?.jntuNo}).
+              </p>
+
+              <div className="form-group">
+                <label htmlFor="edit-susp-reason" className="form-label required">
+                  Infraction Reason (min 5 chars):
+                </label>
+                <textarea
+                  id="edit-susp-reason"
+                  rows={3}
+                  className="leaves-textarea"
+                  value={editSuspReason}
+                  onChange={(e) => setEditSuspReason(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-susp-end-date" className="form-label required">
+                  New End Date:
+                </label>
+                <input
+                  type="date"
+                  id="edit-susp-end-date"
+                  className="leaves-input"
+                  value={editSuspEndDate}
+                  onChange={(e) => setEditSuspEndDate(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-susp-remarks" className="form-label">
+                  Internal Remarks / Hearing Notes:
+                </label>
+                <input
+                  type="text"
+                  id="edit-susp-remarks"
+                  className="leaves-input"
+                  value={editSuspRemarks}
+                  onChange={(e) => setEditSuspRemarks(e.target.value)}
+                  placeholder="e.g., Extension approved by Disciplinary Board"
+                />
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setEditingSuspension(null)}
+                disabled={isSubmittingEditSusp}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleConfirmEditSuspension}
+                disabled={isSubmittingEditSusp}
+                id="btn-confirm-edit-suspension"
+              >
+                {isSubmittingEditSusp ? (
+                  <>
+                    <RefreshCw size={14} className="spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    <span>Save Changes</span>
                   </>
                 )}
               </button>

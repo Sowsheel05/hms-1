@@ -2522,6 +2522,8 @@ export const managementApiService = {
     if (params?.category) query.append('category', params.category);
     if (params?.search) query.append('search', params.search);
     if (params?.blockId) query.append('blockId', params.blockId);
+    if (params?.gender) query.append('gender', params.gender);
+    if (params?.year) query.append('year', params.year);
     if (params?.date) query.append('date', params.date);
     if (params?.page) query.append('page', params.page.toString());
     if (params?.limit) query.append('limit', params.limit.toString());
@@ -2589,6 +2591,9 @@ export const managementApiService = {
     const query = new URLSearchParams();
     if (params?.status) query.append('status', params.status);
     if (params?.search) query.append('search', params.search);
+    if (params?.blockId) query.append('blockId', params.blockId);
+    if (params?.gender) query.append('gender', params.gender);
+    if (params?.year) query.append('year', params.year);
     if (params?.page) query.append('page', params.page.toString());
     if (params?.limit) query.append('limit', params.limit.toString());
 
@@ -2627,6 +2632,26 @@ export const managementApiService = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to create suspension.');
+    return data;
+  },
+
+  async updateSuspension(
+    id: string,
+    payload: { reason?: string; endDate?: string; remarks?: string }
+  ): Promise<{ success: boolean; message: string; data: any }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const res = await fetch(`/api/management/suspensions/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update suspension.');
     return data;
   },
 
@@ -4653,6 +4678,14 @@ export interface ManagementLeaveStudent {
   name: string;
   jntuNo: string;
   email: string;
+  gender?: string | null;
+  avatar?: string | null;
+  academic?: {
+    degree?: string;
+    department?: string;
+    year?: string;
+    semester?: string;
+  } | null;
   blockName?: string | null;
   roomNumber?: string | null;
   bedNumber?: string | null;
@@ -4678,6 +4711,7 @@ export interface ManagementLeaveItem {
   effectiveStatus: 'PENDING' | 'APPROVED' | 'ACTIVE' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | string;
   createdAt: string;
   updatedAt: string;
+  avatar?: string | null;
   student: ManagementLeaveStudent | null;
 }
 
@@ -4696,6 +4730,8 @@ export interface LeavesQueryParams {
   category?: string;
   search?: string;
   blockId?: string;
+  gender?: string;
+  year?: string;
   date?: string;
   page?: number;
   limit?: number;
@@ -4726,6 +4762,7 @@ export interface ManagementSuspensionItem {
   liftedBy?: string | null;
   createdAt: string;
   updatedAt: string;
+  avatar?: string | null;
   student: ManagementLeaveStudent | null;
 }
 
@@ -4734,6 +4771,9 @@ export interface ManagementSuspensionDetail extends ManagementSuspensionItem {}
 export interface SuspensionsQueryParams {
   status?: string;
   search?: string;
+  blockId?: string;
+  gender?: string;
+  year?: string;
   page?: number;
   limit?: number;
 }

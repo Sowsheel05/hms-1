@@ -6,6 +6,7 @@ import {
 } from '../middleware/management.middleware';
 import { complaintEventsService } from '../services/events.service';
 import { notificationService } from '../services/notification.service';
+import { decodeAcademicInfo } from './mess-management.routes';
 
 export const leaveManagementRouter = Router();
 leaveManagementRouter.use(authenticateManagement);
@@ -126,11 +127,15 @@ leaveManagementRouter.get('/stats', async (req: AuthenticatedManagementRequest, 
         total,
         pending,
         approved: approvedFuture,
+        approvedFuture,
         active: activeOngoing,
+        activeOngoing,
         completed: completedPast,
+        completedPast,
         rejected,
         cancelled,
         suspendedStudents: suspendedStudents.length,
+        suspended: suspendedStudents.length,
       },
     });
   } catch (error: any) {
@@ -154,6 +159,8 @@ leaveManagementRouter.get('/', async (req: AuthenticatedManagementRequest, res: 
       category,
       search,
       blockId,
+      gender,
+      year,
       date,
       page = '1',
       limit = '25',
@@ -239,6 +246,46 @@ leaveManagementRouter.get('/', async (req: AuthenticatedManagementRequest, res: 
       };
     }
 
+    // Gender / Hostel filter
+    if (gender && gender !== 'ALL') {
+      const g = gender.toUpperCase();
+      const pattern = (g === 'GIRLS' || g === 'FEMALE') ? 'girl' : 'boy';
+      where.student = {
+        ...(where.student || {}),
+        OR: [
+          { blockName: { contains: pattern, mode: 'insensitive' } },
+          {
+            roomAllocations: {
+              some: {
+                status: 'ACTIVE',
+                room: {
+                  block: {
+                    name: { contains: pattern, mode: 'insensitive' },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      };
+    }
+
+    // Academic Year filter
+    if (year && year !== 'ALL') {
+      let prefix = '';
+      if (year.includes('1')) prefix = '25';
+      else if (year.includes('2')) prefix = '24';
+      else if (year.includes('3')) prefix = '22';
+      else if (year.includes('4')) prefix = '21';
+
+      if (prefix) {
+        where.student = {
+          ...(where.student || {}),
+          jntuNo: { startsWith: prefix, mode: 'insensitive' },
+        };
+      }
+    }
+
     const [totalCount, leaves] = await Promise.all([
       prisma.leaveRequest.count({ where }),
       prisma.leaveRequest.findMany({
@@ -272,6 +319,15 @@ leaveManagementRouter.get('/', async (req: AuthenticatedManagementRequest, res: 
       const blockName = activeAlloc?.room?.block?.name || leave.student?.blockName || null;
       const roomNumber = activeAlloc?.room?.roomNumber || leave.student?.roomNumber || null;
       const bedNumber = activeAlloc?.bedNumber || leave.student?.bedNumber || null;
+      const academic = decodeAcademicInfo(leave.student?.jntuNo || '');
+      const initials = (leave.student?.name || 'ST')
+        .split(' ')
+        .filter(Boolean)
+        .map((part: string) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
+      const derivedGender = (blockName || '').toLowerCase().includes('girl') ? 'FEMALE' : (blockName || '').toLowerCase().includes('boy') ? 'MALE' : null;
 
       const durationDays = Math.max(
         1,
@@ -298,12 +354,16 @@ leaveManagementRouter.get('/', async (req: AuthenticatedManagementRequest, res: 
         effectiveStatus,
         createdAt: leave.createdAt.toISOString(),
         updatedAt: leave.updatedAt.toISOString(),
+        avatar: initials,
         student: leave.student
           ? {
               id: leave.student.id,
               name: leave.student.name,
               jntuNo: leave.student.jntuNo,
               email: leave.student.email,
+              gender: derivedGender,
+              avatar: initials,
+              academic,
               blockName,
               roomNumber,
               bedNumber,
@@ -376,6 +436,18 @@ leaveManagementRouter.get('/:id', async (req: AuthenticatedManagementRequest, re
     );
 
     const activeAlloc = leave.student?.roomAllocations?.[0];
+    const blockName = activeAlloc?.room?.block?.name || leave.student?.blockName || null;
+    const roomNumber = activeAlloc?.room?.roomNumber || leave.student?.roomNumber || null;
+    const bedNumber = activeAlloc?.bedNumber || leave.student?.bedNumber || null;
+    const academic = decodeAcademicInfo(leave.student?.jntuNo || '');
+    const initials = (leave.student?.name || 'ST')
+      .split(' ')
+      .filter(Boolean)
+      .map((part: string) => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+    const derivedGender = (blockName || '').toLowerCase().includes('girl') ? 'FEMALE' : (blockName || '').toLowerCase().includes('boy') ? 'MALE' : null;
 
     // Check if student currently has an active suspension
     const activeSuspension = await getActiveSuspension(leave.studentId);
@@ -402,15 +474,19 @@ leaveManagementRouter.get('/:id', async (req: AuthenticatedManagementRequest, re
         effectiveStatus,
         createdAt: leave.createdAt.toISOString(),
         updatedAt: leave.updatedAt.toISOString(),
+        avatar: initials,
         student: leave.student
           ? {
               id: leave.student.id,
               name: leave.student.name,
               jntuNo: leave.student.jntuNo,
               email: leave.student.email,
-              blockName: activeAlloc?.room?.block?.name || leave.student.blockName || null,
-              roomNumber: activeAlloc?.room?.roomNumber || leave.student.roomNumber || null,
-              bedNumber: activeAlloc?.bedNumber || leave.student.bedNumber || null,
+              gender: derivedGender,
+              avatar: initials,
+              academic,
+              blockName,
+              roomNumber,
+              bedNumber,
             }
           : null,
         isSuspended: Boolean(activeSuspension),
@@ -754,6 +830,9 @@ suspensionManagementRouter.get('/', async (req: AuthenticatedManagementRequest, 
     const {
       status,
       search,
+      blockId,
+      gender,
+      year,
       page = '1',
       limit = '25',
     } = req.query as Record<string, string>;
@@ -799,6 +878,61 @@ suspensionManagementRouter.get('/', async (req: AuthenticatedManagementRequest, 
       }
     }
 
+    // Block ID filter
+    if (blockId && blockId !== 'ALL') {
+      where.student = {
+        ...(where.student || {}),
+        roomAllocations: {
+          some: {
+            status: 'ACTIVE',
+            room: {
+              blockId: blockId,
+            },
+          },
+        },
+      };
+    }
+
+    // Gender / Hostel filter
+    if (gender && gender !== 'ALL') {
+      const g = gender.toUpperCase();
+      const pattern = (g === 'GIRLS' || g === 'FEMALE') ? 'girl' : 'boy';
+      where.student = {
+        ...(where.student || {}),
+        OR: [
+          { blockName: { contains: pattern, mode: 'insensitive' } },
+          {
+            roomAllocations: {
+              some: {
+                status: 'ACTIVE',
+                room: {
+                  block: {
+                    name: { contains: pattern, mode: 'insensitive' },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      };
+    }
+
+    // Academic Year filter
+    if (year && year !== 'ALL') {
+      let prefix = '';
+      if (year.includes('1')) prefix = '25';
+      else if (year.includes('2')) prefix = '24';
+      else if (year.includes('3')) prefix = '22';
+      else if (year.includes('4')) prefix = '21';
+
+      if (prefix) {
+        where.student = {
+          ...(where.student || {}),
+          jntuNo: { startsWith: prefix, mode: 'insensitive' },
+        };
+      }
+    }
+
     const [totalCount, suspensions] = await Promise.all([
       prisma.suspension.count({ where }),
       prisma.suspension.findMany({
@@ -831,6 +965,15 @@ suspensionManagementRouter.get('/', async (req: AuthenticatedManagementRequest, 
       const blockName = activeAlloc?.room?.block?.name || susp.student?.blockName || null;
       const roomNumber = activeAlloc?.room?.roomNumber || susp.student?.roomNumber || null;
       const bedNumber = activeAlloc?.bedNumber || susp.student?.bedNumber || null;
+      const academic = decodeAcademicInfo(susp.student?.jntuNo || '');
+      const initials = (susp.student?.name || 'ST')
+        .split(' ')
+        .filter(Boolean)
+        .map((part: string) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
+      const derivedGender = (blockName || '').toLowerCase().includes('girl') ? 'FEMALE' : (blockName || '').toLowerCase().includes('boy') ? 'MALE' : null;
 
       // Evaluate effective status
       let effectiveStatus = susp.status;
@@ -852,12 +995,16 @@ suspensionManagementRouter.get('/', async (req: AuthenticatedManagementRequest, 
         liftedBy: susp.liftedBy || null,
         createdAt: susp.createdAt.toISOString(),
         updatedAt: susp.updatedAt.toISOString(),
+        avatar: initials,
         student: susp.student
           ? {
               id: susp.student.id,
               name: susp.student.name,
               jntuNo: susp.student.jntuNo,
               email: susp.student.email,
+              gender: derivedGender,
+              avatar: initials,
+              academic,
               blockName,
               roomNumber,
               bedNumber,
@@ -921,6 +1068,19 @@ suspensionManagementRouter.get('/:id', async (req: AuthenticatedManagementReques
     }
 
     const activeAlloc = susp.student?.roomAllocations?.[0];
+    const blockName = activeAlloc?.room?.block?.name || susp.student?.blockName || null;
+    const roomNumber = activeAlloc?.room?.roomNumber || susp.student?.roomNumber || null;
+    const bedNumber = activeAlloc?.bedNumber || susp.student?.bedNumber || null;
+    const academic = decodeAcademicInfo(susp.student?.jntuNo || '');
+    const initials = (susp.student?.name || 'ST')
+      .split(' ')
+      .filter(Boolean)
+      .map((part: string) => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+    const derivedGender = (blockName || '').toLowerCase().includes('girl') ? 'FEMALE' : (blockName || '').toLowerCase().includes('boy') ? 'MALE' : null;
+
     const now = new Date();
     let effectiveStatus = susp.status;
     if (susp.status === 'ACTIVE' && new Date(susp.endDate) < now) {
@@ -943,15 +1103,19 @@ suspensionManagementRouter.get('/:id', async (req: AuthenticatedManagementReques
         liftedBy: susp.liftedBy || null,
         createdAt: susp.createdAt.toISOString(),
         updatedAt: susp.updatedAt.toISOString(),
+        avatar: initials,
         student: susp.student
           ? {
               id: susp.student.id,
               name: susp.student.name,
               jntuNo: susp.student.jntuNo,
               email: susp.student.email,
-              blockName: activeAlloc?.room?.block?.name || susp.student.blockName || null,
-              roomNumber: activeAlloc?.room?.roomNumber || susp.student.roomNumber || null,
-              bedNumber: activeAlloc?.bedNumber || susp.student.bedNumber || null,
+              gender: derivedGender,
+              avatar: initials,
+              academic,
+              blockName,
+              roomNumber,
+              bedNumber,
             }
           : null,
       },
@@ -961,6 +1125,131 @@ suspensionManagementRouter.get('/:id', async (req: AuthenticatedManagementReques
     res.status(500).json({
       success: false,
       message: 'Failed to retrieve suspension details.',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * PUT /api/management/suspensions/:id
+ * Authoritative update of suspension reason, endDate, or remarks
+ */
+suspensionManagementRouter.put('/:id', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { reason, endDate, remarks } = req.body || {};
+    const manager = req.managementUser!;
+    const editorName = manager.name || manager.jntuNo || 'Hostel Warden';
+
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.suspension.findUnique({
+        where: { id },
+        include: { student: true },
+      });
+
+      if (!existing) {
+        throw new Error('SUSPENSION_NOT_FOUND');
+      }
+
+      if (existing.status === 'LIFTED') {
+        throw new Error('CANNOT_EDIT_LIFTED');
+      }
+
+      const updateData: any = {};
+      if (reason !== undefined) {
+        if (typeof reason !== 'string' || reason.trim().length < 5) {
+          throw new Error('INVALID_REASON: Reason must be at least 5 characters.');
+        }
+        updateData.reason = reason.trim();
+      }
+
+      if (endDate !== undefined) {
+        const newEnd = new Date(endDate);
+        if (isNaN(newEnd.getTime())) {
+          throw new Error('INVALID_DATE: Invalid end date.');
+        }
+        if (newEnd <= existing.startDate) {
+          throw new Error('INVALID_DATE: End date must be strictly after start date.');
+        }
+        updateData.endDate = newEnd;
+      }
+
+      if (remarks !== undefined) {
+        updateData.remarks = typeof remarks === 'string' ? remarks.trim() : null;
+      }
+
+      const updated = await tx.suspension.update({
+        where: { id },
+        data: updateData,
+      });
+
+      // Audit Log
+      await tx.activityLog.create({
+        data: {
+          studentId: existing.studentId,
+          actionType: 'LEAVE',
+          action: 'UPDATE_SUSPENSION',
+          actorRole: req.managementUser!.role,
+          entity: 'Suspension',
+          entityId: existing.id,
+          previousState: existing.status,
+          newState: updated.status,
+          description: `Disciplinary suspension updated by ${editorName}. Reason: ${updated.reason}`,
+        },
+      });
+
+      // Student Notification
+      await notificationService.createNotification(
+        {
+          studentId: existing.studentId,
+          title: 'Disciplinary Suspension Updated',
+          message: `Your suspension terms were updated by ${editorName}. New end date: ${new Date(updated.endDate).toLocaleDateString()}. Reason: ${updated.reason}`,
+          type: 'INFO',
+          category: 'SUSPENSION',
+          entityId: updated.id,
+          link: '/leaves',
+        },
+        tx
+      );
+
+      return { updated, student: existing.student };
+    });
+
+    // Emit SSE event post-commit
+    complaintEventsService.emitLeaveEventToStudent(result.student.id, {
+      type: 'SUSPENSION_UPDATED',
+      suspensionId: result.updated.id,
+      studentId: result.student.id,
+      timestamp: new Date().toISOString(),
+      details: {
+        reason: result.updated.reason,
+        endDate: result.updated.endDate.toISOString(),
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Suspension updated successfully.`,
+      data: result.updated,
+    });
+  } catch (error: any) {
+    if (error.message === 'SUSPENSION_NOT_FOUND') {
+      res.status(404).json({ success: false, message: 'Suspension record not found.' });
+      return;
+    }
+    if (error.message === 'CANNOT_EDIT_LIFTED') {
+      res.status(400).json({ success: false, message: 'Cannot edit a suspension that has already been lifted.' });
+      return;
+    }
+    if (error.message?.startsWith('INVALID_REASON') || error.message?.startsWith('INVALID_DATE')) {
+      res.status(400).json({ success: false, message: error.message.split(': ')[1] });
+      return;
+    }
+
+    console.error('Error updating suspension:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update suspension.',
       error: error.message,
     });
   }
