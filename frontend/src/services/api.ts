@@ -2235,6 +2235,192 @@ export const managementApiService = {
     return data;
   },
 
+  // --- Mess Management Enhancements (Step 4) ---
+  async getMeals(): Promise<{ success: boolean; meals: ConfiguredMeal[] }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const res = await fetch('/api/management/mess/meals', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to retrieve meals.');
+    return data;
+  },
+
+  async createMeal(payload: {
+    name: string;
+    startTime: string;
+    endTime: string;
+    isActive?: boolean;
+    description?: string;
+  }): Promise<{ success: boolean; message: string; meal: ConfiguredMeal }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const res = await fetch('/api/management/mess/meals', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to create meal.');
+    return data;
+  },
+
+  async updateMeal(
+    id: string,
+    payload: {
+      name?: string;
+      startTime?: string;
+      endTime?: string;
+      isActive?: boolean;
+      description?: string;
+    }
+  ): Promise<{ success: boolean; message: string; meal: ConfiguredMeal }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const res = await fetch(`/api/management/mess/meals/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update meal.');
+    return data;
+  },
+
+  async toggleMealActive(id: string): Promise<{ success: boolean; message: string; meal: ConfiguredMeal }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const res = await fetch(`/api/management/mess/meals/${id}/toggle`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to toggle meal status.');
+    return data;
+  },
+
+  async deleteMeal(id: string): Promise<{ success: boolean; message: string }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const res = await fetch(`/api/management/mess/meals/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to delete meal.');
+    return data;
+  },
+
+  async getMessAnalytics(date?: string): Promise<MessAnalyticsData> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const query = date ? `?date=${encodeURIComponent(date)}` : '';
+    const res = await fetch(`/api/management/mess/analytics${query}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to retrieve analytics.');
+    return data;
+  },
+
+  async getIndentPlan(params?: {
+    date?: string;
+    block?: string;
+    year?: string;
+    department?: string;
+    search?: string;
+  }): Promise<IndentPlanData> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const query = new URLSearchParams();
+    if (params?.date) query.append('date', params.date);
+    if (params?.block && params.block !== 'ALL') query.append('block', params.block);
+    if (params?.year && params.year !== 'ALL') query.append('year', params.year);
+    if (params?.department && params.department !== 'ALL') query.append('department', params.department);
+    if (params?.search && params.search.trim()) query.append('search', params.search.trim());
+
+    const qs = query.toString();
+    const res = await fetch(`/api/management/mess/indent-plan${qs ? `?${qs}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to retrieve indent plan.');
+    return data;
+  },
+
+  async getMessAttendance(params?: {
+    date?: string;
+    mealType?: string;
+    status?: string;
+    block?: string;
+    gender?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<MessAttendanceData> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const query = new URLSearchParams();
+    if (params?.date) query.append('date', params.date);
+    if (params?.mealType && params.mealType !== 'ALL') query.append('mealType', params.mealType);
+    if (params?.status && params.status !== 'ALL') query.append('status', params.status);
+    if (params?.block && params.block !== 'ALL') query.append('block', params.block);
+    if (params?.gender && params.gender !== 'ALL') query.append('gender', params.gender);
+    if (params?.search && params.search.trim()) query.append('search', params.search.trim());
+    if (params?.page) query.append('page', params.page.toString());
+    if (params?.limit) query.append('limit', params.limit.toString());
+
+    const qs = query.toString();
+    const res = await fetch(`/api/management/mess/attendance${qs ? `?${qs}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to retrieve attendance logs.');
+    return data;
+  },
+
+  async exportMessAttendanceCsv(params?: {
+    date?: string;
+    mealType?: string;
+    status?: string;
+    block?: string;
+    gender?: string;
+    search?: string;
+  }): Promise<Blob> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const query = new URLSearchParams();
+    if (params?.date) query.append('date', params.date);
+    if (params?.mealType && params.mealType !== 'ALL') query.append('mealType', params.mealType);
+    if (params?.status && params.status !== 'ALL') query.append('status', params.status);
+    if (params?.block && params.block !== 'ALL') query.append('block', params.block);
+    if (params?.gender && params.gender !== 'ALL') query.append('gender', params.gender);
+    if (params?.search && params.search.trim()) query.append('search', params.search.trim());
+
+    const qs = query.toString();
+    const res = await fetch(`/api/management/mess/attendance/export/csv${qs ? `?${qs}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to export mess attendance CSV.');
+    return await res.blob();
+  },
+
   async getOutingStats(): Promise<{ success: boolean; data: OutingStats }> {
     const token = managementAuthStorage.getToken();
     if (!token) throw new Error('Management session missing.');
@@ -5507,5 +5693,114 @@ export interface AdminSendNotificationResponse {
   recipientScope: string;
 }
 
+// ==========================================
+// STEP 4: MESS MANAGEMENT TYPES & INTERFACES
+// ==========================================
 
+export interface ConfiguredMeal {
+  id: string;
+  mealType: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+  description?: string | null;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  cutoffHour?: number | null;
+  cutoffMinute?: number | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
+export interface MessAnalyticsCard {
+  mealType: string;
+  name: string;
+  timing: string;
+  totalScans: number;
+  allowed: number;
+  denied: number;
+}
+
+export interface MessAnalyticsData {
+  success: boolean;
+  date: string;
+  cards: MessAnalyticsCard[];
+  chart: {
+    labels: string[];
+    allowed: number[];
+    denied: number[];
+  };
+  distribution: {
+    totalScans: number;
+    totalAllowed: number;
+    totalDenied: number;
+    allowedPercentage: number;
+  };
+}
+
+export interface IndentMealSummary {
+  mealType: string;
+  name: string;
+  expectedTotal: number;
+  vegCount: number;
+  nonVegCount: number;
+}
+
+export interface IndentStudentRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  avatar: string;
+  block: string;
+  room: string;
+  year: string;
+  department: string;
+  meal: string;
+  dietaryPreference: string;
+  status: 'CAME' | 'NOT CAME';
+}
+
+export interface IndentPlanData {
+  success: boolean;
+  date: string;
+  summary: IndentMealSummary[];
+  students: IndentStudentRecord[];
+  totalStudents: number;
+}
+
+export interface AttendanceMealSummary {
+  mealType: string;
+  name: string;
+  total: number;
+  allowed: number;
+  absent: number;
+}
+
+export interface AttendanceRecordItem {
+  id: string;
+  studentName: string;
+  studentId: string;
+  avatar: string;
+  meal: string;
+  mealType: string;
+  status: 'Allowed' | 'Denied' | 'Absent';
+  badge: string;
+  date: string;
+  time: string;
+  block: string;
+  gender: string;
+}
+
+export interface MessAttendanceData {
+  success: boolean;
+  date: string;
+  summary: AttendanceMealSummary[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  data: AttendanceRecordItem[];
+}

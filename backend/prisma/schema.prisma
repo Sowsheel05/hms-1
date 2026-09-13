@@ -113,6 +113,26 @@ model MessToken {
   @@index([isLocked])
 }
 
+model MealConfig {
+  id           String   @id @default(uuid())
+  mealType     String   @unique // e.g. "BREAKFAST", "LUNCH", "SNACKS", "DINNER"
+  name         String   // e.g. "Breakfast"
+  startTime    String   // e.g. "07:30 AM"
+  endTime      String   // e.g. "09:30 AM"
+  isActive     Boolean  @default(true)
+  description  String?
+  startHour    Int      @default(7)
+  startMinute  Int      @default(30)
+  endHour      Int      @default(9)
+  endMinute    Int      @default(30)
+  cutoffHour   Int      @default(7)
+  cutoffMinute Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive])
+}
+
 model LeaveRequest {
   id               String    @id @default(uuid())
   requestNumber    String?   @unique

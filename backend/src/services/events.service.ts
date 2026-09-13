@@ -106,7 +106,11 @@ export type MessEventType =
   | 'MESS_TOKEN_CANCELLED'
   | 'MESS_STATS_UPDATED'
   | 'MESS_INDENT_UPDATED'
-  | 'MESS_TOKEN_UPDATED';
+  | 'MESS_TOKEN_UPDATED'
+  | 'MEAL_CREATED'
+  | 'MEAL_UPDATED'
+  | 'MEAL_DELETED'
+  | 'MESS_ATTENDANCE_UPDATED';
 
 export interface MessDomainEvent {
   type: MessEventType;

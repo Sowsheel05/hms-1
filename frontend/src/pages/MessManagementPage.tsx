@@ -7,75 +7,48 @@ import {
   AlertTriangle,
   Clock,
   Calendar,
-  Building,
-  User,
-  Eye,
-  Check,
-  Ban,
   Radio,
-  History,
-  TrendingUp,
   X,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
+  Plus,
+  Edit2,
+  Trash2,
+  Filter,
+  Download,
+  FileText,
+  Fingerprint,
+  Users,
 } from 'lucide-react';
 import {
   managementApiService,
-  ManagementMessOverview,
-  ManagementMessToken,
-  ManagementMessTokenDetail,
   Block,
+  ConfiguredMeal,
+  MessAnalyticsData,
+  IndentPlanData,
+  MessAttendanceData,
+  AttendanceRecordItem,
+  IndentStudentRecord,
 } from '../services/api';
 
 interface MessManagementPageProps {
   onNavigate?: (path: string) => void;
 }
 
+type MessTab = 'configuration' | 'analytics' | 'indent' | 'attendance';
+
 export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
+  // Navigation Tabs: 'configuration' | 'analytics' | 'indent' | 'attendance'
+  const [activeTab, setActiveTab] = useState<MessTab>('configuration');
+
   // Date selection (defaults to today's local YYYY-MM-DD)
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
-  // Overview & Statistics State
-  const [overview, setOverview] = useState<ManagementMessOverview | null>(null);
-  const [isOverviewLoading, setIsOverviewLoading] = useState<boolean>(true);
-
-  // Tokens Table State
-  const [tokens, setTokens] = useState<ManagementMessToken[]>([]);
-  const [isTokensLoading, setIsTokensLoading] = useState<boolean>(true);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
-
-  // Filters
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [mealFilter, setMealFilter] = useState<string>('ALL');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [blockFilter, setBlockFilter] = useState<string>('ALL');
-
-  // Blocks for filter dropdown
+  // Common State
   const [blocks, setBlocks] = useState<Block[]>([]);
-
-  // SSE Live Connection Status
   const [isLiveConnected, setIsLiveConnected] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-
-  // Modals
-  const [selectedTokenDetail, setSelectedTokenDetail] = useState<ManagementMessTokenDetail | null>(null);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
-
-  const [tokenToConsume, setTokenToConsume] = useState<ManagementMessToken | null>(null);
-  const [isConsumeSubmitting, setIsConsumeSubmitting] = useState<boolean>(false);
-
-  const [tokenToCancel, setTokenToCancel] = useState<ManagementMessToken | null>(null);
-  const [cancelReason, setCancelReason] = useState<string>('');
-  const [cancelError, setCancelError] = useState<string | null>(null);
-  const [isCancelSubmitting, setIsCancelSubmitting] = useState<boolean>(false);
-
-  const [historyStudentId, setHistoryStudentId] = useState<string | null>(null);
-  const [studentHistoryData, setStudentHistoryData] = useState<any | null>(null);
-  const [isHistoryLoading, setIsHistoryLoading] = useState<boolean>(false);
-
-  // Toast
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -83,88 +56,378 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Fetch Blocks
-  const fetchBlocks = useCallback(async () => {
+  // =========================================================================
+  // TAB 1: CONFIGURATION STATE & HANDLERS
+  // =========================================================================
+  const [meals, setMeals] = useState<ConfiguredMeal[]>([]);
+  const [isMealsLoading, setIsMealsLoading] = useState<boolean>(true);
+  const [isMealModalOpen, setIsMealModalOpen] = useState<boolean>(false);
+  const [editingMeal, setEditingMeal] = useState<ConfiguredMeal | null>(null);
+
+  // Add/Edit Meal Form Fields
+  const [mealFormName, setMealFormName] = useState<string>('');
+  const [mealFormStartTime, setMealFormStartTime] = useState<string>('');
+  const [mealFormEndTime, setMealFormEndTime] = useState<string>('');
+  const [mealFormActive, setMealFormActive] = useState<boolean>(true);
+  const [mealFormError, setMealFormError] = useState<string | null>(null);
+  const [isMealSubmitting, setIsMealSubmitting] = useState<boolean>(false);
+
+  // Delete Meal State
+  const [mealToDelete, setMealToDelete] = useState<ConfiguredMeal | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
+  const [isDeleteSubmitting, setIsDeleteSubmitting] = useState<boolean>(false);
+
+  const fetchMeals = useCallback(async (isBg = false) => {
+    if (!isBg) setIsMealsLoading(true);
     try {
-      const res = await managementApiService.getBlocks();
-      setBlocks(res.blocks || []);
-    } catch (err) {
-      console.error('Failed to load blocks:', err);
+      const res = await managementApiService.getMeals();
+      if (res.success) {
+        setMeals(res.meals || []);
+      }
+    } catch (err: any) {
+      console.error('Failed to load meal configs:', err);
+      showToast(err.message || 'Unable to load meal configurations.', 'error');
+    } finally {
+      setIsMealsLoading(false);
     }
   }, []);
 
-  // Fetch Overview Data
-  const fetchOverview = useCallback(async (isBg = false) => {
-    if (!isBg) setIsOverviewLoading(true);
+  const handleOpenAddMeal = () => {
+    setEditingMeal(null);
+    setMealFormName('');
+    setMealFormStartTime('07:30 AM');
+    setMealFormEndTime('09:30 AM');
+    setMealFormActive(true);
+    setMealFormError(null);
+    setIsMealModalOpen(true);
+  };
+
+  const handleOpenEditMeal = (meal: ConfiguredMeal) => {
+    setEditingMeal(meal);
+    setMealFormName(meal.name);
+    setMealFormStartTime(meal.startTime);
+    setMealFormEndTime(meal.endTime);
+    setMealFormActive(meal.isActive);
+    setMealFormError(null);
+    setIsMealModalOpen(true);
+  };
+
+  const handleSaveMeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMealFormError(null);
+
+    if (!mealFormName.trim()) {
+      setMealFormError('Meal name is required.');
+      return;
+    }
+    if (!mealFormStartTime.trim()) {
+      setMealFormError('Start time is required.');
+      return;
+    }
+    if (!mealFormEndTime.trim()) {
+      setMealFormError('End time is required.');
+      return;
+    }
+
+    setIsMealSubmitting(true);
     try {
-      const res = await managementApiService.getMessOverview(selectedDate);
-      if (res.success && res.data) {
-        setOverview(res.data);
+      if (editingMeal) {
+        const res = await managementApiService.updateMeal(editingMeal.id, {
+          name: mealFormName.trim(),
+          startTime: mealFormStartTime.trim(),
+          endTime: mealFormEndTime.trim(),
+          isActive: mealFormActive,
+        });
+        if (res.success) {
+          showToast(res.message || 'Meal updated successfully.');
+          setIsMealModalOpen(false);
+          fetchMeals(true);
+        }
+      } else {
+        const res = await managementApiService.createMeal({
+          name: mealFormName.trim(),
+          startTime: mealFormStartTime.trim(),
+          endTime: mealFormEndTime.trim(),
+          isActive: mealFormActive,
+        });
+        if (res.success) {
+          showToast(res.message || 'Meal created successfully.');
+          setIsMealModalOpen(false);
+          fetchMeals(true);
+        }
       }
     } catch (err: any) {
-      console.error('Failed to fetch mess overview:', err);
-      showToast(err.message || 'Unable to load mess overview.', 'error');
+      setMealFormError(err.message || 'Failed to save meal configuration.');
     } finally {
-      setIsOverviewLoading(false);
+      setIsMealSubmitting(false);
+    }
+  };
+
+  const handleOpenDeleteMeal = (meal: ConfiguredMeal) => {
+    setMealToDelete(meal);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDeleteMeal = async () => {
+    if (!mealToDelete) return;
+    setIsDeleteSubmitting(true);
+    try {
+      const res = await managementApiService.deleteMeal(mealToDelete.id);
+      if (res.success) {
+        showToast(res.message || 'Meal deleted successfully.');
+        setIsDeleteModalOpen(false);
+        setMealToDelete(null);
+        fetchMeals(true);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete meal.', 'error');
+      setIsDeleteModalOpen(false);
+    } finally {
+      setIsDeleteSubmitting(false);
+    }
+  };
+
+  // =========================================================================
+  // TAB 2: ANALYTICS STATE & HANDLERS
+  // =========================================================================
+  const [analyticsData, setAnalyticsData] = useState<MessAnalyticsData | null>(null);
+  const [isAnalyticsLoading, setIsAnalyticsLoading] = useState<boolean>(false);
+
+  const fetchAnalytics = useCallback(async (isBg = false) => {
+    if (!isBg) setIsAnalyticsLoading(true);
+    try {
+      const res = await managementApiService.getMessAnalytics(selectedDate);
+      if (res.success) {
+        setAnalyticsData(res);
+      }
+    } catch (err: any) {
+      console.error('Failed to load mess analytics:', err);
+      showToast(err.message || 'Failed to load mess analytics.', 'error');
+    } finally {
+      setIsAnalyticsLoading(false);
     }
   }, [selectedDate]);
 
-  // Fetch Tokens List
-  const fetchTokens = useCallback(async (pageToFetch = pagination.page, isBg = false) => {
-    if (!isBg) setIsTokensLoading(true);
-    try {
-      const res = await managementApiService.getMessTokens({
-        page: pageToFetch,
-        limit: pagination.limit,
-        date: selectedDate,
-        mealType: mealFilter,
-        status: statusFilter,
-        block: blockFilter,
-        search: searchTerm.trim() || undefined,
-      });
+  // =========================================================================
+  // TAB 3: INDENT PLAN STATE & HANDLERS
+  // =========================================================================
+  const [indentData, setIndentData] = useState<IndentPlanData | null>(null);
+  const [isIndentLoading, setIsIndentLoading] = useState<boolean>(false);
+  const [indentSearch, setIndentSearch] = useState<string>('');
+  const [isIndentFilterModalOpen, setIsIndentFilterModalOpen] = useState<boolean>(false);
 
+  // Filter values
+  const [indentFilterDate, setIndentFilterDate] = useState<string>(todayStr);
+  const [indentFilterBlock, setIndentFilterBlock] = useState<string>('ALL');
+  const [indentFilterYear, setIndentFilterYear] = useState<string>('ALL');
+  const [indentFilterDept, setIndentFilterDept] = useState<string>('ALL');
+
+  // Applied filter state
+  const [appliedIndentFilters, setAppliedIndentFilters] = useState({
+    date: todayStr,
+    block: 'ALL',
+    year: 'ALL',
+    department: 'ALL',
+  });
+
+  const fetchIndentPlan = useCallback(async (isBg = false) => {
+    if (!isBg) setIsIndentLoading(true);
+    try {
+      const res = await managementApiService.getIndentPlan({
+        date: appliedIndentFilters.date,
+        block: appliedIndentFilters.block,
+        year: appliedIndentFilters.year,
+        department: appliedIndentFilters.department,
+        search: indentSearch.trim() || undefined,
+      });
       if (res.success) {
-        setTokens(res.tokens || []);
-        setPagination(res.pagination);
+        setIndentData(res);
       }
     } catch (err: any) {
-      console.error('Failed to fetch tokens:', err);
-      showToast(err.message || 'Unable to load token bookings.', 'error');
+      console.error('Failed to load indent plan:', err);
+      showToast(err.message || 'Failed to load indent plan.', 'error');
     } finally {
-      setIsTokensLoading(false);
+      setIsIndentLoading(false);
     }
-  }, [selectedDate, mealFilter, statusFilter, blockFilter, searchTerm, pagination.limit, pagination.page]);
+  }, [appliedIndentFilters, indentSearch]);
 
-  // Combined Refresh
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await Promise.all([fetchOverview(true), fetchTokens(pagination.page, true)]);
-    setIsRefreshing(false);
-    showToast('Mess data refreshed from PostgreSQL');
+  const handleApplyIndentFilters = () => {
+    setAppliedIndentFilters({
+      date: indentFilterDate,
+      block: indentFilterBlock,
+      year: indentFilterYear,
+      department: indentFilterDept,
+    });
+    setIsIndentFilterModalOpen(false);
   };
 
-  // Initial Load
+  const handleResetIndentFilters = () => {
+    setIndentFilterDate(todayStr);
+    setIndentFilterBlock('ALL');
+    setIndentFilterYear('ALL');
+    setIndentFilterDept('ALL');
+    setAppliedIndentFilters({
+      date: todayStr,
+      block: 'ALL',
+      year: 'ALL',
+      department: 'ALL',
+    });
+    setIsIndentFilterModalOpen(false);
+  };
+
+  // =========================================================================
+  // TAB 4: ATTENDANCE STATE & HANDLERS
+  // =========================================================================
+  const [attendanceData, setAttendanceData] = useState<MessAttendanceData | null>(null);
+  const [isAttendanceLoading, setIsAttendanceLoading] = useState<boolean>(false);
+  const [attendanceSearch, setAttendanceSearch] = useState<string>('');
+  const [attendancePage, setAttendancePage] = useState<number>(1);
+  const [isAttendanceFilterModalOpen, setIsAttendanceFilterModalOpen] = useState<boolean>(false);
+
+  // Filter values
+  const [attFilterDate, setAttFilterDate] = useState<string>(todayStr);
+  const [attFilterMeal, setAttFilterMeal] = useState<string>('ALL');
+  const [attFilterStatus, setAttFilterStatus] = useState<string>('ALL');
+  const [attFilterBlock, setAttFilterBlock] = useState<string>('ALL');
+  const [attFilterGender, setAttFilterGender] = useState<string>('ALL');
+
+  // Applied attendance filters
+  const [appliedAttFilters, setAppliedAttFilters] = useState({
+    date: todayStr,
+    mealType: 'ALL',
+    status: 'ALL',
+    block: 'ALL',
+    gender: 'ALL',
+  });
+
+  const fetchAttendance = useCallback(async (page = attendancePage, isBg = false) => {
+    if (!isBg) setIsAttendanceLoading(true);
+    try {
+      const res = await managementApiService.getMessAttendance({
+        date: appliedAttFilters.date,
+        mealType: appliedAttFilters.mealType,
+        status: appliedAttFilters.status,
+        block: appliedAttFilters.block,
+        gender: appliedAttFilters.gender,
+        search: attendanceSearch.trim() || undefined,
+        page,
+        limit: 10,
+      });
+      if (res.success) {
+        setAttendanceData(res);
+        setAttendancePage(res.page);
+      }
+    } catch (err: any) {
+      console.error('Failed to load mess attendance:', err);
+      showToast(err.message || 'Failed to load mess attendance logs.', 'error');
+    } finally {
+      setIsAttendanceLoading(false);
+    }
+  }, [appliedAttFilters, attendanceSearch, attendancePage]);
+
+  const handleApplyAttendanceFilters = () => {
+    setAppliedAttFilters({
+      date: attFilterDate,
+      mealType: attFilterMeal,
+      status: attFilterStatus,
+      block: attFilterBlock,
+      gender: attFilterGender,
+    });
+    setAttendancePage(1);
+    setIsAttendanceFilterModalOpen(false);
+  };
+
+  const handleResetAttendanceFilters = () => {
+    setAttFilterDate(todayStr);
+    setAttFilterMeal('ALL');
+    setAttFilterStatus('ALL');
+    setAttFilterBlock('ALL');
+    setAttFilterGender('ALL');
+    setAppliedAttFilters({
+      date: todayStr,
+      mealType: 'ALL',
+      status: 'ALL',
+      block: 'ALL',
+      gender: 'ALL',
+    });
+    setAttendancePage(1);
+    setIsAttendanceFilterModalOpen(false);
+  };
+
+  // CSV Export
+  const handleExportCsv = async () => {
+    try {
+      showToast('Generating attendance CSV export...');
+      const blob = await managementApiService.exportMessAttendanceCsv({
+        date: appliedAttFilters.date,
+        mealType: appliedAttFilters.mealType,
+        status: appliedAttFilters.status,
+        block: appliedAttFilters.block,
+        gender: appliedAttFilters.gender,
+        search: attendanceSearch.trim() || undefined,
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `mess-attendance-${appliedAttFilters.date}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showToast('CSV export downloaded successfully.');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to export CSV.', 'error');
+    }
+  };
+
+  // PDF Export
+  const handleExportPdf = () => {
+    window.print();
+  };
+
+  // =========================================================================
+  // INITIAL DATA LOADING & SSE
+  // =========================================================================
   useEffect(() => {
-    fetchBlocks();
-  }, [fetchBlocks]);
+    managementApiService.getBlocks().then((res) => {
+      if (res.blocks) setBlocks(res.blocks);
+    }).catch((e) => console.warn('Failed to load blocks:', e));
+  }, []);
 
   useEffect(() => {
-    fetchOverview();
-    fetchTokens(1);
-  }, [fetchOverview, fetchTokens]);
+    if (activeTab === 'configuration') {
+      fetchMeals();
+    } else if (activeTab === 'analytics') {
+      fetchAnalytics();
+    } else if (activeTab === 'indent') {
+      fetchIndentPlan();
+    } else if (activeTab === 'attendance') {
+      fetchAttendance(1);
+    }
+  }, [activeTab, fetchMeals, fetchAnalytics, fetchIndentPlan, fetchAttendance]);
 
-  // Real-time SSE synchronization
+  // Unified SSE Subscription
   useEffect(() => {
     const unsubscribe = managementApiService.subscribeToEvents(
       (event) => {
         if (
+          event?.type === 'MEAL_CREATED' ||
+          event?.type === 'MEAL_UPDATED' ||
+          event?.type === 'MEAL_DELETED'
+        ) {
+          fetchMeals(true);
+        }
+        if (
           event?.type === 'MESS_TOKEN_BOOKED' ||
           event?.type === 'MESS_TOKEN_CONSUMED' ||
           event?.type === 'MESS_TOKEN_CANCELLED' ||
+          event?.type === 'MESS_INDENT_UPDATED' ||
+          event?.type === 'MESS_ATTENDANCE_UPDATED' ||
           event?.type === 'MESS_STATS_UPDATED'
         ) {
-          fetchOverview(true);
-          fetchTokens(pagination.page, true);
+          if (activeTab === 'analytics') fetchAnalytics(true);
+          if (activeTab === 'indent') fetchIndentPlan(true);
+          if (activeTab === 'attendance') fetchAttendance(attendancePage, true);
         }
       },
       (connected) => {
@@ -173,97 +436,21 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
     );
 
     return () => unsubscribe();
-  }, [fetchOverview, fetchTokens, pagination.page]);
+  }, [activeTab, fetchMeals, fetchAnalytics, fetchIndentPlan, fetchAttendance, attendancePage]);
 
-  // Action: Open Token Detail
-  const handleViewDetail = async (tokenId: string) => {
-    try {
-      const res = await managementApiService.getMessToken(tokenId);
-      if (res.success && res.token) {
-        setSelectedTokenDetail(res.token);
-        setIsDetailModalOpen(true);
-      }
-    } catch (err: any) {
-      showToast(err.message || 'Failed to load token details.', 'error');
-    }
-  };
-
-  // Action: Consume Token
-  const handleConfirmConsume = async () => {
-    if (!tokenToConsume) return;
-    setIsConsumeSubmitting(true);
-    try {
-      const res = await managementApiService.consumeMessToken(tokenToConsume.id);
-      if (res.success) {
-        showToast(res.message || 'Token marked as consumed.');
-        setTokenToConsume(null);
-        if (isDetailModalOpen && selectedTokenDetail?.id === tokenToConsume.id) {
-          setSelectedTokenDetail({
-            ...selectedTokenDetail,
-            status: 'CONSUMED',
-            consumedAt: new Date().toISOString(),
-          });
-        }
-        await Promise.all([fetchOverview(true), fetchTokens(pagination.page, true)]);
-      }
-    } catch (err: any) {
-      showToast(err.message || 'Failed to mark token as consumed.', 'error');
-    } finally {
-      setIsConsumeSubmitting(false);
-    }
-  };
-
-  // Action: Cancel Token
-  const handleConfirmCancel = async () => {
-    if (!tokenToCancel) return;
-    if (!cancelReason || cancelReason.trim().length < 3) {
-      setCancelError('Please provide a reason of at least 3 characters.');
-      return;
-    }
-    setIsCancelSubmitting(true);
-    setCancelError(null);
-    try {
-      const res = await managementApiService.cancelMessToken(tokenToCancel.id, cancelReason.trim());
-      if (res.success) {
-        showToast(res.message || 'Token cancelled successfully.');
-        setTokenToCancel(null);
-        setCancelReason('');
-        if (isDetailModalOpen && selectedTokenDetail?.id === tokenToCancel.id) {
-          setSelectedTokenDetail({
-            ...selectedTokenDetail,
-            status: 'CANCELLED',
-            cancelledAt: new Date().toISOString(),
-            cancellationReason: cancelReason.trim(),
-          });
-        }
-        await Promise.all([fetchOverview(true), fetchTokens(pagination.page, true)]);
-      }
-    } catch (err: any) {
-      setCancelError(err.message || 'Failed to cancel token.');
-    } finally {
-      setIsCancelSubmitting(false);
-    }
-  };
-
-  // Action: Open Resident History
-  const handleViewHistory = async (studentId: string) => {
-    setHistoryStudentId(studentId);
-    setIsHistoryLoading(true);
-    try {
-      const res = await managementApiService.getStudentMessHistory(studentId);
-      if (res.success) {
-        setStudentHistoryData(res);
-      }
-    } catch (err: any) {
-      showToast(err.message || 'Failed to load resident history.', 'error');
-      setHistoryStudentId(null);
-    } finally {
-      setIsHistoryLoading(false);
-    }
+  // Global manual refresh
+  const handleGlobalRefresh = async () => {
+    setIsRefreshing(true);
+    if (activeTab === 'configuration') await fetchMeals(true);
+    else if (activeTab === 'analytics') await fetchAnalytics(true);
+    else if (activeTab === 'indent') await fetchIndentPlan(true);
+    else if (activeTab === 'attendance') await fetchAttendance(attendancePage, true);
+    setIsRefreshing(false);
+    showToast('Data synchronized with PostgreSQL');
   };
 
   return (
-    <div className="mess-management-view">
+    <div className="mess-management-container">
       {/* Toast Notification */}
       {toast && (
         <div className={`block-toast toast-${toast.type}`} role="status">
@@ -280,857 +467,951 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
       )}
 
       {/* Page Header */}
-      <div className="mess-header-bar">
-        <div className="mess-header-info">
-          <div className="mess-header-tag">
-            <UtensilsCrossed size={13} />
-            <span>Hostel Dining Facility</span>
-          </div>
-          <h1 className="mess-page-title">Mess Management</h1>
-          <p className="mess-page-desc">
-            Real-time residential mess monitoring, token verification, and meal service analytics.
-          </p>
+      <header className="mess-header-section">
+        <div className="mess-header-title-block">
+          <h1 className="mess-main-title">Mess Management</h1>
+          <p className="mess-sub-title">Configure meal times and view attendance analytics.</p>
         </div>
 
-        {/* Date Selector & Controls */}
+        {/* Live SSE & Sync */}
         <div className="mess-header-controls">
-          <div className={`mess-live-indicator ${isLiveConnected ? 'connected' : 'connecting'}`}>
-            <Radio size={14} className={isLiveConnected ? 'spin-anim' : ''} />
-            <span>{isLiveConnected ? 'Live SSE Connected' : 'Syncing...'}</span>
-          </div>
-
-          <div className="mess-date-selector">
-            <Calendar size={15} style={{ color: '#64748B' }} />
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="mess-date-input"
-              aria-label="Select mess date"
-            />
-            {selectedDate !== todayStr && (
-              <button
-                type="button"
-                onClick={() => setSelectedDate(todayStr)}
-                className="mess-today-btn"
-              >
-                Today
-              </button>
-            )}
+          <div className={`mess-live-badge ${isLiveConnected ? 'connected' : 'connecting'}`}>
+            <Radio size={13} className={isLiveConnected ? 'spin-anim' : ''} />
+            <span>{isLiveConnected ? 'Live Realtime' : 'Connecting...'}</span>
           </div>
 
           <button
             type="button"
-            onClick={handleRefresh}
+            onClick={handleGlobalRefresh}
+            className="btn-light-secondary"
+            title="Authoritative refresh"
             disabled={isRefreshing}
-            className="sync-btn"
-            title="Refresh from PostgreSQL"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 0.85rem' }}
           >
-            <RotateCw size={15} className={isRefreshing ? 'spin-anim' : ''} />
-            <span className="sync-btn-label">Refresh</span>
+            <RotateCw size={14} className={isRefreshing ? 'spin-anim' : ''} />
+            <span>Refresh</span>
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Active Meal Slot Live Banner */}
-      {overview?.activeMealSlot && (
-        <div className="mess-active-banner">
-          <div className="mess-active-left">
-            <div className="mess-active-icon-box">
-              <Sparkles size={20} />
+      {/* 4 Navigation Tabs */}
+      <nav className="mess-nav-tabs" aria-label="Mess Management Tabs">
+        <button
+          type="button"
+          className={`mess-nav-tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
+          onClick={() => setActiveTab('configuration')}
+        >
+          Configuration
+        </button>
+        <button
+          type="button"
+          className={`mess-nav-tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+          onClick={() => setActiveTab('analytics')}
+        >
+          Analytics
+        </button>
+        <button
+          type="button"
+          className={`mess-nav-tab-btn ${activeTab === 'indent' ? 'active' : ''}`}
+          onClick={() => setActiveTab('indent')}
+        >
+          Indent Plan
+        </button>
+        <button
+          type="button"
+          className={`mess-nav-tab-btn ${activeTab === 'attendance' ? 'active' : ''}`}
+          onClick={() => setActiveTab('attendance')}
+        >
+          Attendance
+        </button>
+      </nav>
+
+      {/* TAB 1: CONFIGURATION */}
+      {activeTab === 'configuration' && (
+        <section className="mess-tab-panel" aria-label="Configuration Panel">
+          <div className="mess-toolbar-row">
+            <div className="mess-section-meta">
+              <h2 className="mess-panel-heading">Meal Schedules</h2>
+              <span className="mess-count-indicator">{meals.length} configured meals</span>
             </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <span className="mess-active-badge">Now Serving</span>
-                <h3 className="mess-active-title">{overview.activeMealSlot.name}</h3>
-              </div>
-              <p className="mess-active-desc">
-                Timing Window: <strong>{overview.activeMealSlot.timing}</strong> &mdash;{' '}
-                {overview.activeMealSlot.description}
-              </p>
-            </div>
-          </div>
-          <div className="mess-active-right">
-            <Clock size={14} />
-            <span>Verification Counter Active</span>
-          </div>
-        </div>
-      )}
 
-      {/* Summary KPI Cards */}
-      <div className="mess-stats-grid">
-        {/* Total Bookings */}
-        <div className="mess-stat-card">
-          <div className="mess-stat-top">
-            <span className="mess-stat-label">Total Bookings</span>
-            <div className="mess-stat-icon-wrap navy">
-              <UtensilsCrossed size={18} />
-            </div>
-          </div>
-          <div className="mess-stat-value">
-            {isOverviewLoading ? '...' : overview?.summary.totalBookings ?? 0}
-          </div>
-          <p className="mess-stat-subtext">
-            <User size={13} />
-            <span>{overview?.totalActiveResidents ?? 0} active allocated residents</span>
-          </p>
-        </div>
-
-        {/* Consumed / Verified */}
-        <div className="mess-stat-card">
-          <div className="mess-stat-top">
-            <span className="mess-stat-label">Verified / Consumed</span>
-            <div className="mess-stat-icon-wrap emerald">
-              <CheckCircle2 size={18} />
-            </div>
-          </div>
-          <div className="mess-stat-value emerald">
-            {isOverviewLoading ? '...' : overview?.summary.consumedCount ?? 0}
-            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#059669', marginLeft: '6px' }}>
-              ({overview?.summary.consumptionRate ?? 0}%)
-            </span>
-          </div>
-          <div className="mess-progress-bar">
-            <div
-              className="mess-progress-fill"
-              style={{ width: `${Math.min(100, overview?.summary.consumptionRate ?? 0)}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Pending Booked */}
-        <div className="mess-stat-card">
-          <div className="mess-stat-top">
-            <span className="mess-stat-label">Pending Bookings</span>
-            <div className="mess-stat-icon-wrap blue">
-              <Clock size={18} />
-            </div>
-          </div>
-          <div className="mess-stat-value blue">
-            {isOverviewLoading ? '...' : overview?.summary.bookedCount ?? 0}
-          </div>
-          <p className="mess-stat-subtext">Awaiting counter verification</p>
-        </div>
-
-        {/* Cancelled */}
-        <div className="mess-stat-card">
-          <div className="mess-stat-top">
-            <span className="mess-stat-label">Cancelled Tokens</span>
-            <div className="mess-stat-icon-wrap rose">
-              <Ban size={18} />
-            </div>
-          </div>
-          <div className="mess-stat-value rose">
-            {isOverviewLoading ? '...' : overview?.summary.cancelledCount ?? 0}
-          </div>
-          <p className="mess-stat-subtext">Revoked / void records</p>
-        </div>
-      </div>
-
-      {/* 4 Meal Cards Grid */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
-          <TrendingUp size={15} style={{ color: '#F59E0B' }} />
-          <h2 style={{ fontSize: '0.85rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569', margin: 0 }}>
-            Meal-Wise Breakdown ({selectedDate})
-          </h2>
-        </div>
-        <div className="mess-meals-grid">
-          {overview?.mealBreakdown?.map((meal) => {
-            const isActiveMeal = overview.activeMealSlot?.mealType === meal.mealType;
-            return (
-              <div key={meal.mealType} className={`mess-meal-card ${isActiveMeal ? 'active-slot' : ''}`}>
-                <div className="mess-meal-top">
-                  <div>
-                    <h3 className="mess-meal-name">
-                      {meal.name}
-                      {isActiveMeal && <span className="mess-live-dot" title="Active Meal Slot" />}
-                    </h3>
-                    <p className="mess-meal-timing">{meal.timing}</p>
-                  </div>
-                  <span className="mess-meal-total">{meal.total}</span>
-                </div>
-
-                <div className="mess-meal-stat-chips">
-                  <div>
-                    <span className="mess-chip-label">Booked</span>
-                    <span className="mess-chip-val blue">{meal.booked}</span>
-                  </div>
-                  <div>
-                    <span className="mess-chip-label">Consumed</span>
-                    <span className="mess-chip-val emerald">{meal.consumed}</span>
-                  </div>
-                  <div>
-                    <span className="mess-chip-label">Cancelled</span>
-                    <span className="mess-chip-val rose">{meal.cancelled}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="mess-filter-card">
-        <div className="mess-search-wrap">
-          <Search size={15} className="mess-search-icon" />
-          <input
-            type="text"
-            placeholder="Search by Token #, Student Name, or JNTU No..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="mess-search-input"
-          />
-          {searchTerm && (
-            <button type="button" onClick={() => setSearchTerm('')} className="mess-search-clear">
-              <X size={14} />
-            </button>
-          )}
-        </div>
-
-        <div className="mess-dropdown-group">
-          {/* Meal Filter */}
-          <select
-            value={mealFilter}
-            onChange={(e) => setMealFilter(e.target.value)}
-            className="mess-filter-select"
-            aria-label="Filter by meal type"
-          >
-            <option value="ALL">All Meals</option>
-            <option value="BREAKFAST">Breakfast</option>
-            <option value="LUNCH">Lunch</option>
-            <option value="SNACKS">Evening Snacks</option>
-            <option value="DINNER">Dinner</option>
-          </select>
-
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="mess-filter-select"
-            aria-label="Filter by status"
-          >
-            <option value="ALL">All Statuses</option>
-            <option value="BOOKED">Booked (Pending)</option>
-            <option value="CONSUMED">Consumed</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
-
-          {/* Block Filter */}
-          <select
-            value={blockFilter}
-            onChange={(e) => setBlockFilter(e.target.value)}
-            className="mess-filter-select"
-            aria-label="Filter by block"
-          >
-            <option value="ALL">All Blocks</option>
-            {blocks.map((b) => (
-              <option key={b.id} value={b.name}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Reset Filters Button */}
-          {(searchTerm || mealFilter !== 'ALL' || statusFilter !== 'ALL' || blockFilter !== 'ALL') && (
             <button
               type="button"
-              onClick={() => {
-                setSearchTerm('');
-                setMealFilter('ALL');
-                setStatusFilter('ALL');
-                setBlockFilter('ALL');
-              }}
-              className="mess-reset-btn"
+              className="btn-navy-primary"
+              onClick={handleOpenAddMeal}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
             >
-              Reset
+              <Plus size={16} />
+              <span>+ Add Meal</span>
             </button>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* Bookings / Tokens Table Card */}
-      <div className="mess-table-card">
-        <div className="mess-table-header">
-          <h2 className="mess-table-title">
-            <span>Resident Token Records</span>
-            <span className="mess-badge-count">{pagination.total} total</span>
-          </h2>
-          <span style={{ fontSize: '0.775rem', color: '#64748B' }}>
-            Page {pagination.page} of {pagination.totalPages || 1}
-          </span>
-        </div>
-
-        <div className="mess-table-wrap">
-          <table className="mess-table">
-            <thead>
-              <tr>
-                <th>Token Number</th>
-                <th>Resident</th>
-                <th>Block / Room</th>
-                <th>Meal Service</th>
-                <th>Date</th>
-                <th>Status</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isTokensLoading ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: '3rem 1rem', textAlign: 'center', color: '#64748B' }}>
-                    <RotateCw size={24} className="spin-anim" style={{ margin: '0 auto 0.5rem auto', color: '#F59E0B' }} />
-                    <p style={{ margin: 0, fontWeight: 600 }}>Loading tokens from PostgreSQL...</p>
-                  </td>
-                </tr>
-              ) : tokens.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: '3rem 1rem', textAlign: 'center', color: '#64748B' }}>
-                    <UtensilsCrossed size={32} style={{ margin: '0 auto 0.5rem auto', color: '#CBD5E1' }} />
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: '#1E293B' }}>No token bookings found</p>
-                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem' }}>Try adjusting date, meal, or search filters.</p>
-                  </td>
-                </tr>
-              ) : (
-                tokens.map((token) => (
-                  <tr key={token.id}>
-                    {/* Token Number */}
-                    <td>
-                      <span className="mess-token-badge">
-                        {token.tokenNumber || token.id.substring(0, 8)}
-                      </span>
-                    </td>
-
-                    {/* Resident Info */}
-                    <td>
-                      {token.student ? (
-                        <div>
-                          <span
-                            className="mess-resident-name"
-                            onClick={() => handleViewHistory(token.student!.id)}
-                            title="Click to view full meal history"
-                          >
-                            {token.student.name}
-                          </span>
-                          <div className="mess-resident-roll">{token.student.jntuNo}</div>
-                        </div>
-                      ) : (
-                        <span style={{ color: '#94A3B8', fontStyle: 'italic' }}>Unknown</span>
-                      )}
-                    </td>
-
-                    {/* Block / Room */}
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem' }}>
-                        <Building size={13} style={{ color: '#64748B' }} />
-                        <span>{token.student?.blockName || 'Unassigned'} &mdash; Room {token.student?.roomNumber || 'N/A'}</span>
-                      </div>
-                      {token.student?.bedNumber && (
-                        <div style={{ fontSize: '0.725rem', color: '#94A3B8', fontFamily: 'monospace' }}>
-                          {token.student.bedNumber}
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Meal Service */}
-                    <td>
-                      <div style={{ fontWeight: 700, color: '#0F172A' }}>{token.mealName}</div>
-                      <div style={{ fontSize: '0.725rem', color: '#64748B' }}>{token.mealTiming}</div>
-                    </td>
-
-                    {/* Date */}
-                    <td>
-                      <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#334155' }}>
-                        {token.date}
-                      </span>
-                    </td>
-
-                    {/* Status */}
-                    <td>
-                      {token.status === 'BOOKED' && (
-                        <span className="mess-status-pill booked">
-                          <Clock size={12} />
-                          Booked
-                        </span>
-                      )}
-                      {token.status === 'CONSUMED' && (
-                        <span className="mess-status-pill consumed">
-                          <Check size={12} />
-                          Consumed
-                        </span>
-                      )}
-                      {token.status === 'CANCELLED' && (
-                        <span className="mess-status-pill cancelled">
-                          <Ban size={12} />
-                          Cancelled
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Actions */}
-                    <td style={{ textAlign: 'right' }}>
-                      <div className="mess-action-group">
-                        {/* View Detail */}
-                        <button
-                          type="button"
-                          onClick={() => handleViewDetail(token.id)}
-                          className="mess-icon-action-btn"
-                          title="View Token Specification"
-                        >
-                          <Eye size={15} />
-                        </button>
-
-                        {/* Consume (if booked) */}
-                        {token.status === 'BOOKED' && (
-                          <button
-                            type="button"
-                            onClick={() => setTokenToConsume(token)}
-                            className="mess-icon-action-btn consume"
-                            title="Mark as Consumed"
-                          >
-                            <Check size={15} />
-                          </button>
-                        )}
-
-                        {/* Cancel (if booked) */}
-                        {token.status === 'BOOKED' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTokenToCancel(token);
-                              setCancelReason('');
-                              setCancelError(null);
-                            }}
-                            className="mess-icon-action-btn cancel"
-                            title="Cancel Token"
-                          >
-                            <Ban size={15} />
-                          </button>
-                        )}
-
-                        {/* History */}
-                        {token.student && (
-                          <button
-                            type="button"
-                            onClick={() => handleViewHistory(token.student!.id)}
-                            className="mess-icon-action-btn"
-                            title="Resident History"
-                          >
-                            <History size={15} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination Bar */}
-        {pagination.totalPages > 1 && (
-          <div className="mess-pagination-bar">
-            <div>
-              Showing{' '}
-              <strong style={{ color: '#0F172A' }}>
-                {(pagination.page - 1) * pagination.limit + 1} -{' '}
-                {Math.min(pagination.page * pagination.limit, pagination.total)}
-              </strong>{' '}
-              of <strong style={{ color: '#0F172A' }}>{pagination.total}</strong> records
+          {isMealsLoading ? (
+            <div className="allocation-loading-state">
+              <RotateCw size={28} className="spin-anim" style={{ color: '#151B54', margin: '0 auto 0.75rem' }} />
+              <p>Loading configured meals from PostgreSQL...</p>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <button
-                type="button"
-                disabled={pagination.page <= 1 || isTokensLoading}
-                onClick={() => fetchTokens(pagination.page - 1)}
-                className="mess-page-btn"
-              >
-                <ChevronLeft size={14} />
-                <span>Prev</span>
-              </button>
-              <span style={{ padding: '0 0.4rem', fontFamily: 'monospace', fontWeight: 600 }}>
-                {pagination.page} / {pagination.totalPages}
-              </span>
-              <button
-                type="button"
-                disabled={pagination.page >= pagination.totalPages || isTokensLoading}
-                onClick={() => fetchTokens(pagination.page + 1)}
-                className="mess-page-btn"
-              >
-                <span>Next</span>
-                <ChevronRight size={14} />
-              </button>
+          ) : meals.length === 0 ? (
+            <div className="allocation-empty-state">
+              <UtensilsCrossed size={40} style={{ color: '#94A3B8' }} />
+              <h3 className="empty-state-title">No meal configurations found</h3>
+              <p className="empty-state-desc">Add a new meal schedule using the button above.</p>
+            </div>
+          ) : (
+            <div className="meal-cards-grid">
+              {meals.map((meal) => (
+                <article key={meal.id} className="meal-config-card" aria-label={`Meal schedule for ${meal.name}`}>
+                  <div className="meal-card-header">
+                    <h3 className="meal-card-title">{meal.name}</h3>
+                    <span className={`status-badge ${meal.isActive ? 'badge-verified' : 'badge-pending'}`}>
+                      {meal.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+
+                  <div className="meal-card-timing">
+                    <Clock size={16} style={{ color: '#64748B', flexShrink: 0 }} />
+                    <span className="meal-timing-text">{meal.startTime} - {meal.endTime}</span>
+                  </div>
+
+                  {meal.description && (
+                    <p className="meal-card-desc">{meal.description}</p>
+                  )}
+
+                  <div className="meal-card-actions">
+                    <button
+                      type="button"
+                      className="btn-light-secondary btn-sm"
+                      onClick={() => handleOpenEditMeal(meal)}
+                    >
+                      <Edit2 size={13} />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-card-reject btn-sm"
+                      onClick={() => handleOpenDeleteMeal(meal)}
+                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                    >
+                      <Trash2 size={13} />
+                      <span>Delete</span>
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* TAB 2: ANALYTICS */}
+      {activeTab === 'analytics' && (
+        <section className="mess-tab-panel" aria-label="Analytics Panel">
+          <div className="mess-toolbar-row">
+            <div className="mess-section-meta">
+              <h2 className="mess-panel-heading">Attendance Analytics</h2>
+              <span className="mess-count-indicator">Date: {selectedDate}</span>
+            </div>
+
+            <div className="mess-date-selector-group">
+              <Calendar size={15} style={{ color: '#64748B' }} />
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="mess-date-input"
+                aria-label="Select Date for Analytics"
+              />
             </div>
           </div>
-        )}
-      </div>
 
-      {/* Modal 1: Token Detail Specification */}
-      {isDetailModalOpen && selectedTokenDetail && (
-        <div className="mgmt-modal-backdrop" onClick={() => setIsDetailModalOpen(false)}>
-          <div className="mgmt-modal-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
-            <div className="mgmt-modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#FEF3C7', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <UtensilsCrossed size={18} />
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>Token Specification</h3>
-                  <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', fontFamily: 'monospace', color: '#64748B' }}>
-                    {selectedTokenDetail.tokenNumber}
-                  </p>
-                </div>
-              </div>
-              <button type="button" className="mgmt-modal-close" onClick={() => setIsDetailModalOpen(false)}>
-                <X size={18} />
+          {isAnalyticsLoading ? (
+            <div className="allocation-loading-state">
+              <RotateCw size={28} className="spin-anim" style={{ color: '#151B54', margin: '0 auto 0.75rem' }} />
+              <p>Computing analytics from PostgreSQL scan records...</p>
+            </div>
+          ) : !analyticsData ? (
+            <div className="allocation-empty-state">
+              <AlertTriangle size={40} style={{ color: '#EF4444' }} />
+              <h3 className="empty-state-title">Unable to compute analytics</h3>
+              <button type="button" onClick={() => fetchAnalytics(false)} className="btn-navy-primary">
+                Retry
               </button>
             </div>
+          ) : (
+            <>
+              {/* 4 Meal Summary Cards */}
+              <div className="analytics-cards-grid">
+                {analyticsData.cards.map((card) => (
+                  <div key={card.mealType} className="analytics-summary-card">
+                    <span className="analytics-card-meal-name">{card.name}</span>
+                    <div className="analytics-card-total">{card.totalScans}</div>
+                    <div className="analytics-card-subcounts">
+                      <span className="analytics-stat-allowed">
+                        Allowed: <strong>{card.allowed}</strong>
+                      </span>
+                      <span className="analytics-stat-denied">
+                        Denied: <strong>{card.denied}</strong>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-            <div className="mgmt-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {/* Resident info box */}
-              <div className="mess-detail-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
-                      {selectedTokenDetail.student?.name || 'Unknown'}
-                    </h4>
-                    <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.775rem', fontFamily: 'monospace', color: '#64748B' }}>
-                      {selectedTokenDetail.student?.jntuNo}
-                    </p>
-                  </div>
-                  <span className="mess-status-pill booked" style={{ fontSize: '0.7rem' }}>
-                    {selectedTokenDetail.student?.allocationStatus || 'ACTIVE'}
-                  </span>
-                </div>
-                <div className="mess-detail-grid">
-                  <div className="mess-detail-item">
-                    <span className="mess-detail-item-label">Block</span>
-                    <span className="mess-detail-item-value">{selectedTokenDetail.student?.blockName || 'N/A'}</span>
-                  </div>
-                  <div className="mess-detail-item">
-                    <span className="mess-detail-item-label">Room / Bed</span>
-                    <span className="mess-detail-item-value">
-                      {selectedTokenDetail.student?.roomNumber || 'N/A'} ({selectedTokenDetail.student?.bedNumber || 'N/A'})
+              {/* Bar Chart Section: Allowed vs Denied per Meal */}
+              <div className="analytics-chart-container">
+                <div className="analytics-chart-header">
+                  <h3 className="analytics-chart-title">Allowed vs Denied per Meal</h3>
+                  <div className="analytics-chart-legend">
+                    <span className="legend-item">
+                      <span className="legend-box allowed-box"></span> Allowed
+                    </span>
+                    <span className="legend-item">
+                      <span className="legend-box denied-box"></span> Denied
                     </span>
                   </div>
                 </div>
+
+                <div className="chart-bars-wrap">
+                  {analyticsData.cards.map((card) => {
+                    const maxCount = Math.max(
+                      1,
+                      ...analyticsData.cards.map((c) => Math.max(c.allowed, c.denied))
+                    );
+                    const allowedPct = Math.round((card.allowed / maxCount) * 100);
+                    const deniedPct = Math.round((card.denied / maxCount) * 100);
+
+                    return (
+                      <div key={card.mealType} className="chart-meal-col">
+                        <div className="chart-bars-group">
+                          {/* Allowed Bar */}
+                          <div className="chart-bar-slot">
+                            <span className="bar-count-label">{card.allowed}</span>
+                            <div
+                              className="chart-bar bar-allowed"
+                              style={{ height: `${Math.max(8, allowedPct)}%` }}
+                              title={`${card.name} Allowed: ${card.allowed}`}
+                            />
+                          </div>
+
+                          {/* Denied Bar */}
+                          <div className="chart-bar-slot">
+                            <span className="bar-count-label">{card.denied}</span>
+                            <div
+                              className="chart-bar bar-denied"
+                              style={{ height: `${Math.max(8, deniedPct)}%` }}
+                              title={`${card.name} Denied: ${card.denied}`}
+                            />
+                          </div>
+                        </div>
+
+                        <span className="chart-col-label">{card.name}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Meal details */}
-              <div className="mess-detail-grid" style={{ margin: 0 }}>
-                <div className="mess-detail-card">
-                  <span className="mess-detail-item-label">Meal Service</span>
-                  <span style={{ fontSize: '1rem', fontWeight: 800, color: '#0F172A', display: 'block', marginTop: '0.2rem' }}>
-                    {selectedTokenDetail.mealName}
-                  </span>
-                  <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block', marginTop: '0.2rem' }}>
-                    {selectedTokenDetail.mealTiming}
-                  </span>
-                </div>
-
-                <div className="mess-detail-card">
-                  <span className="mess-detail-item-label">Service Date & Status</span>
-                  <span style={{ fontSize: '0.95rem', fontWeight: 800, fontFamily: 'monospace', color: '#0F172A', display: 'block', marginTop: '0.2rem' }}>
-                    {selectedTokenDetail.date}
-                  </span>
-                  <div style={{ marginTop: '0.35rem' }}>
-                    {selectedTokenDetail.status === 'BOOKED' && <span className="mess-status-pill booked">BOOKED</span>}
-                    {selectedTokenDetail.status === 'CONSUMED' && <span className="mess-status-pill consumed">CONSUMED</span>}
-                    {selectedTokenDetail.status === 'CANCELLED' && <span className="mess-status-pill cancelled">CANCELLED</span>}
+              {/* Overall Distribution */}
+              <div className="overall-distribution-section">
+                <h3 className="distribution-heading">Overall Distribution</h3>
+                <div className="distribution-metrics-row">
+                  <div className="dist-metric-box">
+                    <span className="dist-label">Total Attendance Scans</span>
+                    <strong className="dist-val">{analyticsData.distribution.totalScans}</strong>
                   </div>
-                </div>
-              </div>
-
-              {/* Timestamps & audit */}
-              <div className="mess-detail-card" style={{ fontSize: '0.8rem', color: '#64748B', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Booked At:</span>
-                  <strong style={{ color: '#1E293B', fontFamily: 'monospace' }}>
-                    {new Date(selectedTokenDetail.createdAt).toLocaleString()}
-                  </strong>
-                </div>
-                {selectedTokenDetail.consumedAt && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669' }}>
-                    <span>Verified / Consumed:</span>
-                    <strong style={{ fontFamily: 'monospace' }}>
-                      {new Date(selectedTokenDetail.consumedAt).toLocaleString()}
+                  <div className="dist-metric-box">
+                    <span className="dist-label">Total Allowed</span>
+                    <strong className="dist-val" style={{ color: '#059669' }}>
+                      {analyticsData.distribution.totalAllowed}
                     </strong>
                   </div>
-                )}
-                {selectedTokenDetail.cancelledAt && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#DC2626' }}>
-                    <span>Cancelled At:</span>
-                    <strong style={{ fontFamily: 'monospace' }}>
-                      {new Date(selectedTokenDetail.cancelledAt).toLocaleString()}
+                  <div className="dist-metric-box">
+                    <span className="dist-label">Total Denied</span>
+                    <strong className="dist-val" style={{ color: '#DC2626' }}>
+                      {analyticsData.distribution.totalDenied}
                     </strong>
                   </div>
-                )}
-                {selectedTokenDetail.cancellationReason && (
-                  <div style={{ marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px solid #E2E8F0', color: '#DC2626' }}>
-                    <span style={{ fontWeight: 700 }}>Reason: </span>
-                    <span style={{ fontStyle: 'italic' }}>"{selectedTokenDetail.cancellationReason}"</span>
+                  <div className="dist-metric-box">
+                    <span className="dist-label">Access Success Rate</span>
+                    <strong className="dist-val" style={{ color: '#151B54' }}>
+                      {analyticsData.distribution.allowedPercentage}%
+                    </strong>
                   </div>
-                )}
+                </div>
+
+                <div className="distribution-bar-track">
+                  <div
+                    className="distribution-bar-fill"
+                    style={{ width: `${analyticsData.distribution.allowedPercentage}%` }}
+                    title={`Allowed: ${analyticsData.distribution.allowedPercentage}%`}
+                  />
+                </div>
               </div>
-            </div>
-
-            <div className="mgmt-modal-footer">
-              <button
-                type="button"
-                className="mgmt-btn-secondary"
-                onClick={() => setIsDetailModalOpen(false)}
-              >
-                Close
-              </button>
-
-              {selectedTokenDetail.status === 'BOOKED' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const t = tokens.find((tk) => tk.id === selectedTokenDetail.id);
-                      if (t) setTokenToCancel(t);
-                    }}
-                    className="mgmt-btn-danger"
-                    style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}
-                  >
-                    Cancel Token
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const t = tokens.find((tk) => tk.id === selectedTokenDetail.id);
-                      if (t) setTokenToConsume(t);
-                    }}
-                    className="mgmt-btn-primary"
-                    style={{ background: '#059669', borderColor: '#059669' }}
-                  >
-                    Mark as Consumed
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+            </>
+          )}
+        </section>
       )}
 
-      {/* Modal 2: Confirm Consume */}
-      {tokenToConsume && (
-        <div className="mgmt-modal-backdrop" onClick={() => setTokenToConsume(null)}>
-          <div className="mgmt-modal-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
-            <div className="mgmt-modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#ECFDF5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <CheckCircle2 size={18} />
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>Verify Meal Consumption</h3>
-                  <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', color: '#64748B' }}>Confirm counter redemption</p>
-                </div>
-              </div>
-              <button type="button" className="mgmt-modal-close" onClick={() => setTokenToConsume(null)}>
-                <X size={18} />
-              </button>
+      {/* TAB 3: INDENT PLAN */}
+      {activeTab === 'indent' && (
+        <section className="mess-tab-panel" aria-label="Indent Planner Panel">
+          <div className="indent-header-intro">
+            <h2 className="indent-main-heading">Indent Planner</h2>
+            <p className="indent-sub-heading">Expected meal counts and dietary preferences for a specific day.</p>
+          </div>
+
+          {/* Indent Controls: Search & Filter */}
+          <div className="mess-search-actions-bar">
+            <div className="search-field-wrap">
+              <Search size={16} className="search-input-icon" />
+              <input
+                type="text"
+                placeholder="Search by name or ID"
+                value={indentSearch}
+                onChange={(e) => setIndentSearch(e.target.value)}
+                className="allocation-search-input"
+                aria-label="Search by name or ID"
+              />
             </div>
 
-            <div className="mgmt-modal-body">
-              <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#334155' }}>
-                Mark token <strong style={{ color: '#0F172A', fontFamily: 'monospace' }}>{tokenToConsume.tokenNumber}</strong> as consumed for resident <strong style={{ color: '#0F172A' }}>{tokenToConsume.student?.name}</strong>?
-              </p>
-              <div className="mess-detail-card" style={{ fontSize: '0.825rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                  <span style={{ color: '#64748B' }}>Meal Service:</span>
-                  <strong>{tokenToConsume.mealName}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: '#64748B' }}>Service Date:</span>
-                  <strong style={{ fontFamily: 'monospace' }}>{tokenToConsume.date}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div className="mgmt-modal-footer">
+            <div className="indent-action-btns">
               <button
                 type="button"
-                className="mgmt-btn-secondary"
-                disabled={isConsumeSubmitting}
-                onClick={() => setTokenToConsume(null)}
+                className="btn-navy-primary"
+                onClick={() => setIsIndentFilterModalOpen(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="mgmt-btn-primary"
-                style={{ background: '#059669', borderColor: '#059669' }}
-                disabled={isConsumeSubmitting}
-                onClick={handleConfirmConsume}
-              >
-                {isConsumeSubmitting && <RotateCw size={14} className="spin-anim" />}
-                <span>Confirm Consumption</span>
+                <Filter size={15} />
+                <span>Filter</span>
               </button>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Modal 3: Cancel Token with Reason */}
-      {tokenToCancel && (
-        <div className="mgmt-modal-backdrop" onClick={() => setTokenToCancel(null)}>
-          <div className="mgmt-modal-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
-            <div className="mgmt-modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#FEF2F2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Ban size={18} />
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>Cancel Mess Token</h3>
-                  <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', color: '#64748B' }}>Administrative cancellation</p>
-                </div>
-              </div>
-              <button type="button" className="mgmt-modal-close" onClick={() => setTokenToCancel(null)}>
-                <X size={18} />
+          {isIndentLoading ? (
+            <div className="allocation-loading-state">
+              <RotateCw size={28} className="spin-anim" style={{ color: '#151B54', margin: '0 auto 0.75rem' }} />
+              <p>Calculating kitchen indent headcount from PostgreSQL...</p>
+            </div>
+          ) : !indentData ? (
+            <div className="allocation-empty-state">
+              <AlertTriangle size={40} style={{ color: '#EF4444' }} />
+              <h3 className="empty-state-title">Failed to load indent plan</h3>
+              <button type="button" onClick={() => fetchIndentPlan(false)} className="btn-navy-primary">
+                Retry
               </button>
             </div>
+          ) : (
+            <>
+              {/* 4 Meal Summary Cards: Expected, Veg, Non-Veg */}
+              <div className="indent-summary-cards-grid">
+                {indentData.summary.map((meal) => (
+                  <div key={meal.mealType} className="indent-meal-card">
+                    <span className="indent-card-title">{meal.name}</span>
+                    <div className="indent-card-expected-total">{meal.expectedTotal}</div>
+                    <div className="indent-card-diet-breakdown">
+                      <span className="diet-veg">
+                        Veg: <strong>{meal.vegCount}</strong>
+                      </span>
+                      <span className="diet-nonveg">
+                        Non-Veg: <strong>{meal.nonVegCount}</strong>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-            <div className="mgmt-modal-body">
-              <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#334155' }}>
-                Are you sure you want to cancel token <strong style={{ color: '#0F172A', fontFamily: 'monospace' }}>{tokenToCancel.tokenNumber}</strong> for resident <strong style={{ color: '#0F172A' }}>{tokenToCancel.student?.name}</strong>?
-              </p>
-
-              {cancelError && (
-                <div style={{ padding: '0.6rem 0.8rem', borderRadius: '8px', background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
-                  {cancelError}
-                </div>
-              )}
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                  Cancellation Reason <span style={{ color: '#DC2626' }}>*</span>
-                </label>
-                <textarea
-                  rows={3}
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  placeholder="e.g. Resident on leave, emergency mess maintenance, duplicate requested..."
-                  style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.85rem', outline: 'none', fontFamily: 'inherit' }}
-                />
-                <span style={{ fontSize: '0.725rem', color: '#64748B', display: 'block', marginTop: '0.3rem' }}>
-                  This reason is recorded in the ActivityLog and notified to the student.
+              {/* Student Indent Records List */}
+              <div className="indent-records-header">
+                <span className="records-count-text">
+                  {indentData.totalStudents} resident records for {appliedIndentFilters.date}
                 </span>
               </div>
+
+              {indentData.students.length === 0 ? (
+                <div className="allocation-empty-state">
+                  <Users size={40} style={{ color: '#94A3B8' }} />
+                  <h3 className="empty-state-title">No indent records found</h3>
+                  <p className="empty-state-desc">No residents booked meals matching the selected filter criteria.</p>
+                </div>
+              ) : (
+                <div className="indent-students-cards-grid">
+                  {indentData.students.map((student: IndentStudentRecord) => (
+                    <article key={student.id} className="indent-student-card" aria-label={`Indent record for ${student.studentName}`}>
+                      <div className="indent-card-top-row">
+                        <div className="student-avatar-badge" aria-hidden="true">
+                          {student.avatar}
+                        </div>
+                        <div className="indent-student-identity">
+                          <h4 className="indent-student-name">{student.studentName}</h4>
+                          <span className="indent-student-id">{student.studentId}</span>
+                        </div>
+                        <span
+                          className={`status-badge ${
+                            student.status === 'CAME' ? 'badge-verified' : 'badge-pending'
+                          }`}
+                        >
+                          {student.status}
+                        </span>
+                      </div>
+
+                      <div className="indent-card-meta-grid">
+                        <div className="indent-meta-item">
+                          <span className="meta-label">Block / Room</span>
+                          <span className="meta-val">{student.block} / {student.room}</span>
+                        </div>
+                        <div className="indent-meta-item">
+                          <span className="meta-label">Year & Program</span>
+                          <span className="meta-val">{student.year}</span>
+                        </div>
+                        <div className="indent-meta-item">
+                          <span className="meta-label">Department</span>
+                          <span className="meta-val">{student.department}</span>
+                        </div>
+                        <div className="indent-meta-item">
+                          <span className="meta-label">Meal & Diet</span>
+                          <span className="meta-val">
+                            {student.meal} • <strong style={{ color: '#059669' }}>{student.dietaryPreference}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
+      {/* TAB 4: ATTENDANCE */}
+      {activeTab === 'attendance' && (
+        <section className="mess-tab-panel" aria-label="Attendance Panel">
+          {/* Header Action Bar: Search, CSV, PDF, Filter */}
+          <div className="mess-search-actions-bar">
+            <div className="search-field-wrap">
+              <Search size={16} className="search-input-icon" />
+              <input
+                type="text"
+                placeholder="Search by name, email, or ID"
+                value={attendanceSearch}
+                onChange={(e) => setAttendanceSearch(e.target.value)}
+                className="allocation-search-input"
+                aria-label="Search attendance by name, email, or ID"
+              />
             </div>
 
-            <div className="mgmt-modal-footer">
+            <div className="attendance-action-btns">
               <button
                 type="button"
-                className="mgmt-btn-secondary"
-                disabled={isCancelSubmitting}
-                onClick={() => setTokenToCancel(null)}
+                className="btn-light-secondary"
+                onClick={handleExportCsv}
+                title="Export CSV"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               >
-                Go Back
+                <Download size={15} />
+                <span>CSV export</span>
               </button>
+
               <button
                 type="button"
-                className="mgmt-btn-danger"
-                disabled={isCancelSubmitting}
-                onClick={handleConfirmCancel}
+                className="btn-light-secondary"
+                onClick={handleExportPdf}
+                title="Export PDF / Print"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               >
-                {isCancelSubmitting && <RotateCw size={14} className="spin-anim" />}
-                <span>Confirm Cancellation</span>
+                <FileText size={15} />
+                <span>PDF export</span>
               </button>
+
+              <button
+                type="button"
+                className="btn-navy-primary"
+                onClick={() => setIsAttendanceFilterModalOpen(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                <Filter size={15} />
+                <span>Filter</span>
+              </button>
+            </div>
+          </div>
+
+          {isAttendanceLoading ? (
+            <div className="allocation-loading-state">
+              <RotateCw size={28} className="spin-anim" style={{ color: '#151B54', margin: '0 auto 0.75rem' }} />
+              <p>Loading attendance verification records from PostgreSQL...</p>
+            </div>
+          ) : !attendanceData ? (
+            <div className="allocation-empty-state">
+              <AlertTriangle size={40} style={{ color: '#EF4444' }} />
+              <h3 className="empty-state-title">Failed to load attendance logs</h3>
+              <button type="button" onClick={() => fetchAttendance(1, false)} className="btn-navy-primary">
+                Retry
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* 4 Attendance Summary Cards */}
+              <div className="attendance-summary-cards-grid">
+                {attendanceData.summary.map((meal) => (
+                  <div key={meal.mealType} className="attendance-summary-card">
+                    <span className="attendance-card-title">{meal.name}</span>
+                    <div className="attendance-card-total">{meal.total}</div>
+                    <div className="attendance-card-subcounts">
+                      <span className="att-sub-allowed">
+                        Allowed: <strong>{meal.allowed}</strong>
+                      </span>
+                      <span className="att-sub-absent">
+                        Absent: <strong>{meal.absent}</strong>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Total Records Header */}
+              <div className="attendance-logs-header">
+                <span className="records-count-text">
+                  Total {attendanceData.total} attendance records for {appliedAttFilters.date}
+                </span>
+              </div>
+
+              {/* Attendance Log Items */}
+              {attendanceData.data.length === 0 ? (
+                <div className="allocation-empty-state">
+                  <Fingerprint size={40} style={{ color: '#94A3B8' }} />
+                  <h3 className="empty-state-title">No attendance records found</h3>
+                  <p className="empty-state-desc">No verification scans matched the current filters or query.</p>
+                </div>
+              ) : (
+                <div className="attendance-logs-list">
+                  {attendanceData.data.map((log: AttendanceRecordItem) => (
+                    <article key={log.id} className="attendance-log-row" aria-label={`Attendance record for ${log.studentName}`}>
+                      <div className="attendance-log-left">
+                        <span
+                          className={`status-badge ${
+                            log.status === 'Allowed'
+                              ? 'badge-verified'
+                              : log.status === 'Denied'
+                              ? 'badge-denied'
+                              : 'badge-pending'
+                          }`}
+                        >
+                          {log.status}
+                        </span>
+
+                        <div className="student-avatar-badge" aria-hidden="true">
+                          {log.avatar}
+                        </div>
+
+                        <div className="att-student-info">
+                          <h4 className="att-student-name">{log.studentName}</h4>
+                          <span className="att-student-id">{log.studentId}</span>
+                        </div>
+                      </div>
+
+                      <div className="attendance-log-right">
+                        <span className="badge-biometric">
+                          <Fingerprint size={12} />
+                          <span>{log.badge}</span>
+                        </span>
+
+                        <div className="att-datetime-block">
+                          <span className="att-time-text">{log.time}</span>
+                          <span className="att-date-text">{log.date}</span>
+                        </div>
+
+                        <span className="att-meal-tag">{log.meal}</span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+
+              {/* Pagination Controls */}
+              {attendanceData.totalPages > 1 && (
+                <div className="pagination-controls-bar">
+                  <button
+                    type="button"
+                    className="btn-light-secondary btn-sm"
+                    disabled={attendancePage <= 1}
+                    onClick={() => setAttendancePage((p) => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft size={16} />
+                    <span>Previous</span>
+                  </button>
+
+                  <span className="pagination-page-indicator">
+                    Page {attendanceData.page} of {attendanceData.totalPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    className="btn-light-secondary btn-sm"
+                    disabled={attendancePage >= attendanceData.totalPages}
+                    onClick={() => setAttendancePage((p) => Math.min(attendanceData.totalPages, p + 1))}
+                  >
+                    <span>Next</span>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODALS SECTION                                                        */}
+      {/* ===================================================================== */}
+
+      {/* 1. Add / Edit Meal Modal */}
+      {isMealModalOpen && (
+        <div className="notice-modal-backdrop" role="dialog" aria-modal="true" aria-label={editingMeal ? 'Edit Meal' : 'Add Meal'}>
+          <div className="notice-modal-card" style={{ maxWidth: '440px' }}>
+            <div className="notice-modal-header">
+              <h2 className="notice-modal-title">{editingMeal ? 'Edit Meal' : 'Add Meal'}</h2>
+              <button
+                type="button"
+                className="notice-close-btn"
+                onClick={() => setIsMealModalOpen(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMeal} className="notice-form-body">
+              {mealFormError && (
+                <div className="modal-error-alert" role="alert">
+                  <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+                  <span>{mealFormError}</span>
+                </div>
+              )}
+
+              <div className="form-group-field">
+                <label className="form-field-label">
+                  Name <span className="field-required">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Breakfast, Dinner"
+                  value={mealFormName}
+                  onChange={(e) => setMealFormName(e.target.value)}
+                  className="modal-text-input"
+                  required
+                />
+              </div>
+
+              <div className="form-group-field">
+                <label className="form-field-label">
+                  Start Time <span className="field-required">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 07:30 AM or 07:30"
+                  value={mealFormStartTime}
+                  onChange={(e) => setMealFormStartTime(e.target.value)}
+                  className="modal-text-input"
+                  required
+                />
+              </div>
+
+              <div className="form-group-field">
+                <label className="form-field-label">
+                  End Time <span className="field-required">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 09:30 AM or 09:30"
+                  value={mealFormEndTime}
+                  onChange={(e) => setMealFormEndTime(e.target.value)}
+                  className="modal-text-input"
+                  required
+                />
+              </div>
+
+              <div className="form-checkbox-row">
+                <input
+                  type="checkbox"
+                  id="mealActiveCheck"
+                  checked={mealFormActive}
+                  onChange={(e) => setMealFormActive(e.target.checked)}
+                  className="modal-checkbox-input"
+                />
+                <label htmlFor="mealActiveCheck" className="form-checkbox-label">
+                  Active
+                </label>
+              </div>
+
+              <div className="notice-modal-actions">
+                <button
+                  type="button"
+                  className="btn-light-secondary"
+                  onClick={() => setIsMealModalOpen(false)}
+                  disabled={isMealSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-navy-primary"
+                  disabled={isMealSubmitting}
+                >
+                  {isMealSubmitting ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Delete Meal Confirmation Modal */}
+      {isDeleteModalOpen && mealToDelete && (
+        <div className="notice-modal-backdrop" role="dialog" aria-modal="true" aria-label="Delete Meal Confirmation">
+          <div className="notice-modal-card" style={{ maxWidth: '420px' }}>
+            <div className="notice-modal-header">
+              <h2 className="notice-modal-title">Delete Meal</h2>
+              <button
+                type="button"
+                className="notice-close-btn"
+                onClick={() => setIsDeleteModalOpen(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="notice-form-body">
+              <p style={{ color: '#334155', fontSize: '0.95rem', margin: '0 0 1rem' }}>
+                Are you sure you want to delete meal schedule <strong>"{mealToDelete.name}"</strong>?
+              </p>
+              <p style={{ color: '#64748B', fontSize: '0.85rem', margin: '0 0 1.25rem' }}>
+                Meals referenced by active or historical student tokens cannot be deleted to preserve auditable logs.
+              </p>
+
+              <div className="notice-modal-actions">
+                <button
+                  type="button"
+                  className="btn-light-secondary"
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  disabled={isDeleteSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-card-reject"
+                  onClick={handleConfirmDeleteMeal}
+                  disabled={isDeleteSubmitting}
+                  style={{ padding: '0.55rem 1rem' }}
+                >
+                  {isDeleteSubmitting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal 4: Resident Mess History */}
-      {historyStudentId && (
-        <div className="mgmt-modal-backdrop" onClick={() => { setHistoryStudentId(null); setStudentHistoryData(null); }}>
-          <div className="mgmt-modal-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
-            <div className="mgmt-modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#EEF2FF', color: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <History size={18} />
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>Resident Mess History</h3>
-                  <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', color: '#64748B' }}>
-                    {studentHistoryData?.student?.name} ({studentHistoryData?.student?.jntuNo})
-                  </p>
-                </div>
-              </div>
-              <button type="button" className="mgmt-modal-close" onClick={() => { setHistoryStudentId(null); setStudentHistoryData(null); }}>
+      {/* 3. Filter Indent Plan Modal */}
+      {isIndentFilterModalOpen && (
+        <div className="notice-modal-backdrop" role="dialog" aria-modal="true" aria-label="Filter Indent Plan">
+          <div className="notice-modal-card" style={{ maxWidth: '440px' }}>
+            <div className="notice-modal-header">
+              <h2 className="notice-modal-title">Filter Indent Plan</h2>
+              <button
+                type="button"
+                className="notice-close-btn"
+                onClick={() => setIsIndentFilterModalOpen(false)}
+                aria-label="Close"
+              >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="mgmt-modal-body" style={{ overflowY: 'auto', flex: 1, padding: '1rem 1.25rem' }}>
-              {isHistoryLoading ? (
-                <div style={{ padding: '3rem 1rem', textAlign: 'center', color: '#64748B' }}>
-                  <RotateCw size={24} className="spin-anim" style={{ margin: '0 auto 0.5rem auto', color: '#F59E0B' }} />
-                  <p style={{ margin: 0, fontWeight: 600 }}>Loading resident history...</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {studentHistoryData?.summary && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', textAlign: 'center' }}>
-                      <div className="mess-detail-card" style={{ padding: '0.5rem' }}>
-                        <span style={{ fontSize: '0.675rem', color: '#64748B', textTransform: 'uppercase', display: 'block' }}>Total</span>
-                        <strong style={{ fontSize: '1.1rem', color: '#0F172A' }}>{studentHistoryData.summary.totalBooked}</strong>
-                      </div>
-                      <div className="mess-detail-card" style={{ padding: '0.5rem' }}>
-                        <span style={{ fontSize: '0.675rem', color: '#64748B', textTransform: 'uppercase', display: 'block' }}>Booked</span>
-                        <strong style={{ fontSize: '1.1rem', color: '#2563EB' }}>{studentHistoryData.summary.activeBooked}</strong>
-                      </div>
-                      <div className="mess-detail-card" style={{ padding: '0.5rem' }}>
-                        <span style={{ fontSize: '0.675rem', color: '#64748B', textTransform: 'uppercase', display: 'block' }}>Consumed</span>
-                        <strong style={{ fontSize: '1.1rem', color: '#059669' }}>{studentHistoryData.summary.consumedCount}</strong>
-                      </div>
-                      <div className="mess-detail-card" style={{ padding: '0.5rem' }}>
-                        <span style={{ fontSize: '0.675rem', color: '#64748B', textTransform: 'uppercase', display: 'block' }}>Cancelled</span>
-                        <strong style={{ fontSize: '1.1rem', color: '#DC2626' }}>{studentHistoryData.summary.cancelledCount}</strong>
-                      </div>
-                    </div>
-                  )}
+            <div className="notice-form-body">
+              <div className="form-group-field">
+                <label className="form-field-label">Date</label>
+                <input
+                  type="date"
+                  value={indentFilterDate}
+                  onChange={(e) => setIndentFilterDate(e.target.value)}
+                  className="modal-text-input"
+                />
+              </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {studentHistoryData?.tokens?.map((tok: any) => (
-                      <div key={tok.id} className="mess-detail-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem' }}>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <strong style={{ color: '#0F172A', fontSize: '0.9rem' }}>{tok.mealName}</strong>
-                            <span className="mess-token-badge">{tok.tokenNumber}</span>
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: '#64748B', fontFamily: 'monospace', marginTop: '0.2rem' }}>
-                            {tok.date}
-                          </div>
-                          {tok.cancellationReason && (
-                            <div style={{ fontSize: '0.725rem', color: '#DC2626', fontStyle: 'italic', marginTop: '0.2rem' }}>
-                              Reason: {tok.cancellationReason}
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          {tok.status === 'BOOKED' && <span className="mess-status-pill booked">BOOKED</span>}
-                          {tok.status === 'CONSUMED' && <span className="mess-status-pill consumed">CONSUMED</span>}
-                          {tok.status === 'CANCELLED' && <span className="mess-status-pill cancelled">CANCELLED</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div className="form-group-field">
+                <label className="form-field-label">Block</label>
+                <select
+                  value={indentFilterBlock}
+                  onChange={(e) => setIndentFilterBlock(e.target.value)}
+                  className="modal-select-input"
+                >
+                  <option value="ALL">All Blocks</option>
+                  {blocks.map((b) => (
+                    <option key={b.id} value={b.name}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group-field">
+                <label className="form-field-label">Year</label>
+                <select
+                  value={indentFilterYear}
+                  onChange={(e) => setIndentFilterYear(e.target.value)}
+                  className="modal-select-input"
+                >
+                  <option value="ALL">All Years</option>
+                  <option value="1st Year">1st Year</option>
+                  <option value="2nd Year">2nd Year</option>
+                  <option value="3rd Year">3rd Year</option>
+                  <option value="4th Year">4th Year</option>
+                </select>
+              </div>
+
+              <div className="form-group-field">
+                <label className="form-field-label">Department</label>
+                <select
+                  value={indentFilterDept}
+                  onChange={(e) => setIndentFilterDept(e.target.value)}
+                  className="modal-select-input"
+                >
+                  <option value="ALL">All Departments</option>
+                  <option value="CSE">Computer Science & Engineering (CSE)</option>
+                  <option value="Data Science">Data Science (CSE-DS)</option>
+                  <option value="AI&ML">AI & Machine Learning (CSE-AI&ML)</option>
+                  <option value="ECE">Electronics & Communication (ECE)</option>
+                  <option value="EEE">Electrical & Electronics (EEE)</option>
+                  <option value="MECH">Mechanical Engineering (MECH)</option>
+                  <option value="CIVIL">Civil Engineering (CIVIL)</option>
+                  <option value="IT">Information Technology (IT)</option>
+                </select>
+              </div>
+
+              <div className="notice-modal-actions">
+                <button
+                  type="button"
+                  className="btn-light-secondary"
+                  onClick={handleResetIndentFilters}
+                >
+                  Reset Filters
+                </button>
+                <button
+                  type="button"
+                  className="btn-navy-primary"
+                  onClick={handleApplyIndentFilters}
+                >
+                  Apply Filters
+                </button>
+              </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            <div className="mgmt-modal-footer">
+      {/* 4. Filter Logs Modal (Attendance Tab) */}
+      {isAttendanceFilterModalOpen && (
+        <div className="notice-modal-backdrop" role="dialog" aria-modal="true" aria-label="Filter Logs">
+          <div className="notice-modal-card" style={{ maxWidth: '440px' }}>
+            <div className="notice-modal-header">
+              <h2 className="notice-modal-title">Filter Logs</h2>
               <button
                 type="button"
-                className="mgmt-btn-secondary"
-                onClick={() => { setHistoryStudentId(null); setStudentHistoryData(null); }}
+                className="notice-close-btn"
+                onClick={() => setIsAttendanceFilterModalOpen(false)}
+                aria-label="Close"
               >
-                Close History
+                <X size={18} />
               </button>
+            </div>
+
+            <div className="notice-form-body">
+              <div className="form-group-field">
+                <label className="form-field-label">Date</label>
+                <input
+                  type="date"
+                  value={attFilterDate}
+                  onChange={(e) => setAttFilterDate(e.target.value)}
+                  className="modal-text-input"
+                />
+              </div>
+
+              <div className="form-group-field">
+                <label className="form-field-label">Meal Type</label>
+                <select
+                  value={attFilterMeal}
+                  onChange={(e) => setAttFilterMeal(e.target.value)}
+                  className="modal-select-input"
+                >
+                  <option value="ALL">All Meals</option>
+                  <option value="BREAKFAST">Breakfast</option>
+                  <option value="LUNCH">Lunch</option>
+                  <option value="SNACKS">Snacks</option>
+                  <option value="DINNER">Dinner</option>
+                </select>
+              </div>
+
+              <div className="form-group-field">
+                <label className="form-field-label">Status</label>
+                <select
+                  value={attFilterStatus}
+                  onChange={(e) => setAttFilterStatus(e.target.value)}
+                  className="modal-select-input"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="ALLOWED">Allowed</option>
+                  <option value="ABSENT">Absent</option>
+                  <option value="DENIED">Denied</option>
+                </select>
+              </div>
+
+              <div className="form-group-field">
+                <label className="form-field-label">Block</label>
+                <select
+                  value={attFilterBlock}
+                  onChange={(e) => setAttFilterBlock(e.target.value)}
+                  className="modal-select-input"
+                >
+                  <option value="ALL">All Blocks</option>
+                  {blocks.map((b) => (
+                    <option key={b.id} value={b.name}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group-field">
+                <label className="form-field-label">Gender</label>
+                <select
+                  value={attFilterGender}
+                  onChange={(e) => setAttFilterGender(e.target.value)}
+                  className="modal-select-input"
+                >
+                  <option value="ALL">All Genders</option>
+                  <option value="MALE">Boys Hostel</option>
+                  <option value="FEMALE">Girls Hostel</option>
+                </select>
+              </div>
+
+              <div className="notice-modal-actions">
+                <button
+                  type="button"
+                  className="btn-light-secondary"
+                  onClick={handleResetAttendanceFilters}
+                >
+                  Reset Filters
+                </button>
+                <button
+                  type="button"
+                  className="btn-navy-primary"
+                  onClick={handleApplyAttendanceFilters}
+                >
+                  Apply Filters
+                </button>
+              </div>
             </div>
           </div>
         </div>

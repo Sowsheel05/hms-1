@@ -34,6 +34,7 @@ const suites = [
   { name: 'Cross-Portal Integration', script: 'test-cross-portal-integration.cjs', expected: 26 },
   { name: 'Static Mess QR (Step 7)', script: 'test-student-mess-static-qr.cjs', expected: 20 },
   { name: 'Room Allocation (Step 3)', script: 'test-room-allocation-step3-api.cjs', expected: 21 },
+  { name: 'Mess Management (Step 4)', script: 'test-mess-management-step4-api.cjs', expected: 18 },
 ];
 
 console.log('====================================================');
@@ -53,6 +54,7 @@ for (const suite of suites) {
     const match =
       output.match(/Passed:\s*(\d+)/i) ||
       output.match(/TEST RESULTS:\s*(\d+)\s*PASSED/i) ||
+      output.match(/RESULTS:\s*(\d+)\s*PASSED/i) ||
       output.match(/(\d+)\/(\d+)\s*tests passed/i) ||
       output.match(/SUITE:\s*(\d+)\/(\d+)\s*TESTS PASSED/i) ||
       output.match(/COMPLETE:\s*(\d+)\/(\d+)\s*TESTS PASSED/i) ||
