@@ -24,11 +24,9 @@ import {
   apiService,
   MessTokensData,
   MessMealSlot,
-  ActiveMessToken,
   MessTokenHistoryItem,
   HorizonDateItem,
 } from '../services/api';
-import QRCode from 'qrcode';
 import {
   StaticMessQrModal,
   STATIC_MESS_QR_PAYLOAD,
@@ -45,7 +43,6 @@ export const MessTokensPage: React.FC = () => {
   const [qrModalOpen, setQrModalOpen] = useState<boolean>(false);
   const [qrPayload, setQrPayload] = useState<string>(STATIC_MESS_QR_PAYLOAD);
   const [qrEntryPoint, setQrEntryPoint] = useState<string>(STATIC_MESS_ENTRY_POINT);
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
   // Selected date state (defaults to today's ISO date string)
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -62,24 +59,6 @@ export const MessTokensPage: React.FC = () => {
       })
       .catch(() => {});
   }, []);
-
-  // Generate deterministic QR data URL locally for embedded token passes
-  useEffect(() => {
-    let isMounted = true;
-    QRCode.toDataURL(qrPayload, {
-      width: 200,
-      margin: 1,
-      color: { dark: '#0F172A', light: '#FFFFFF' },
-    })
-      .then((url) => {
-        if (isMounted) setQrDataUrl(url);
-      })
-      .catch((err) => console.error('Error generating token QR:', err));
-
-    return () => {
-      isMounted = false;
-    };
-  }, [qrPayload]);
 
   // Modal / Booking intent state
   const [activeModalSlot, setActiveModalSlot] = useState<MessMealSlot | null>(null);
@@ -283,7 +262,6 @@ export const MessTokensPage: React.FC = () => {
   const selectedDayData = data?.selectedDate || data?.today;
   const summary = selectedDayData?.summary;
   const mealSlots = selectedDayData?.mealSlots || [];
-  const activePasses = data?.today?.activeTokensToday || [];
   const history = data?.history || [];
   const horizonDates = data?.horizon?.dates || [];
   const isSelectedDateToday = selectedDate === new Date().toISOString().split('T')[0];
@@ -597,89 +575,6 @@ export const MessTokensPage: React.FC = () => {
           })}
         </div>
       </section>
-
-      {/* Active Digital Passes (Ticket Cards for Today) */}
-      {isSelectedDateToday && activePasses.length > 0 && (
-        <section className="mess-section" aria-labelledby="active-passes-heading">
-          <div className="section-title-group">
-            <h2 id="active-passes-heading" className="mess-section-title">
-              Today's Active Digital Passes
-            </h2>
-            <span className="section-badge highlight">
-              {activePasses.length} Active Pass{activePasses.length === 1 ? '' : 'es'}
-            </span>
-          </div>
-
-          <div className="passes-grid">
-            {activePasses.map((pass: ActiveMessToken) => (
-              <div key={pass.id} className="digital-token-pass">
-                <div className="pass-header">
-                  <div className="pass-brand">
-                    <QrCode size={18} className="pass-qr-icon" />
-                    <span>HOSTEL MEAL PASS</span>
-                  </div>
-                  <span className="pass-valid-tag">VALID FOR TODAY</span>
-                </div>
-
-                <div className="pass-main">
-                  <div className="pass-left">
-                    <span className="pass-meal-label">{pass.mealName}</span>
-                    <h3 className="pass-token-number">{pass.tokenNumber}</h3>
-                    <div className="pass-timing-chip">
-                      <Clock size={13} />
-                      <span>{pass.timing}</span>
-                    </div>
-                  </div>
-
-                  <div
-                    className="pass-qr-visual"
-                    onClick={() => setQrModalOpen(true)}
-                    style={{ cursor: 'pointer' }}
-                    title="Click to enlarge Mess Verification QR"
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && setQrModalOpen(true)}
-                    aria-label="Enlarge Mess Verification QR Code"
-                  >
-                    {qrDataUrl ? (
-                      <img
-                        src={qrDataUrl}
-                        alt="Mess Verification QR"
-                        className="pass-real-qr-img"
-                      />
-                    ) : (
-                      <QrCode size={48} />
-                    )}
-                    <span className="pass-qr-label">MESS QR</span>
-                  </div>
-                </div>
-
-                <div className="pass-details-footer">
-                  <div className="pass-meta-col">
-                    <span className="meta-label">STUDENT</span>
-                    <span className="meta-value">{pass.studentName}</span>
-                  </div>
-                  <div className="pass-meta-col">
-                    <span className="meta-label">JNTU NO</span>
-                    <span className="meta-value">{pass.jntuNo}</span>
-                  </div>
-                  <div className="pass-meta-col">
-                    <span className="meta-label">LOCATION</span>
-                    <span className="meta-value">
-                      {pass.blockName} - {pass.roomNumber}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pass-bottom-note">
-                  <ShieldCheck size={13} />
-                  <span>Present this token number or pass at the mess service counter</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Indent & Token Booking History Section */}
       <section className="mess-section" aria-labelledby="token-history-heading">
