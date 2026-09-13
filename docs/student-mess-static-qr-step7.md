@@ -76,18 +76,15 @@ The QR payload is strictly deterministic and safe:
 ---
 
 ## 6. Student UI
-- **In-Page QR Card** (`StaticMessQrCard`):
-  - Prominently placed in `MessTokensPage.tsx`.
-  - Displays title **HMS MESS QR**, badge **Permanent QR**, and instruction: *"Present this QR to authorized hostel staff for mess verification."*
-  - Renders a crisp 160px local SVG/Canvas QR image with hover effect (*"Tap to Enlarge"*).
-  - Information notice: *"Your meal eligibility is verified from your current Mess indent."*
-  - **[VIEW QR]** action button.
+- **On-Demand Token QR**:
+  - In `MessTokensPage.tsx`, each confirmed eating meal slot (`isBooked` with `ATTENDING` intent) features a direct **`Token QR`** button in the card footer alongside the token reference.
+  - Zero clutter: Standalone banner cards and redundant daily pass sections are eliminated.
+  - Residents access their verification QR on-demand right where they inspect their confirmed meals.
 - **Mobile-Friendly Modal** (`StaticMessQrModal`):
-  - Displays a high-contrast 240px scannable QR frame.
+  - Clicking **`Token QR`** opens a high-contrast 240px scannable QR frame.
   - Tag: **PERMANENT STATIC ENTRY POINT**.
   - Server-authoritative callout and target metadata (`/mess/verify`).
   - Dismissible via **[CLOSE]** button, backdrop click, or `Escape` key.
-- **Pass Visual**: Clicking the QR graphic on any active daily pass in the passes grid opens the identical full-resolution static QR modal.
 
 ---
 
