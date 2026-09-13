@@ -487,8 +487,9 @@ async function runTests() {
       assert.strictEqual(outingData.success, true);
 
       // Clean up test outing
-      if (outingData.data?.id) {
-        await prisma.outingRequest.delete({ where: { id: outingData.data.id } });
+      const outingId = outingData.request?.id || outingData.data?.id;
+      if (outingId) {
+        await prisma.outingRequest.delete({ where: { id: outingId } });
       }
     });
 

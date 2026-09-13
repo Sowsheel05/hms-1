@@ -2693,6 +2693,9 @@ export const managementApiService = {
     if (params?.category) searchParams.set('category', params.category);
     if (params?.assigned) searchParams.set('assigned', params.assigned);
     if (params?.search) searchParams.set('search', params.search);
+    if (params?.block) searchParams.set('block', params.block);
+    if (params?.blockId) searchParams.set('blockId', params.blockId);
+    if (params?.date) searchParams.set('date', params.date);
     if (params?.page) searchParams.set('page', params.page.toString());
     if (params?.limit) searchParams.set('limit', params.limit.toString());
     const query = searchParams.toString();
@@ -2787,6 +2790,44 @@ export const managementApiService = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to close complaint.');
+    return data;
+  },
+
+  async updateComplaintStatus(
+    id: string,
+    payload: { status: string; staffId?: string; resolutionNotes?: string }
+  ): Promise<{ success: boolean; message: string; data: any }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+    const res = await fetch(`/api/management/complaints/${id}/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update complaint status.');
+    return data;
+  },
+
+  async addComplaintComment(
+    id: string,
+    comment: string
+  ): Promise<{ success: boolean; message: string; data: any }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+    const res = await fetch(`/api/management/complaints/${id}/comment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ comment }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to add comment.');
     return data;
   },
 
@@ -4817,6 +4858,8 @@ export interface ComplaintStudent {
   blockName?: string | null;
   roomNumber?: string | null;
   bedNumber?: string | null;
+  roomType?: string | null;
+  avatar?: string;
 }
 
 export interface ComplaintAttachmentItem {
@@ -4866,6 +4909,9 @@ export interface ComplaintQueryParams {
   category?: string;
   assigned?: string;
   search?: string;
+  block?: string;
+  blockId?: string;
+  date?: string;
   page?: number;
   limit?: number;
 }

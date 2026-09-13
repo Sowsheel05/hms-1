@@ -87,12 +87,14 @@ router.get('/notifications', authenticateStudent, async (req: AuthenticatedReque
     const limit = parseInt(req.query.limit as string, 10) || 20;
     const category = req.query.category as string;
     const unreadOnly = req.query.unreadOnly === 'true' || req.query.unreadOnly === '1';
+    const orderBy = req.query.orderBy as string;
 
     const result = await notificationService.listNotifications(req.student.id, {
       page,
       limit,
       category,
       unreadOnly,
+      orderBy,
     });
 
     res.status(200).json({

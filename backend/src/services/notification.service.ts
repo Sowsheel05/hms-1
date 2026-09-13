@@ -318,10 +318,11 @@ export class NotificationService {
   /**
    * Retrieves paginated, sorted, and filtered notification list for an authenticated student.
    */
-  async listNotifications(studentId: string, options: ListNotificationsOptions = {}) {
+  async listNotifications(studentId: string, options: any = {}) {
     const page = Math.max(1, Number(options.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(options.limit) || 20));
     const skip = (page - 1) * limit;
+    const sortDir: 'asc' | 'desc' = options.orderBy === 'asc' ? 'asc' : 'desc';
 
     const whereClause: any = { studentId };
 
@@ -336,7 +337,7 @@ export class NotificationService {
     const [notifications, total, unreadCount] = await Promise.all([
       prisma.notification.findMany({
         where: whereClause,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: sortDir },
         skip,
         take: limit,
       }),

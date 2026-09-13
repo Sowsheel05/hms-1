@@ -351,8 +351,10 @@ async function testNotificationsApi() {
   });
 
   // TEST 20: Baseline Notification Preservation
-  // Confirm that the initial 2 system notifications are still present
-  const finalCheck = await (await fetch('http://localhost:5001/api/student/notifications?category=SYSTEM&limit=100', {
+  // Confirm that the initial 2 system notifications are still present.
+  // Uses orderBy=asc to ensure the oldest seeded records (Room Allocation, Mess Menu) are
+  // always in the first page, regardless of how many SYSTEM notifications accumulate over test runs.
+  const finalCheck = await (await fetch('http://localhost:5001/api/student/notifications?category=SYSTEM&limit=10&orderBy=asc', {
     headers: { Authorization: `Bearer ${tokenA}` },
   })).json();
   const hasRoomAllocation = finalCheck.notifications.some((n) => n.title.includes('Room Allocation'));

@@ -110,7 +110,7 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
     const skip = (page - 1) * limit;
 
-    const { status, priority, category, assigned, search } = req.query as Record<string, string>;
+    const { status, priority, category, assigned, search, block, blockId, date } = req.query as Record<string, string>;
 
     const where: any = {};
 
@@ -141,12 +141,36 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
       where.assignedToId = { not: null };
     }
 
-    // Search (ticket number, title, student name)
+    // Block filter
+    if (block && block !== 'ALL') {
+      where.student = { ...(where.student || {}), blockName: { equals: block, mode: 'insensitive' } };
+    } else if (blockId && blockId !== 'ALL') {
+      const bRecord = await prisma.block.findUnique({ where: { id: blockId } });
+      if (bRecord) {
+        where.student = { ...(where.student || {}), blockName: { equals: bRecord.name, mode: 'insensitive' } };
+      }
+    }
+
+    // Date filter
+    if (date && date.trim().length > 0) {
+      const parsedDate = new Date(date);
+      if (!isNaN(parsedDate.getTime())) {
+        const startOfDay = new Date(parsedDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(parsedDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        where.createdAt = { gte: startOfDay, lte: endOfDay };
+      }
+    }
+
+    // Search (ticket number, title, description, location, student name, JNTU)
     if (search && search.trim().length > 0) {
       const s = search.trim();
       where.OR = [
         { ticketNumber: { contains: s, mode: 'insensitive' } },
         { title: { contains: s, mode: 'insensitive' } },
+        { description: { contains: s, mode: 'insensitive' } },
+        { location: { contains: s, mode: 'insensitive' } },
         { student: { name: { contains: s, mode: 'insensitive' } } },
         { student: { jntuNo: { contains: s, mode: 'insensitive' } } },
       ];
@@ -157,7 +181,17 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
         where,
         include: {
           student: {
-            select: { id: true, name: true, jntuNo: true, blockName: true, roomNumber: true },
+            select: {
+              id: true,
+              name: true,
+              jntuNo: true,
+              email: true,
+              blockName: true,
+              floorName: true,
+              roomNumber: true,
+              bedNumber: true,
+              roomType: true,
+            },
           },
           attachments: {
             select: { id: true, fileName: true, fileSize: true, mimeType: true, createdAt: true },
@@ -170,9 +204,27 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
       prisma.complaint.count({ where }),
     ]);
 
+    // Enrich complaints with student avatar
+    const enrichedComplaints = complaints.map((c: any) => {
+      const s = c.student;
+      const avatar = s?.name
+        ? s.name
+            .split(' ')
+            .filter(Boolean)
+            .map((part: string) => part[0])
+            .join('')
+            .substring(0, 2)
+            .toUpperCase()
+        : 'ST';
+      return {
+        ...c,
+        student: s ? { ...s, avatar } : null,
+      };
+    });
+
     res.json({
       success: true,
-      data: complaints,
+      data: enrichedComplaints,
       pagination: {
         page,
         limit,
@@ -201,8 +253,15 @@ router.get('/:id', async (req: AuthenticatedManagementRequest, res: Response): P
       include: {
         student: {
           select: {
-            id: true, name: true, jntuNo: true, email: true,
-            blockName: true, floorName: true, roomNumber: true, bedNumber: true,
+            id: true,
+            name: true,
+            jntuNo: true,
+            email: true,
+            blockName: true,
+            floorName: true,
+            roomNumber: true,
+            bedNumber: true,
+            roomType: true,
           },
         },
         attachments: {
@@ -222,8 +281,10 @@ router.get('/:id', async (req: AuthenticatedManagementRequest, res: Response): P
       return;
     }
 
+    const c: any = complaint;
+
     // Format attachments with management download URL
-    const formattedAttachments = complaint.attachments.map((att) => ({
+    const formattedAttachments = (c.attachments || []).map((att: any) => ({
       id: att.id,
       fileName: att.fileName,
       fileSize: att.fileSize,
@@ -237,10 +298,22 @@ router.get('/:id', async (req: AuthenticatedManagementRequest, res: Response): P
       try { parsedComments = JSON.parse(complaint.comments); } catch { parsedComments = []; }
     }
 
+    const s = c.student;
+    const avatar = s?.name
+      ? s.name
+          .split(' ')
+          .filter(Boolean)
+          .map((part: string) => part[0])
+          .join('')
+          .substring(0, 2)
+          .toUpperCase()
+      : 'ST';
+
     res.json({
       success: true,
       data: {
         ...complaint,
+        student: s ? { ...s, avatar } : null,
         attachments: formattedAttachments,
         commentsList: parsedComments,
       },
@@ -394,6 +467,11 @@ router.post(
         complaintId: id,
         timestamp: new Date().toISOString(),
       });
+      complaintEventsService.emitManagementDashboardUpdate({
+        type: 'COMPLAINT_ASSIGNED',
+        timestamp: new Date().toISOString(),
+        details: { complaintId: id, staffId: result.staff.id, staffName: result.staff.name },
+      });
 
       res.json({
         success: true,
@@ -430,7 +508,7 @@ router.post(
    POST /api/management/complaints/:id/start
    Start work on assigned complaint
    ASSIGNED → IN_PROGRESS
-   Restricted to: MAINTENANCE_STAFF (must be assigned staff)
+   Restricted to: MAINTENANCE_STAFF (must be assigned staff) OR MANAGEMENT_ROLES (ADMIN, WARDEN, etc.)
    ============================================================ */
 router.post(
   '/:id/start',
@@ -438,11 +516,12 @@ router.post(
     const { id } = req.params;
     const actor = req.managementUser!;
 
-    // Only MAINTENANCE_STAFF can start work; WARDEN/ADMIN cannot start on behalf
-    if (actor.role !== 'MAINTENANCE_STAFF') {
+    // Allow MAINTENANCE_STAFF or MANAGEMENT_ROLES
+    const isMgmt = MANAGEMENT_ROLES.includes(actor.role as any);
+    if (actor.role !== 'MAINTENANCE_STAFF' && !isMgmt) {
       res.status(403).json({
         success: false,
-        message: 'Only the assigned maintenance staff member can start work on a complaint.',
+        message: 'Only maintenance staff or management personnel can start work on a complaint.',
       });
       return;
     }
@@ -463,8 +542,8 @@ router.post(
           );
         }
 
-        // Must be assigned to this specific staff member
-        if (complaint.assignedToId !== actor.id) {
+        // If actor is MAINTENANCE_STAFF, must be assigned to this specific staff member
+        if (actor.role === 'MAINTENANCE_STAFF' && complaint.assignedToId !== actor.id) {
           throw Object.assign(
             new Error('NOT_ASSIGNED: This complaint is not assigned to you.'),
             { status: 403 }
@@ -510,6 +589,11 @@ router.post(
         type: 'COMPLAINT_STARTED',
         complaintId: id,
         timestamp: new Date().toISOString(),
+      });
+      complaintEventsService.emitManagementDashboardUpdate({
+        type: 'COMPLAINT_STARTED',
+        timestamp: new Date().toISOString(),
+        details: { complaintId: id },
       });
 
       res.json({
@@ -625,6 +709,11 @@ router.post(
         complaintId: id,
         timestamp: new Date().toISOString(),
       });
+      complaintEventsService.emitManagementDashboardUpdate({
+        type: 'COMPLAINT_RESOLVED',
+        timestamp: new Date().toISOString(),
+        details: { complaintId: id, resolvedBy: actor.name },
+      });
 
       res.json({
         success: true,
@@ -730,6 +819,11 @@ router.post(
         complaintId: id,
         timestamp: new Date().toISOString(),
       });
+      complaintEventsService.emitManagementDashboardUpdate({
+        type: 'COMPLAINT_CLOSED',
+        timestamp: new Date().toISOString(),
+        details: { complaintId: id, closedBy: actor.name },
+      });
 
       res.json({
         success: true,
@@ -752,6 +846,268 @@ router.post(
       }
       console.error('Error closing complaint:', error);
       res.status(500).json({ success: false, message: 'Failed to close complaint.' });
+    }
+  }
+);
+
+/* ============================================================
+   POST /api/management/complaints/:id/status & PUT /api/management/complaints/:id/status
+   Unified administrative status transition endpoint
+   ============================================================ */
+async function handleStatusTransition(req: AuthenticatedManagementRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  const { status, staffId, resolutionNotes } = req.body;
+  const actor = req.managementUser!;
+
+  if (!status || typeof status !== 'string') {
+    res.status(400).json({ success: false, message: 'Target status is required.' });
+    return;
+  }
+
+  const targetStatus = status.toUpperCase();
+  const isMgmt = MANAGEMENT_ROLES.includes(actor.role as any);
+  const isMaintenance = actor.role === 'MAINTENANCE_STAFF';
+
+  // Role validation
+  if (targetStatus === 'ASSIGNED' || targetStatus === 'CLOSED') {
+    if (!isMgmt) {
+      res.status(403).json({ success: false, message: `Only management personnel can transition a complaint to ${targetStatus}.` });
+      return;
+    }
+  } else if (targetStatus === 'IN_PROGRESS') {
+    if (!isMgmt && !isMaintenance) {
+      res.status(403).json({ success: false, message: 'Only maintenance staff or management can start work on a complaint.' });
+      return;
+    }
+  } else if (targetStatus === 'RESOLVED') {
+    if (!isMgmt && !isMaintenance) {
+      res.status(403).json({ success: false, message: 'Only maintenance staff or management can resolve a complaint.' });
+      return;
+    }
+    if (!resolutionNotes || typeof resolutionNotes !== 'string' || resolutionNotes.trim().length < 10) {
+      res.status(400).json({ success: false, message: 'Resolution notes are required (minimum 10 characters).' });
+      return;
+    }
+  } else {
+    res.status(400).json({ success: false, message: `Unsupported target status "${status}".` });
+    return;
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const complaint = await tx.complaint.findUnique({
+        where: { id },
+        include: { student: true },
+      });
+
+      if (!complaint) throw Object.assign(new Error('NOT_FOUND'), { status: 404 });
+
+      if (!canTransition(complaint.status, targetStatus)) {
+        throw Object.assign(
+          new Error(`INVALID_TRANSITION: Cannot transition complaint from "${complaint.status}" to "${targetStatus}".`),
+          { status: 400 }
+        );
+      }
+
+      const now = new Date();
+      let updateData: any = { status: targetStatus };
+
+      if (targetStatus === 'ASSIGNED') {
+        if (!staffId || typeof staffId !== 'string') {
+          throw Object.assign(new Error('STAFF_REQUIRED: staffId is required to assign a complaint.'), { status: 400 });
+        }
+        const staff = await tx.student.findUnique({ where: { id: staffId } });
+        if (!staff) throw Object.assign(new Error('STAFF_NOT_FOUND: Maintenance staff member not found.'), { status: 404 });
+        if (staff.role !== 'MAINTENANCE_STAFF') {
+          throw Object.assign(new Error('INVALID_STAFF_ROLE: Only users with the MAINTENANCE_STAFF role can be assigned to complaints.'), { status: 400 });
+        }
+        if (!staff.isActive) {
+          throw Object.assign(new Error('STAFF_INACTIVE: The selected staff member account is currently inactive.'), { status: 400 });
+        }
+        updateData = {
+          ...updateData,
+          assignedToId: staff.id,
+          assignedTo: staff.name,
+          assignedAt: now,
+          assignedBy: actor.name,
+        };
+      } else if (targetStatus === 'IN_PROGRESS') {
+        if (isMaintenance && complaint.assignedToId !== actor.id) {
+          throw Object.assign(new Error('NOT_ASSIGNED: This complaint is not assigned to you.'), { status: 403 });
+        }
+      } else if (targetStatus === 'RESOLVED') {
+        if (isMaintenance && complaint.assignedToId !== actor.id) {
+          throw Object.assign(new Error('NOT_ASSIGNED: This complaint is not assigned to you.'), { status: 403 });
+        }
+        updateData = {
+          ...updateData,
+          resolutionNotes: resolutionNotes.trim(),
+          resolvedBy: actor.name,
+          resolvedAt: now,
+        };
+      } else if (targetStatus === 'CLOSED') {
+        updateData = {
+          ...updateData,
+          closedAt: now,
+          closedBy: actor.name,
+        };
+      }
+
+      const updated = await tx.complaint.update({
+        where: { id },
+        data: updateData,
+      });
+
+      await tx.activityLog.create({
+        data: {
+          studentId: complaint.studentId,
+          actionType: 'COMPLAINT',
+          action: targetStatus,
+          actorRole: actor.role,
+          entity: 'Complaint',
+          entityId: complaint.id,
+          previousState: complaint.status,
+          newState: targetStatus,
+          description: `Complaint ${complaint.ticketNumber || complaint.id} transitioned to ${targetStatus} by ${actor.name}.`,
+        },
+      });
+
+      const notificationTitleMap: Record<string, string> = {
+        ASSIGNED: 'Complaint Assigned',
+        IN_PROGRESS: 'Work Started on Your Complaint',
+        RESOLVED: 'Complaint Resolved',
+        CLOSED: 'Complaint Closed',
+      };
+      const notificationMsgMap: Record<string, string> = {
+        ASSIGNED: `Your complaint ${complaint.ticketNumber || complaint.id} has been assigned to a maintenance technician.`,
+        IN_PROGRESS: `Maintenance work has begun on your complaint ${complaint.ticketNumber || complaint.id}.`,
+        RESOLVED: `Your complaint ${complaint.ticketNumber || complaint.id} has been resolved.`,
+        CLOSED: `Your complaint ${complaint.ticketNumber || complaint.id} has been officially closed by the hostel administration.`,
+      };
+
+      await notificationService.createNotification(
+        {
+          studentId: complaint.studentId,
+          title: notificationTitleMap[targetStatus] || 'Complaint Updated',
+          message: notificationMsgMap[targetStatus] || `Your complaint status was updated to ${targetStatus}.`,
+          type: targetStatus === 'RESOLVED' || targetStatus === 'CLOSED' ? 'SUCCESS' : 'INFO',
+          category: 'COMPLAINT',
+          entityId: complaint.id,
+          link: '/complaints',
+        },
+        tx
+      );
+
+      return { updated, student: complaint.student };
+    });
+
+    const sseEventMap: Record<string, any> = {
+      ASSIGNED: 'COMPLAINT_ASSIGNED',
+      IN_PROGRESS: 'COMPLAINT_STARTED',
+      RESOLVED: 'COMPLAINT_RESOLVED',
+      CLOSED: 'COMPLAINT_CLOSED',
+    };
+
+    complaintEventsService.emitToStudent(result.student.id, {
+      type: sseEventMap[targetStatus] || 'COMPLAINT_STATUS_CHANGED',
+      complaintId: id,
+      timestamp: new Date().toISOString(),
+    });
+    complaintEventsService.emitManagementDashboardUpdate({
+      type: sseEventMap[targetStatus] || 'COMPLAINT_STATUS_CHANGED',
+      timestamp: new Date().toISOString(),
+      details: { complaintId: id, status: targetStatus },
+    });
+
+    res.json({
+      success: true,
+      message: `Complaint transitioned to ${targetStatus} successfully.`,
+      data: result.updated,
+    });
+  } catch (error: any) {
+    if (error.message === 'NOT_FOUND') {
+      res.status(404).json({ success: false, message: 'Complaint not found.' });
+      return;
+    }
+    if (error.message?.startsWith('NOT_ASSIGNED')) {
+      res.status(403).json({ success: false, message: error.message.split(': ')[1] || error.message });
+      return;
+    }
+    if (error.message?.startsWith('STAFF_NOT_FOUND')) {
+      res.status(404).json({ success: false, message: error.message.split(': ')[1] || error.message });
+      return;
+    }
+    if (
+      error.message?.startsWith('INVALID_TRANSITION') ||
+      error.message?.startsWith('STAFF_REQUIRED') ||
+      error.message?.startsWith('INVALID_STAFF_ROLE') ||
+      error.message?.startsWith('STAFF_INACTIVE')
+    ) {
+      res.status(400).json({ success: false, message: error.message.split(': ')[1] || error.message });
+      return;
+    }
+    console.error('Error in status transition:', error);
+    res.status(500).json({ success: false, message: 'Failed to update complaint status.' });
+  }
+}
+
+router.post('/:id/status', handleStatusTransition);
+router.put('/:id/status', handleStatusTransition);
+
+/* ============================================================
+   POST /api/management/complaints/:id/comment
+   Add administrative comment/note to complaint
+   ============================================================ */
+router.post(
+  '/:id/comment',
+  async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { comment } = req.body;
+    const actor = req.managementUser!;
+
+    if (!comment || typeof comment !== 'string' || comment.trim().length < 2) {
+      res.status(400).json({ success: false, message: 'Comment must be at least 2 characters.' });
+      return;
+    }
+
+    try {
+      const complaint = await prisma.complaint.findUnique({
+        where: { id },
+        include: { student: true },
+      });
+
+      if (!complaint) {
+        res.status(404).json({ success: false, message: 'Complaint not found.' });
+        return;
+      }
+
+      let currentComments: any[] = [];
+      if (complaint.comments) {
+        try { currentComments = JSON.parse(complaint.comments); } catch { currentComments = []; }
+      }
+
+      const newComment = {
+        id: Math.random().toString(36).substring(2, 9),
+        author: `${actor.name} (${actor.role})`,
+        text: comment.trim(),
+        createdAt: new Date().toISOString(),
+      };
+
+      currentComments.push(newComment);
+
+      await prisma.complaint.update({
+        where: { id },
+        data: { comments: JSON.stringify(currentComments) },
+      });
+
+      res.json({
+        success: true,
+        message: 'Comment added successfully.',
+        data: { commentsList: currentComments },
+      });
+    } catch (error) {
+      console.error('Error adding management comment:', error);
+      res.status(500).json({ success: false, message: 'Failed to add comment.' });
     }
   }
 );

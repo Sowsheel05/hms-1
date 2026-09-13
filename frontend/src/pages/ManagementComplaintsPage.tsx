@@ -23,6 +23,11 @@ import {
   Play,
   FileText,
   RotateCcw,
+  LayoutGrid,
+  List,
+  Building,
+  MessageSquare,
+  Send,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -58,12 +63,28 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
   const [isListLoading, setIsListLoading] = useState<boolean>(true);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
 
+  // View Mode: Cards (default) vs Table
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+
   // Filters State
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [priorityFilter, setPriorityFilter] = useState<string>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [assignedFilter, setAssignedFilter] = useState<string>('ALL');
+  const [blockFilter, setBlockFilter] = useState<string>('ALL');
+  const [dateFilter, setDateFilter] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
+
+  // Residential Blocks list
+  const [blocks, setBlocks] = useState<Array<{ id: string; name: string }>>([
+    { id: 'West-Wing-C', name: 'West-Wing-C' },
+    { id: 'Boys-Block-A', name: 'Boys-Block-A' },
+    { id: 'Boys-Block-B', name: 'Boys-Block-B' },
+    { id: 'Boys-Block-C', name: 'Boys-Block-C' },
+    { id: 'Boys-Block-D', name: 'Boys-Block-D' },
+    { id: 'Girls-Block-A', name: 'Girls-Block-A' },
+    { id: 'Girls-Block-B', name: 'Girls-Block-B' },
+  ]);
 
   // Maintenance Staff List (for assigning)
   const [staffList, setStaffList] = useState<MaintenanceStaffMember[]>([]);
@@ -78,6 +99,8 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
 
   // Detail Modal State
   const [selectedComplaint, setSelectedComplaint] = useState<ManagementComplaintItem | null>(null);
+  const [newCommentText, setNewCommentText] = useState<string>('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState<boolean>(false);
 
   // Assign Modal State
   const [assigningComplaint, setAssigningComplaint] = useState<ManagementComplaintItem | null>(null);
@@ -104,6 +127,21 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
       return () => clearTimeout(timer);
     }
   }, [toastMessage]);
+
+  // Fetch Blocks from backend
+  useEffect(() => {
+    const fetchBlocks = async () => {
+      try {
+        const res = await managementApiService.getBlocks();
+        if (res.success && res.blocks && res.blocks.length > 0) {
+          setBlocks(res.blocks.map((b: any) => ({ id: b.name, name: b.name })));
+        }
+      } catch {
+        // Fallback default blocks retained
+      }
+    };
+    fetchBlocks();
+  }, []);
 
   // Fetch Maintenance Staff
   const fetchStaff = useCallback(async () => {
@@ -156,6 +194,8 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
         if (priorityFilter !== 'ALL') queryParams.priority = priorityFilter;
         if (categoryFilter !== 'ALL') queryParams.category = categoryFilter;
         if (assignedFilter !== 'ALL') queryParams.assigned = assignedFilter;
+        if (blockFilter !== 'ALL') queryParams.block = blockFilter;
+        if (dateFilter.trim()) queryParams.date = dateFilter.trim();
         if (searchTerm.trim()) queryParams.search = searchTerm.trim();
 
         const res = await managementApiService.getComplaints(queryParams);
@@ -176,7 +216,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
         if (!silent) setIsListLoading(false);
       }
     },
-    [pagination.limit, statusFilter, priorityFilter, categoryFilter, assignedFilter, searchTerm]
+    [pagination.limit, statusFilter, priorityFilter, categoryFilter, assignedFilter, blockFilter, dateFilter, searchTerm]
   );
 
   // Initial Load & Filter Changes
@@ -199,7 +239,8 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
       if (
         eventType.includes('COMPLAINT') ||
         eventType.includes('MAINTENANCE') ||
-        eventType === 'MANAGEMENT_DASHBOARD_EVENT'
+        eventType === 'MANAGEMENT_DASHBOARD_EVENT' ||
+        eventType === 'MANAGEMENT_DASHBOARD_UPDATE'
       ) {
         // Silently reload stats and list
         fetchStats(true);
@@ -229,6 +270,8 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
     setPriorityFilter('ALL');
     setCategoryFilter('ALL');
     setAssignedFilter('ALL');
+    setBlockFilter('ALL');
+    setDateFilter('');
     setSearchTerm('');
   };
 
@@ -238,9 +281,28 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
       const res = await managementApiService.getComplaint(complaintId);
       if (res.success) {
         setSelectedComplaint(res.data);
+        setNewCommentText('');
       }
     } catch (err: any) {
       setToastMessage({ type: 'error', text: err.message || 'Failed to load complaint details.' });
+    }
+  };
+
+  // Submit Comment in Detail Modal
+  const handleAddComment = async () => {
+    if (!selectedComplaint || !newCommentText.trim() || newCommentText.trim().length < 2) return;
+    setIsSubmittingComment(true);
+    try {
+      const res = await managementApiService.addComplaintComment(selectedComplaint.id, newCommentText.trim());
+      if (res.success) {
+        setToastMessage({ type: 'success', text: 'Administrative note added.' });
+        setNewCommentText('');
+        handleViewDetail(selectedComplaint.id);
+      }
+    } catch (err: any) {
+      setToastMessage({ type: 'error', text: err.message || 'Failed to add comment.' });
+    } finally {
+      setIsSubmittingComment(false);
     }
   };
 
@@ -378,7 +440,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
 
   // Priority Badge Renderer
   const renderPriorityBadge = (priority: string) => {
-    switch (priority) {
+    switch (priority?.toUpperCase()) {
       case 'URGENT':
         return <span className="complaint-priority-badge urgent">Urgent</span>;
       case 'HIGH':
@@ -393,7 +455,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
 
   // Status Badge Renderer
   const renderStatusBadge = (status: string) => {
-    switch (status) {
+    switch (status?.toUpperCase()) {
       case 'OPEN':
         return (
           <span className="complaint-status-badge open">
@@ -489,9 +551,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
             <Wrench size={24} />
           </div>
           <div>
-            <h1 className="complaints-main-title">
-              {isMaintenanceStaff ? 'Maintenance Work Orders' : 'Complaints & Maintenance Operations'}
-            </h1>
+            <h1 className="complaints-main-title">Complaints &amp; Maintenance Management</h1>
             <p className="complaints-sub-title">
               {isMaintenanceStaff
                 ? 'View and execute assigned hostel maintenance tickets, track work progress, and record resolutions.'
@@ -504,7 +564,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
           {/* Live Status Indicator */}
           <div className="live-indicator" title={isLiveConnected ? 'SSE Real-time Connected' : 'SSE Reconnecting...'}>
             <span className={`live-dot ${isLiveConnected ? 'connected' : 'disconnected'}`} />
-            <span>{isLiveConnected ? 'Live Operations Active' : 'Connecting SSE...'}</span>
+            <span>{isLiveConnected ? 'Live Updates Active' : 'Connecting SSE...'}</span>
           </div>
 
           {/* Refresh Button */}
@@ -516,7 +576,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
             title="Synchronize complaints & stats"
           >
             <RefreshCw size={15} className={isRefreshing ? 'spin' : ''} />
-            <span>{isRefreshing ? 'Syncing...' : 'Sync'}</span>
+            <span>{isRefreshing ? 'Syncing...' : 'Refresh'}</span>
           </button>
         </div>
       </div>
@@ -524,7 +584,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
       {/* KPI Stats Cards */}
       <div className="complaints-stats-grid">
         <div
-          className="kpi-stat-card"
+          className={`kpi-stat-card ${statusFilter === 'ALL' ? 'active-filter' : ''}`}
           onClick={() => setStatusFilter('ALL')}
           title="Click to view all complaints"
           style={{ cursor: 'pointer' }}
@@ -538,7 +598,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
         </div>
 
         <div
-          className="kpi-stat-card clickable"
+          className={`kpi-stat-card clickable ${statusFilter === 'OPEN' ? 'active-filter' : ''}`}
           onClick={() => setStatusFilter('OPEN')}
           title="Filter by Open"
           style={{ cursor: 'pointer' }}
@@ -552,7 +612,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
         </div>
 
         <div
-          className="kpi-stat-card clickable"
+          className={`kpi-stat-card clickable ${statusFilter === 'ASSIGNED' ? 'active-filter' : ''}`}
           onClick={() => setStatusFilter('ASSIGNED')}
           title="Filter by Assigned"
           style={{ cursor: 'pointer' }}
@@ -562,11 +622,11 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
             <UserCheck size={18} className="kpi-icon assigned" />
           </div>
           <div className="kpi-stat-value text-purple">{isStatsLoading ? '—' : stats?.assigned ?? 0}</div>
-          <div className="kpi-stat-sub">Awaiting technician start</div>
+          <div className="kpi-stat-sub">Awaiting start</div>
         </div>
 
         <div
-          className="kpi-stat-card clickable"
+          className={`kpi-stat-card clickable ${statusFilter === 'IN_PROGRESS' ? 'active-filter' : ''}`}
           onClick={() => setStatusFilter('IN_PROGRESS')}
           title="Filter by In Progress"
           style={{ cursor: 'pointer' }}
@@ -580,7 +640,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
         </div>
 
         <div
-          className="kpi-stat-card clickable"
+          className={`kpi-stat-card clickable ${statusFilter === 'RESOLVED' ? 'active-filter' : ''}`}
           onClick={() => setStatusFilter('RESOLVED')}
           title="Filter by Resolved"
           style={{ cursor: 'pointer' }}
@@ -590,11 +650,11 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
             <CheckCircle2 size={18} className="kpi-icon resolved" />
           </div>
           <div className="kpi-stat-value text-green">{isStatsLoading ? '—' : stats?.resolved ?? 0}</div>
-          <div className="kpi-stat-sub">Awaiting verification/close</div>
+          <div className="kpi-stat-sub">Awaiting close</div>
         </div>
 
         <div
-          className="kpi-stat-card clickable"
+          className={`kpi-stat-card clickable ${statusFilter === 'CLOSED' ? 'active-filter' : ''}`}
           onClick={() => setStatusFilter('CLOSED')}
           title="Filter by Closed"
           style={{ cursor: 'pointer' }}
@@ -608,8 +668,8 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
         </div>
 
         <div
-          className="kpi-stat-card clickable"
-          onClick={() => setPriorityFilter('HIGH')}
+          className={`kpi-stat-card clickable ${priorityFilter === 'HIGH' ? 'active-filter' : ''}`}
+          onClick={() => setPriorityFilter(priorityFilter === 'HIGH' ? 'ALL' : 'HIGH')}
           title="Filter by High/Urgent"
           style={{ cursor: 'pointer' }}
         >
@@ -622,8 +682,8 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
         </div>
 
         <div
-          className="kpi-stat-card clickable"
-          onClick={() => setAssignedFilter('UNASSIGNED')}
+          className={`kpi-stat-card clickable ${assignedFilter === 'UNASSIGNED' ? 'active-filter' : ''}`}
+          onClick={() => setAssignedFilter(assignedFilter === 'UNASSIGNED' ? 'ALL' : 'UNASSIGNED')}
           title="Filter by Unassigned"
           style={{ cursor: 'pointer' }}
         >
@@ -632,8 +692,77 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
             <Clock size={18} className="kpi-icon unassigned" />
           </div>
           <div className="kpi-stat-value text-orange">{isStatsLoading ? '—' : stats?.unassigned ?? 0}</div>
-          <div className="kpi-stat-sub">No technician assigned</div>
+          <div className="kpi-stat-sub">No technician</div>
         </div>
+      </div>
+
+      {/* Tabs Navigation Bar */}
+      <div className="complaints-tabs-nav" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={statusFilter === 'ALL'}
+          className={`complaints-tab-btn ${statusFilter === 'ALL' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('ALL')}
+        >
+          <span>All Complaints</span>
+          <span className="complaints-tab-counter">{stats?.total ?? 0}</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={statusFilter === 'OPEN'}
+          className={`complaints-tab-btn ${statusFilter === 'OPEN' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('OPEN')}
+        >
+          <span>Open / New</span>
+          <span className="complaints-tab-counter">{stats?.open ?? 0}</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={statusFilter === 'ASSIGNED'}
+          className={`complaints-tab-btn ${statusFilter === 'ASSIGNED' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('ASSIGNED')}
+        >
+          <span>Assigned</span>
+          <span className="complaints-tab-counter">{stats?.assigned ?? 0}</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={statusFilter === 'IN_PROGRESS'}
+          className={`complaints-tab-btn ${statusFilter === 'IN_PROGRESS' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('IN_PROGRESS')}
+        >
+          <span>In Progress</span>
+          <span className="complaints-tab-counter">{stats?.inProgress ?? 0}</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={statusFilter === 'RESOLVED'}
+          className={`complaints-tab-btn ${statusFilter === 'RESOLVED' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('RESOLVED')}
+        >
+          <span>Resolved</span>
+          <span className="complaints-tab-counter">{stats?.resolved ?? 0}</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={statusFilter === 'CLOSED'}
+          className={`complaints-tab-btn ${statusFilter === 'CLOSED' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('CLOSED')}
+        >
+          <span>Closed</span>
+          <span className="complaints-tab-counter">{stats?.closed ?? 0}</span>
+        </button>
       </div>
 
       {/* Filter Bar */}
@@ -646,6 +775,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="filter-search-input"
+            id="complaints-search-input"
           />
           {searchTerm && (
             <button type="button" onClick={() => setSearchTerm('')} className="clear-search-btn">
@@ -698,6 +828,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
             className="filter-select"
           >
             <option value="ALL">All Categories</option>
+            <option value="ROOM">Room</option>
             <option value="ELECTRICAL">Electrical</option>
             <option value="PLUMBING">Plumbing</option>
             <option value="CARPENTRY">Carpentry</option>
@@ -705,6 +836,34 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
             <option value="INTERNET">Internet</option>
             <option value="OTHER">Other</option>
           </select>
+        </div>
+
+        <div className="filter-select-group">
+          <label htmlFor="filter-block">Block</label>
+          <select
+            id="filter-block"
+            value={blockFilter}
+            onChange={(e) => setBlockFilter(e.target.value)}
+            className="filter-select"
+          >
+            <option value="ALL">All Residential Blocks</option>
+            {blocks.map((b) => (
+              <option key={b.id} value={b.name}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="filter-select-group">
+          <label htmlFor="filter-date">Date</label>
+          <input
+            type="date"
+            id="filter-date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="filter-select"
+          />
         </div>
 
         {isManagementRole && (
@@ -723,23 +882,46 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
           </div>
         )}
 
+        {/* View Mode Toggle */}
+        <div className="view-mode-toggle" role="group" aria-label="Layout mode">
+          <button
+            type="button"
+            className={`view-mode-btn ${viewMode === 'cards' ? 'active' : ''}`}
+            onClick={() => setViewMode('cards')}
+            title="Cards View"
+            id="btn-view-cards"
+          >
+            <LayoutGrid size={15} />
+          </button>
+          <button
+            type="button"
+            className={`view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
+            onClick={() => setViewMode('table')}
+            title="Table View"
+            id="btn-view-table"
+          >
+            <List size={15} />
+          </button>
+        </div>
+
         <button
           type="button"
           onClick={handleClearFilters}
           className="btn-text clear-filters-btn"
           title="Reset all search and filter options"
+          id="btn-clear-filters"
         >
           <RotateCcw size={14} />
           <span>Reset</span>
         </button>
       </div>
 
-      {/* Complaints Table & Content */}
+      {/* Complaints Cards / Table Container */}
       <div className="complaints-content-container">
         {isListLoading ? (
           <div className="complaints-loading-state">
             <RefreshCw size={28} className="spin" />
-            <p>Loading complaints...</p>
+            <p>Loading complaints from PostgreSQL...</p>
           </div>
         ) : complaints.length === 0 ? (
           <div className="complaints-empty-state">
@@ -750,6 +932,8 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
               priorityFilter !== 'ALL' ||
               categoryFilter !== 'ALL' ||
               assignedFilter !== 'ALL' ||
+              blockFilter !== 'ALL' ||
+              dateFilter !== '' ||
               searchTerm) && (
               <button type="button" onClick={handleClearFilters} className="btn-secondary mt-2">
                 Reset Filters
@@ -758,250 +942,363 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
           </div>
         ) : (
           <>
-            {/* Desktop Table View */}
-            <div className="complaints-table-wrapper desktop-only">
-              <table className="complaints-table">
-                <thead>
-                  <tr>
-                    <th>Ticket / Info</th>
-                    <th>Student Details</th>
-                    <th>Category</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Assigned To</th>
-                    <th>Created</th>
-                    <th className="text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {complaints.map((item) => (
-                    <tr key={item.id} className="complaint-row">
-                      <td className="ticket-cell">
-                        <div className="ticket-number-badge">
-                          {item.ticketNumber || `CMP-${item.id.slice(-6).toUpperCase()}`}
+            {/* 1. Primary Cards View (Screenshot-accurate default) */}
+            {viewMode === 'cards' ? (
+              <div className="complaints-cards-grid">
+                {complaints.map((item) => {
+                  const studentName = item.student?.name || 'Resident';
+                  const initials =
+                    (item.student as any)?.avatar ||
+                    studentName
+                      .split(' ')
+                      .filter(Boolean)
+                      .map((p) => p[0])
+                      .join('')
+                      .slice(0, 2)
+                      .toUpperCase() ||
+                    'ST';
+
+                  const statusClass =
+                    item.status === 'OPEN'
+                      ? 'card-open'
+                      : item.status === 'ASSIGNED'
+                      ? 'card-assigned'
+                      : item.status === 'IN_PROGRESS'
+                      ? 'card-in-progress'
+                      : item.status === 'RESOLVED'
+                      ? 'card-resolved'
+                      : item.status === 'CLOSED'
+                      ? 'card-closed'
+                      : '';
+
+                  return (
+                    <article
+                      key={item.id}
+                      className={`complaint-request-card ${statusClass} ${
+                        item.priority === 'HIGH' || item.priority === 'URGENT' ? 'card-urgent' : ''
+                      }`}
+                      aria-label={`Complaint ${item.ticketNumber || item.id}`}
+                    >
+                      {/* Top Bar */}
+                      <div className="card-top-bar">
+                        <div className="card-resident-ident">
+                          <div className="student-avatar-badge" aria-hidden="true">
+                            {initials}
+                          </div>
+                          <div className="resident-name-block">
+                            <h3 className="resident-full-name">{studentName}</h3>
+                            <div className="resident-pills-row">
+                              <span className="jntu-pill">{item.student?.jntuNo || '—'}</span>
+                              {(item.student?.blockName || item.student?.roomNumber) && (
+                                <span className="room-pill">
+                                  <Building size={12} />
+                                  {item.student?.blockName ? `${item.student.blockName} • ` : ''}Room{' '}
+                                  {item.student?.roomNumber || '—'}
+                                </span>
+                              )}
+                              {item.student?.roomType && (
+                                <span className="jntu-pill">{item.student.roomType}</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div className="complaint-title-text" title={item.title}>
-                          {item.title}
+
+                        <div className="card-status-meta">
+                          <div className="req-meta-row">
+                            <span className="req-number-tag">
+                              {item.ticketNumber || `#CMP-${item.id.slice(-6).toUpperCase()}`}
+                            </span>
+                            <span className="applied-date-sub">{formatDate(item.createdAt)}</span>
+                          </div>
+                          <span className="category-tag">{item.category}</span>
+                          {renderPriorityBadge(item.priority)}
+                          {renderStatusBadge(item.status)}
                         </div>
-                        {item.location && (
-                          <div className="complaint-location-sub">
-                            <MapPin size={11} />
-                            <span>{item.location}</span>
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        {item.student ? (
-                          <div className="student-info-cell">
-                            <span className="student-name">{item.student.name}</span>
-                            <span className="student-jntu">{item.student.jntuNo}</span>
-                            {(item.student.blockName || item.student.roomNumber) && (
-                              <span className="student-room">
-                                {item.student.blockName ? `${item.student.blockName} • ` : ''}
-                                Room {item.student.roomNumber || '—'}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-muted">—</span>
-                        )}
-                      </td>
-                      <td>
-                        <span className="category-tag">{item.category}</span>
-                      </td>
-                      <td>{renderPriorityBadge(item.priority)}</td>
-                      <td>{renderStatusBadge(item.status)}</td>
-                      <td>
-                        {item.assignedTo ? (
-                          <div className="assigned-staff-info">
-                            <UserCheck size={13} className="text-purple" />
-                            <span>{item.assignedTo}</span>
-                          </div>
-                        ) : (
-                          <span className="unassigned-badge">Unassigned</span>
-                        )}
-                      </td>
-                      <td>
-                        <div className="date-cell">
-                          <span>{formatDate(item.createdAt)}</span>
-                          <span className="time-sub">
-                            {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+
+                      {/* 4-Column Info Grid */}
+                      <div className="card-body-grid">
+                        {/* Col 1: Issue & Category */}
+                        <div className="col-block">
+                          <span className="col-label">Issue &amp; Category</span>
+                          <span className="col-title" title={item.title}>
+                            {item.title}
+                          </span>
+                          <span className="col-desc" title={item.description}>
+                            {item.description}
                           </span>
                         </div>
-                      </td>
-                      <td className="actions-cell text-right">
-                        <div className="action-buttons-group">
-                          {/* View Detail Button */}
-                          <button
-                            type="button"
-                            className="btn-action-icon view"
-                            onClick={() => handleViewDetail(item.id)}
-                            title="View ticket details"
-                          >
-                            <Eye size={15} />
-                          </button>
 
-                          {/* Assign Button (Management only, for OPEN or ASSIGNED) */}
-                          {isManagementRole && (item.status === 'OPEN' || item.status === 'ASSIGNED') && (
+                        {/* Col 2: Location & Residence */}
+                        <div className="col-block">
+                          <span className="col-label">Location &amp; Residence</span>
+                          <div className="col-val">
+                            <MapPin size={13} className="text-muted" />
+                            <span>{item.location || item.student?.blockName || 'Hostel Premises'}</span>
+                          </div>
+                          <span className="col-sub">
+                            {item.student?.blockName || 'Block'} • Room {item.student?.roomNumber || '—'}
+                            {item.student?.bedNumber ? ` (Bed ${item.student.bedNumber})` : ''}
+                          </span>
+                        </div>
+
+                        {/* Col 3: Maintenance Assignment */}
+                        <div className="col-block">
+                          <span className="col-label">Maintenance Assignment</span>
+                          {item.assignedTo ? (
+                            <div className="col-val text-purple">
+                              <UserCheck size={14} />
+                              <span>{item.assignedTo}</span>
+                            </div>
+                          ) : (
+                            <div className="col-val text-muted">
+                              <Clock size={13} />
+                              <span className="unassigned-badge">Unassigned</span>
+                            </div>
+                          )}
+                          {item.assignedAt && (
+                            <span className="col-sub">Assigned: {formatDate(item.assignedAt)}</span>
+                          )}
+                          {!item.assignedTo && isManagementRole && item.status === 'OPEN' && (
                             <button
                               type="button"
-                              className="btn-action-primary assign-btn"
+                              className="btn-text"
+                              style={{ color: '#7C3AED', fontSize: '0.75rem', padding: 0, textAlign: 'left', fontWeight: 600 }}
                               onClick={() => handleOpenAssignModal(item)}
-                              title="Assign maintenance staff"
                             >
-                              <UserCheck size={13} />
-                              <span>{item.status === 'ASSIGNED' ? 'Reassign' : 'Assign'}</span>
-                            </button>
-                          )}
-
-                          {/* Start Work Button (Assigned technician or Management) */}
-                          {canStartWork(item) && (
-                            <button
-                              type="button"
-                              className="btn-action-primary start-btn"
-                              onClick={() => handleStartWork(item.id)}
-                              disabled={isSubmittingStart}
-                              title="Start work on ticket"
-                            >
-                              <Play size={13} />
-                              <span>Start</span>
-                            </button>
-                          )}
-
-                          {/* Resolve Button (Assigned technician or Management) */}
-                          {canResolve(item) && (
-                            <button
-                              type="button"
-                              className="btn-action-primary resolve-btn"
-                              onClick={() => handleOpenResolveModal(item)}
-                              title="Mark ticket as resolved"
-                            >
-                              <Check size={13} />
-                              <span>Resolve</span>
-                            </button>
-                          )}
-
-                          {/* Close Button (Management only, for RESOLVED) */}
-                          {isManagementRole && item.status === 'RESOLVED' && (
-                            <button
-                              type="button"
-                              className="btn-action-primary close-btn"
-                              onClick={() => handleOpenCloseModal(item)}
-                              title="Formally close verified complaint"
-                            >
-                              <ShieldCheck size={13} />
-                              <span>Close</span>
+                              + Assign Technician
                             </button>
                           )}
                         </div>
-                      </td>
+
+                        {/* Col 4: Status & Timeline */}
+                        <div className="col-block">
+                          <span className="col-label">Status &amp; Timeline</span>
+                          <span className="col-val">{renderStatusBadge(item.status)}</span>
+                          <span className="col-sub">
+                            {item.resolvedAt
+                              ? `Resolved ${formatDate(item.resolvedAt)}`
+                              : item.closedAt
+                              ? `Closed ${formatDate(item.closedAt)}`
+                              : `Created ${formatDate(item.createdAt)}`}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card Actions Row */}
+                      <div className="card-actions-row">
+                        {/* Assign Button (Management only, for OPEN or ASSIGNED) */}
+                        {isManagementRole && (item.status === 'OPEN' || item.status === 'ASSIGNED') && (
+                          <button
+                            type="button"
+                            className="btn-action-primary assign-btn"
+                            onClick={() => handleOpenAssignModal(item)}
+                            title="Assign maintenance staff"
+                          >
+                            <UserCheck size={14} />
+                            <span>{item.status === 'ASSIGNED' ? 'Reassign Staff' : 'Assign Staff'}</span>
+                          </button>
+                        )}
+
+                        {/* Start Work Button (Assigned technician or Management) */}
+                        {canStartWork(item) && (
+                          <button
+                            type="button"
+                            className="btn-action-primary start-btn"
+                            onClick={() => handleStartWork(item.id)}
+                            disabled={isSubmittingStart}
+                            title="Start work on ticket"
+                          >
+                            <Play size={14} />
+                            <span>Start Work</span>
+                          </button>
+                        )}
+
+                        {/* Resolve Button (Assigned technician or Management) */}
+                        {canResolve(item) && (
+                          <button
+                            type="button"
+                            className="btn-action-primary resolve-btn"
+                            onClick={() => handleOpenResolveModal(item)}
+                            title="Mark ticket as resolved"
+                          >
+                            <Check size={14} />
+                            <span>Resolve Ticket</span>
+                          </button>
+                        )}
+
+                        {/* Close Button (Management only, for RESOLVED) */}
+                        {isManagementRole && item.status === 'RESOLVED' && (
+                          <button
+                            type="button"
+                            className="btn-action-primary close-btn"
+                            onClick={() => handleOpenCloseModal(item)}
+                            title="Formally close verified complaint"
+                          >
+                            <ShieldCheck size={14} />
+                            <span>Close Complaint</span>
+                          </button>
+                        )}
+
+                        {/* View Detail Button */}
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => handleViewDetail(item.id)}
+                          title="View ticket details"
+                        >
+                          <Eye size={14} />
+                          <span>Details</span>
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              /* 2. Table View */
+              <div className="complaints-table-wrapper">
+                <table className="complaints-table">
+                  <thead>
+                    <tr>
+                      <th>Ticket / Info</th>
+                      <th>Student Details</th>
+                      <th>Category</th>
+                      <th>Priority</th>
+                      <th>Status</th>
+                      <th>Assigned To</th>
+                      <th>Created</th>
+                      <th className="text-right">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {complaints.map((item) => (
+                      <tr key={item.id} className="complaint-row">
+                        <td className="ticket-cell">
+                          <div className="ticket-number-badge">
+                            {item.ticketNumber || `CMP-${item.id.slice(-6).toUpperCase()}`}
+                          </div>
+                          <div className="complaint-title-text" title={item.title}>
+                            {item.title}
+                          </div>
+                          {item.location && (
+                            <div className="complaint-location-sub">
+                              <MapPin size={11} />
+                              <span>{item.location}</span>
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          {item.student ? (
+                            <div className="student-info-cell">
+                              <span className="student-name">{item.student.name}</span>
+                              <span className="student-jntu">{item.student.jntuNo}</span>
+                              {(item.student.blockName || item.student.roomNumber) && (
+                                <span className="student-room">
+                                  {item.student.blockName ? `${item.student.blockName} • ` : ''}
+                                  Room {item.student.roomNumber || '—'}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted">—</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className="category-tag">{item.category}</span>
+                        </td>
+                        <td>{renderPriorityBadge(item.priority)}</td>
+                        <td>{renderStatusBadge(item.status)}</td>
+                        <td>
+                          {item.assignedTo ? (
+                            <div className="assigned-staff-info">
+                              <UserCheck size={13} className="text-purple" />
+                              <span>{item.assignedTo}</span>
+                            </div>
+                          ) : (
+                            <span className="unassigned-badge">Unassigned</span>
+                          )}
+                        </td>
+                        <td>
+                          <div className="date-cell">
+                            <span>{formatDate(item.createdAt)}</span>
+                            <span className="time-sub">
+                              {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="actions-cell text-right">
+                          <div className="action-buttons-group">
+                            {/* View Detail Button */}
+                            <button
+                              type="button"
+                              className="btn-action-icon view"
+                              onClick={() => handleViewDetail(item.id)}
+                              title="View ticket details"
+                            >
+                              <Eye size={15} />
+                            </button>
 
-            {/* Mobile Cards View */}
-            <div className="complaints-cards-wrapper mobile-only">
-              {complaints.map((item) => (
-                <div key={item.id} className="complaint-card">
-                  <div className="complaint-card-header">
-                    <span className="ticket-number-badge">
-                      {item.ticketNumber || `CMP-${item.id.slice(-6).toUpperCase()}`}
-                    </span>
-                    <div className="complaint-card-badges">
-                      {renderPriorityBadge(item.priority)}
-                      {renderStatusBadge(item.status)}
-                    </div>
-                  </div>
+                            {/* Assign Button (Management only) */}
+                            {isManagementRole && (item.status === 'OPEN' || item.status === 'ASSIGNED') && (
+                              <button
+                                type="button"
+                                className="btn-action-primary assign-btn"
+                                onClick={() => handleOpenAssignModal(item)}
+                                title="Assign maintenance staff"
+                              >
+                                <UserCheck size={13} />
+                                <span>{item.status === 'ASSIGNED' ? 'Reassign' : 'Assign'}</span>
+                              </button>
+                            )}
 
-                  <h3 className="complaint-card-title">{item.title}</h3>
-                  <p className="complaint-card-desc">{item.description}</p>
+                            {/* Start Work Button */}
+                            {canStartWork(item) && (
+                              <button
+                                type="button"
+                                className="btn-action-primary start-btn"
+                                onClick={() => handleStartWork(item.id)}
+                                disabled={isSubmittingStart}
+                                title="Start work on ticket"
+                              >
+                                <Play size={13} />
+                                <span>Start</span>
+                              </button>
+                            )}
 
-                  {item.location && (
-                    <div className="complaint-card-location">
-                      <MapPin size={13} />
-                      <span>{item.location}</span>
-                    </div>
-                  )}
+                            {/* Resolve Button */}
+                            {canResolve(item) && (
+                              <button
+                                type="button"
+                                className="btn-action-primary resolve-btn"
+                                onClick={() => handleOpenResolveModal(item)}
+                                title="Mark ticket as resolved"
+                              >
+                                <Check size={13} />
+                                <span>Resolve</span>
+                              </button>
+                            )}
 
-                  <div className="complaint-card-meta-grid">
-                    <div className="meta-block">
-                      <span className="meta-label">Category</span>
-                      <span className="meta-val">{item.category}</span>
-                    </div>
-                    <div className="meta-block">
-                      <span className="meta-label">Student</span>
-                      <span className="meta-val">{item.student?.name || '—'}</span>
-                    </div>
-                    <div className="meta-block">
-                      <span className="meta-label">Assigned To</span>
-                      <span className="meta-val">{item.assignedTo || 'Unassigned'}</span>
-                    </div>
-                    <div className="meta-block">
-                      <span className="meta-label">Created</span>
-                      <span className="meta-val">{formatDate(item.createdAt)}</span>
-                    </div>
-                  </div>
-
-                  <div className="complaint-card-actions">
-                    <button
-                      type="button"
-                      className="btn-secondary w-full"
-                      onClick={() => handleViewDetail(item.id)}
-                    >
-                      <Eye size={14} />
-                      <span>View Details</span>
-                    </button>
-
-                    {isManagementRole && (item.status === 'OPEN' || item.status === 'ASSIGNED') && (
-                      <button
-                        type="button"
-                        className="btn-action-primary assign-btn w-full"
-                        onClick={() => handleOpenAssignModal(item)}
-                      >
-                        <UserCheck size={14} />
-                        <span>{item.status === 'ASSIGNED' ? 'Reassign Staff' : 'Assign Staff'}</span>
-                      </button>
-                    )}
-
-                    {canStartWork(item) && (
-                      <button
-                        type="button"
-                        className="btn-action-primary start-btn w-full"
-                        onClick={() => handleStartWork(item.id)}
-                        disabled={isSubmittingStart}
-                      >
-                        <Play size={14} />
-                        <span>Start Work</span>
-                      </button>
-                    )}
-
-                    {canResolve(item) && (
-                      <button
-                        type="button"
-                        className="btn-action-primary resolve-btn w-full"
-                        onClick={() => handleOpenResolveModal(item)}
-                      >
-                        <Check size={14} />
-                        <span>Resolve Ticket</span>
-                      </button>
-                    )}
-
-                    {isManagementRole && item.status === 'RESOLVED' && (
-                      <button
-                        type="button"
-                        className="btn-action-primary close-btn w-full"
-                        onClick={() => handleOpenCloseModal(item)}
-                      >
-                        <ShieldCheck size={14} />
-                        <span>Close Complaint</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                            {/* Close Button */}
+                            {isManagementRole && item.status === 'RESOLVED' && (
+                              <button
+                                type="button"
+                                className="btn-action-primary close-btn"
+                                onClick={() => handleOpenCloseModal(item)}
+                                title="Formally close verified complaint"
+                              >
+                                <ShieldCheck size={13} />
+                                <span>Close</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {/* Pagination Controls */}
             {pagination.totalPages > 1 && (
@@ -1016,6 +1313,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                     disabled={pagination.page <= 1}
                     onClick={() => fetchComplaints(pagination.page - 1)}
                     className="btn-pagination"
+                    id="btn-prev-page"
                   >
                     <ChevronLeft size={16} />
                     <span>Previous</span>
@@ -1028,6 +1326,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                     disabled={pagination.page >= pagination.totalPages}
                     onClick={() => fetchComplaints(pagination.page + 1)}
                     className="btn-pagination"
+                    id="btn-next-page"
                   >
                     <span>Next</span>
                     <ChevronRight size={16} />
@@ -1057,13 +1356,43 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                 className="modal-close-btn"
                 onClick={() => setSelectedComplaint(null)}
                 aria-label="Close dialog"
+                id="btn-close-detail-modal"
               >
                 <X size={18} />
               </button>
             </div>
 
             <div className="modal-body">
-              {/* Badges Bar */}
+              {/* Visual 5-Stage Stepper */}
+              <div className="complaint-progress-stepper" aria-label="Complaint Lifecycle Progress">
+                <div className="stepper-track" />
+                {[
+                  { key: 'OPEN', label: '1. Registered' },
+                  { key: 'ASSIGNED', label: '2. Assigned' },
+                  { key: 'IN_PROGRESS', label: '3. In Progress' },
+                  { key: 'RESOLVED', label: '4. Resolved' },
+                  { key: 'CLOSED', label: '5. Closed' },
+                ].map((step, idx) => {
+                  const statusOrder = ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
+                  const currentIdx = statusOrder.indexOf(selectedComplaint.status);
+                  const isDone = currentIdx >= idx;
+                  const isCurrent = currentIdx === idx;
+
+                  return (
+                    <div
+                      key={step.key}
+                      className={`stepper-step ${isDone ? 'completed' : ''} ${isCurrent ? 'current' : ''}`}
+                    >
+                      <div className="step-circle">
+                        {isDone && !isCurrent ? <Check size={16} /> : idx + 1}
+                      </div>
+                      <span className="step-label">{step.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Badges Row */}
               <div className="detail-badges-row">
                 {renderPriorityBadge(selectedComplaint.priority)}
                 {renderStatusBadge(selectedComplaint.status)}
@@ -1076,7 +1405,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                 )}
               </div>
 
-              {/* Student Information Section */}
+              {/* Resident Student Details */}
               {selectedComplaint.student && (
                 <div className="detail-section student-card">
                   <h4 className="detail-section-heading">
@@ -1097,6 +1426,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                       <span className="detail-value">
                         {selectedComplaint.student.blockName || '—'}, Room{' '}
                         {selectedComplaint.student.roomNumber || '—'}
+                        {selectedComplaint.student.bedNumber ? ` (Bed ${selectedComplaint.student.bedNumber})` : ''}
                       </span>
                     </div>
                     {selectedComplaint.student.email && (
@@ -1109,7 +1439,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                 </div>
               )}
 
-              {/* Description Section */}
+              {/* Problem Description */}
               <div className="detail-section">
                 <h4 className="detail-section-heading">
                   <FileText size={15} />
@@ -1118,7 +1448,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                 <div className="complaint-full-description">{selectedComplaint.description}</div>
               </div>
 
-              {/* Lifecycle & Assignment Timeline */}
+              {/* Operational Timeline & Assignments */}
               <div className="detail-section">
                 <h4 className="detail-section-heading">
                   <Clock size={15} />
@@ -1216,6 +1546,56 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                   </div>
                 </div>
               )}
+
+              {/* Administrative Comments & Activity Section */}
+              <div className="detail-section">
+                <h4 className="detail-section-heading">
+                  <MessageSquare size={15} />
+                  <span>Administrative Notes &amp; Follow-up Comments</span>
+                </h4>
+                {((selectedComplaint as any).commentsList && (selectedComplaint as any).commentsList.length > 0) ? (
+                  <div className="comments-thread">
+                    {(selectedComplaint as any).commentsList.map((c: any, i: number) => (
+                      <div key={c.id || i} className="comment-bubble">
+                        <div className="comment-bubble-header">
+                          <span className="comment-author-name">{c.author}</span>
+                          <span className="comment-date-text">{formatDateTime(c.createdAt)}</span>
+                        </div>
+                        <p className="comment-text-body">{c.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted" style={{ fontSize: '0.85rem', margin: '0 0 0.5rem' }}>
+                    No follow-up notes recorded yet.
+                  </p>
+                )}
+
+                <div className="comment-input-row">
+                  <input
+                    type="text"
+                    placeholder="Add administrative follow-up note..."
+                    value={newCommentText}
+                    onChange={(e) => setNewCommentText(e.target.value)}
+                    className="comment-input"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddComment();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleAddComment}
+                    disabled={isSubmittingComment || !newCommentText.trim() || newCommentText.trim().length < 2}
+                  >
+                    <Send size={13} />
+                    <span>{isSubmittingComment ? 'Saving...' : 'Add Note'}</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Modal Footer with Actions */}
@@ -1304,6 +1684,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                 className="modal-close-btn"
                 onClick={() => setAssigningComplaint(null)}
                 aria-label="Close dialog"
+                id="btn-close-assign-modal"
               >
                 <X size={18} />
               </button>
@@ -1373,6 +1754,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                 className="btn-action-primary assign-btn"
                 onClick={handleConfirmAssign}
                 disabled={isSubmittingAssign || !selectedStaffId}
+                id="btn-confirm-assign"
               >
                 <UserCheck size={14} />
                 <span>{isSubmittingAssign ? 'Assigning...' : 'Confirm Assignment'}</span>
@@ -1395,6 +1777,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                 className="modal-close-btn"
                 onClick={() => setResolvingComplaint(null)}
                 aria-label="Close dialog"
+                id="btn-close-resolve-modal"
               >
                 <X size={18} />
               </button>
@@ -1451,6 +1834,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                 className="btn-action-primary resolve-btn"
                 onClick={handleConfirmResolve}
                 disabled={isSubmittingResolve || resolutionNotes.trim().length < 10}
+                id="btn-confirm-resolve"
               >
                 <Check size={14} />
                 <span>{isSubmittingResolve ? 'Saving...' : 'Mark as Resolved'}</span>
@@ -1473,6 +1857,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                 className="modal-close-btn"
                 onClick={() => setClosingComplaint(null)}
                 aria-label="Close dialog"
+                id="btn-close-close-modal"
               >
                 <X size={18} />
               </button>
@@ -1496,9 +1881,9 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                 </span>
                 <h4>{closingComplaint.title}</h4>
                 {closingComplaint.resolutionNotes && (
-                  <div className="resolution-notes-preview">
-                    <strong>Resolution Notes:</strong>
-                    <p>{closingComplaint.resolutionNotes}</p>
+                  <div className="resolution-notes-preview mt-2" style={{ background: '#ECFDF5', padding: '0.65rem 0.85rem', borderRadius: '6px', border: '1px solid #A7F3D0' }}>
+                    <strong style={{ color: '#065F46', fontSize: '0.8rem' }}>Resolution Notes:</strong>
+                    <p style={{ color: '#047857', fontSize: '0.85rem', margin: '0.2rem 0 0' }}>{closingComplaint.resolutionNotes}</p>
                   </div>
                 )}
               </div>
@@ -1518,6 +1903,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
                 className="btn-action-primary close-btn"
                 onClick={handleConfirmClose}
                 disabled={isSubmittingClose}
+                id="btn-confirm-close"
               >
                 <ShieldCheck size={14} />
                 <span>{isSubmittingClose ? 'Closing...' : 'Confirm Final Closure'}</span>
