@@ -28,8 +28,8 @@ import {
   MessTokenHistoryItem,
   HorizonDateItem,
 } from '../services/api';
+import QRCode from 'qrcode';
 import {
-  StaticMessQrCard,
   StaticMessQrModal,
   STATIC_MESS_QR_PAYLOAD,
   STATIC_MESS_ENTRY_POINT,
@@ -45,6 +45,7 @@ export const MessTokensPage: React.FC = () => {
   const [qrModalOpen, setQrModalOpen] = useState<boolean>(false);
   const [qrPayload, setQrPayload] = useState<string>(STATIC_MESS_QR_PAYLOAD);
   const [qrEntryPoint, setQrEntryPoint] = useState<string>(STATIC_MESS_ENTRY_POINT);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
   // Selected date state (defaults to today's ISO date string)
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -61,6 +62,24 @@ export const MessTokensPage: React.FC = () => {
       })
       .catch(() => {});
   }, []);
+
+  // Generate deterministic QR data URL locally for embedded token passes
+  useEffect(() => {
+    let isMounted = true;
+    QRCode.toDataURL(qrPayload, {
+      width: 200,
+      margin: 1,
+      color: { dark: '#0F172A', light: '#FFFFFF' },
+    })
+      .then((url) => {
+        if (isMounted) setQrDataUrl(url);
+      })
+      .catch((err) => console.error('Error generating token QR:', err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, [qrPayload]);
 
   // Modal / Booking intent state
   const [activeModalSlot, setActiveModalSlot] = useState<MessMealSlot | null>(null);
@@ -525,10 +544,22 @@ export const MessTokensPage: React.FC = () => {
                 <div className="meal-card-footer">
                   {isBooked ? (
                     <div className="booked-token-indicator">
-                      <Ticket size={15} />
-                      <span className="token-ref">
-                        Ref: {slot.token?.tokenNumber || 'VERIFIED-PASS'}
-                      </span>
+                      <div className="booked-token-meta">
+                        <Ticket size={15} />
+                        <span className="token-ref">
+                          Ref: {slot.token?.tokenNumber || 'VERIFIED-PASS'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-token-qr"
+                        onClick={() => setQrModalOpen(true)}
+                        title="View Mess Verification QR for this token"
+                        aria-label={`View Mess Verification QR for ${slot.name}`}
+                      >
+                        <QrCode size={13} />
+                        <span>Token QR</span>
+                      </button>
                     </div>
                   ) : isSkipped ? (
                     <div className="skipped-token-indicator">
@@ -565,22 +596,6 @@ export const MessTokensPage: React.FC = () => {
             );
           })}
         </div>
-      </section>
-
-      {/* Permanent Static Mess Verification QR Section (Step 7) */}
-      <section className="mess-section static-mess-qr-section" aria-labelledby="mess-qr-heading">
-        <div className="section-title-group">
-          <h2 id="mess-qr-heading" className="mess-section-title">
-            HMS Mess QR
-          </h2>
-          <span className="section-badge">Permanent Verification Entry Point</span>
-        </div>
-
-        <StaticMessQrCard
-          payload={qrPayload}
-          entryPoint={qrEntryPoint}
-          onOpenModal={() => setQrModalOpen(true)}
-        />
       </section>
 
       {/* Active Digital Passes (Ticket Cards for Today) */}
@@ -620,13 +635,22 @@ export const MessTokensPage: React.FC = () => {
                     className="pass-qr-visual"
                     onClick={() => setQrModalOpen(true)}
                     style={{ cursor: 'pointer' }}
-                    title="Click to view full Mess Verification QR"
+                    title="Click to enlarge Mess Verification QR"
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => e.key === 'Enter' && setQrModalOpen(true)}
-                    aria-label="View Mess Verification QR Code"
+                    aria-label="Enlarge Mess Verification QR Code"
                   >
-                    <QrCode size={52} />
+                    {qrDataUrl ? (
+                      <img
+                        src={qrDataUrl}
+                        alt="Mess Verification QR"
+                        className="pass-real-qr-img"
+                      />
+                    ) : (
+                      <QrCode size={48} />
+                    )}
+                    <span className="pass-qr-label">MESS QR</span>
                   </div>
                 </div>
 

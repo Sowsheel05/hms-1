@@ -2631,16 +2631,86 @@ a {
 }
 
 .pass-qr-visual {
-  width: 76px;
-  height: 76px;
-  background: #F8FAFC;
-  border: 1px solid #E2E8F0;
+  width: 82px;
+  height: 82px;
+  background: #FFFFFF;
+  border: 1.5px solid #E2E8F0;
   border-radius: 12px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   color: var(--primary-navy);
   flex-shrink: 0;
+  padding: 4px;
+  position: relative;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04);
+}
+
+.pass-qr-visual:hover {
+  transform: translateY(-2px);
+  border-color: #2563EB;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.12);
+}
+
+.pass-real-qr-img {
+  width: 58px;
+  height: 58px;
+  display: block;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+  border-radius: 4px;
+}
+
+.pass-qr-label {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #1D4ED8;
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
+.booked-token-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 0.5rem;
+}
+
+.booked-token-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #15803D;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.btn-token-qr {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.32rem 0.7rem;
+  background: #EFF6FF;
+  color: #1D4ED8;
+  border: 1px solid #BFDBFE;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: all 0.15s ease;
+}
+
+.btn-token-qr:hover {
+  background: #DBEAFE;
+  border-color: #93C5FD;
+  color: #1E40AF;
+  transform: translateY(-1px);
 }
 
 .pass-details-footer {
