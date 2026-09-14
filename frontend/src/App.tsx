@@ -34,6 +34,9 @@ import { FeeManagementPage } from './pages/FeeManagementPage';
 import { FeeCollectionPage } from './pages/FeeCollectionPage';
 import { ManagementDevicePage } from './pages/ManagementDevicePage';
 import { ManagementNotificationsPage } from './pages/ManagementNotificationsPage';
+import { ManagementHostelApplicationsPage } from './pages/ManagementHostelApplicationsPage';
+import { HostelApplicationPage } from './pages/HostelApplicationPage';
+import { StudentRegistrationPage } from './pages/StudentRegistrationPage';
 import { Lock, X } from 'lucide-react';
 
 const ROUTE_MODULE_NAMES: Record<string, string> = {};
@@ -54,7 +57,7 @@ const AuthenticatedApp: React.FC<{
       .then((res) => {
         if (isMounted) setUnreadCount(res.unreadCount);
       })
-      .catch(() => {});
+      .catch(() => { });
 
     const unsubscribe = apiService.subscribeToNotificationEvents((event) => {
       if (typeof event.unreadCount === 'number') {
@@ -65,7 +68,7 @@ const AuthenticatedApp: React.FC<{
           .then((res) => {
             if (isMounted) setUnreadCount(res.unreadCount);
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     });
 
@@ -85,6 +88,7 @@ const AuthenticatedApp: React.FC<{
     if (path === '/complaints') return 'Complaints';
     if (path === '/leaves') return 'Leaves & Suspension';
     if (path === '/notifications') return 'Notifications';
+    if (path === '/hostel-application') return 'Hostel Application & Status';
     return ROUTE_MODULE_NAMES[path] || 'Hostel Portal';
   };
 
@@ -143,6 +147,10 @@ const AuthenticatedApp: React.FC<{
             />
           )}
 
+          {currentPath === '/hostel-application' && (
+            <HostelApplicationPage />
+          )}
+
           {isKnownPlaceholderRoute && (
             <PlaceholderModule
               moduleName={ROUTE_MODULE_NAMES[currentPath]}
@@ -157,7 +165,8 @@ const AuthenticatedApp: React.FC<{
             currentPath !== '/outing-requests' &&
             currentPath !== '/complaints' &&
             currentPath !== '/leaves' &&
-            currentPath !== '/notifications' && (
+            currentPath !== '/notifications' &&
+            currentPath !== '/hostel-application' && (
               <DashboardPage onNavigate={onNavigate} />
             )}
         </main>
@@ -193,6 +202,7 @@ const AuthenticatedManagementApp: React.FC<{
   const isFeeManagementPage = currentPath === '/management/fee-management';
   const isFeeCollectionPage = currentPath === '/management/fee-collection';
   const isNotificationsPage = currentPath === '/management/notifications';
+  const isHostelApplicationsPage = currentPath === '/management/hostel-applications';
 
   return (
     <div className="portal-layout management-layout">
@@ -216,72 +226,78 @@ const AuthenticatedManagementApp: React.FC<{
           isRefreshing={isRefreshing}
           isRealtimeConnected={isRealtimeConnected}
           pageTitle={
-            isNotificationsPage
+            isHostelApplicationsPage
+              ? 'Student Registrations & Hostel Applications'
+              : isNotificationsPage
               ? 'Notifications'
               : isDevicePage
-              ? 'Device Management & Turnstile Registry'
-              : isOutingLogHistoryPage
-              ? 'Outing Log History & Gate Transit'
-              : isFeeCollectionPage
-              ? 'Fee Management / Fee Collection'
-              : isFeeManagementPage
-              ? 'Fee Management'
-              : isUserManagementPage
-              ? 'User Management & Role Administration'
-              : isLogHistoryPage
-              ? 'System Log History & Audit'
-              : isGuestBillingPage
-              ? 'Guest Visits & Billing Management'
-              : isComplaintsPage
-              ? 'Complaints & Maintenance Operations'
-              : isLeavesPage
-              ? 'Leaves & Suspension Management'
-              : isOutingsPage
-              ? 'Outing Approvals & Gate Transit'
-              : isMessPage
-              ? 'Mess Management'
-              : isRoomPage
-              ? 'Room Management & Allocation'
-              : isBlockPage
-              ? 'Block Management'
-              : 'Admin Dashboard'
+                ? 'Device Management & Turnstile Registry'
+                : isOutingLogHistoryPage
+                  ? 'Outing Log History & Gate Transit'
+                  : isFeeCollectionPage
+                    ? 'Fee Management / Fee Collection'
+                    : isFeeManagementPage
+                      ? 'Fee Management'
+                      : isUserManagementPage
+                        ? 'User Management & Role Administration'
+                        : isLogHistoryPage
+                          ? 'System Log History & Audit'
+                          : isGuestBillingPage
+                            ? 'Guest Visits & Billing Management'
+                            : isComplaintsPage
+                              ? 'Complaints & Maintenance Operations'
+                              : isLeavesPage
+                                ? 'Leaves & Suspension Management'
+                                : isOutingsPage
+                                  ? 'Outing Approvals & Gate Transit'
+                                  : isMessPage
+                                    ? 'Mess Management'
+                                    : isRoomPage
+                                      ? 'Room Management & Allocation'
+                                      : isBlockPage
+                                        ? 'Block Management'
+                                        : 'Admin Dashboard'
           }
           pageSubtitle={
-            isNotificationsPage
+            isHostelApplicationsPage
+              ? 'Review pending student admissions, verify criteria, approve, and allocate rooms.'
+              : isNotificationsPage
               ? 'Create, manage, and monitor HMS notifications.'
               : isDevicePage
-              ? 'Authoritative hardware control plane for hostel turnstiles, biometric scanners, and RFID readers.'
-              : isOutingLogHistoryPage
-              ? 'Authoritative historical record of student outing requests, approvals, and physical gate movement events.'
-              : isFeeCollectionPage
-              ? 'Manage student fees, apply filters, add fines, and promote students efficiently.'
-              : isFeeManagementPage
-              ? 'Configure fee structures, institutional bank accounts, academic years, scholarships, detentions, and configuration settings.'
-              : isUserManagementPage
-              ? 'Authoritative account administration, role assignment hierarchy, credential resets, and security status control.'
-              : isLogHistoryPage
-              ? 'Comprehensive administrative activity logging, operational state change inspection, and multi-factor traceability.'
-              : isGuestBillingPage
-              ? 'Manage guest visit records, track student host check-ins, record itemized bills, and process authoritative payments.'
-              : isComplaintsPage
-              ? 'Review maintenance tickets, assign technicians, track repair lifecycles, and confirm ticket resolutions.'
-              : isLeavesPage
-              ? 'Review student leave applications, authorize leaves, track campus absence, and manage disciplinary suspensions.'
-              : isOutingsPage
-              ? 'Review and authorize resident movement passes with automated biometric gate correlation.'
-              : isMessPage
-              ? 'Monitor hostel meal services, verify resident tokens, and review meal statistics.'
-              : isRoomPage
-              ? 'Configure rooms, track bed occupancy, and assign residential accommodations.'
-              : isBlockPage
-              ? 'Configure, organize, and monitor hostel residential blocks and zones.'
-              : 'A concise operational overview of hostel administration and residential oversight.'
+                ? 'Authoritative hardware control plane for hostel turnstiles, biometric scanners, and RFID readers.'
+                : isOutingLogHistoryPage
+                  ? 'Authoritative historical record of student outing requests, approvals, and physical gate movement events.'
+                  : isFeeCollectionPage
+                    ? 'Manage student fees, apply filters, add fines, and promote students efficiently.'
+                    : isFeeManagementPage
+                      ? 'Configure fee structures, institutional bank accounts, academic years, scholarships, detentions, and configuration settings.'
+                      : isUserManagementPage
+                        ? 'Authoritative account administration, role assignment hierarchy, credential resets, and security status control.'
+                        : isLogHistoryPage
+                          ? 'Comprehensive administrative activity logging, operational state change inspection, and multi-factor traceability.'
+                          : isGuestBillingPage
+                            ? 'Manage guest visit records, track student host check-ins, record itemized bills, and process authoritative payments.'
+                            : isComplaintsPage
+                              ? 'Review maintenance tickets, assign technicians, track repair lifecycles, and confirm ticket resolutions.'
+                              : isLeavesPage
+                                ? 'Review student leave applications, authorize leaves, track campus absence, and manage disciplinary suspensions.'
+                                : isOutingsPage
+                                  ? 'Review and authorize resident movement passes with automated biometric gate correlation.'
+                                  : isMessPage
+                                    ? 'Monitor hostel meal services, verify resident tokens, and review meal statistics.'
+                                    : isRoomPage
+                                      ? 'Configure rooms, track bed occupancy, and assign residential accommodations.'
+                                      : isBlockPage
+                                        ? 'Configure, organize, and monitor hostel residential blocks and zones.'
+                                        : 'A concise operational overview of hostel administration and residential oversight.'
           }
         />
 
         {/* Management Content View */}
         <main className="portal-content-body management-content-body">
-          {isNotificationsPage ? (
+          {isHostelApplicationsPage ? (
+            <ManagementHostelApplicationsPage onNavigate={onNavigate} />
+          ) : isNotificationsPage ? (
             <ManagementNotificationsPage />
           ) : isDevicePage ? (
             <ManagementDevicePage onNavigate={onNavigate} />
@@ -418,7 +434,11 @@ const AppContent: React.FC = () => {
           navigateTo('/dashboard');
         }
       } else {
-        if (currentPath !== '/login') {
+        if (
+          currentPath !== '/login' &&
+          currentPath !== '/student/register' &&
+          currentPath !== '/register'
+        ) {
           navigateTo('/login');
         }
       }
@@ -499,9 +519,18 @@ const AppContent: React.FC = () => {
     );
   }
 
+  if (currentPath === '/student/register' || currentPath === '/register') {
+    return (
+      <StudentRegistrationPage
+        onNavigateToLogin={() => navigateTo('/login')}
+      />
+    );
+  }
+
   return (
     <LoginPage
       onLoginSuccess={() => navigateTo('/dashboard')}
+      onNavigateToRegister={() => navigateTo('/student/register')}
       onNavigateToManagement={() => navigateTo('/management/login')}
     />
   );

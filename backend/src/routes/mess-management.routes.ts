@@ -7,6 +7,7 @@ import {
 } from '../middleware/management.middleware';
 import { complaintEventsService } from '../services/events.service';
 import { auditService } from '../services/audit.service';
+import * as XLSX from 'xlsx';
 
 const router = Router();
 
@@ -231,19 +232,19 @@ router.get('/overview', async (req: AuthenticatedManagementRequest, res: Respons
         },
         activeMealSlot: isToday && activeMeal
           ? {
-              mealType: activeMeal.type,
-              name: activeMeal.name,
-              timing: activeMeal.timing,
-              description: activeMeal.description,
-            }
+            mealType: activeMeal.type,
+            name: activeMeal.name,
+            timing: activeMeal.timing,
+            description: activeMeal.description,
+          }
           : null,
         nextMealSlot: isToday && nextMeal
           ? {
-              mealType: nextMeal.type,
-              name: nextMeal.name,
-              timing: nextMeal.timing,
-              description: nextMeal.description,
-            }
+            mealType: nextMeal.type,
+            name: nextMeal.name,
+            timing: nextMeal.timing,
+            description: nextMeal.description,
+          }
           : null,
         mealBreakdown,
         blockDistribution,
@@ -384,15 +385,15 @@ router.get('/tokens', async (req: AuthenticatedManagementRequest, res: Response)
         updatedAt: t.updatedAt,
         student: t.student
           ? {
-              id: t.student.id,
-              name: t.student.name,
-              jntuNo: t.student.jntuNo,
-              email: t.student.email,
-              blockName: t.student.blockName || 'Unassigned',
-              roomNumber: t.student.roomNumber || 'N/A',
-              bedNumber: t.student.bedNumber || 'N/A',
-              allocationStatus: t.student.allocationStatus,
-            }
+            id: t.student.id,
+            name: t.student.name,
+            jntuNo: t.student.jntuNo,
+            email: t.student.email,
+            blockName: t.student.blockName || 'Unassigned',
+            roomNumber: t.student.roomNumber || 'N/A',
+            bedNumber: t.student.bedNumber || 'N/A',
+            allocationStatus: t.student.allocationStatus,
+          }
           : null,
       };
     });
@@ -1657,8 +1658,8 @@ router.get('/attendance', async (req: AuthenticatedManagementRequest, res: Respo
       const logStatus: 'Allowed' | 'Denied' | 'Absent' = isConsumed
         ? 'Allowed'
         : isCancelled
-        ? 'Denied'
-        : 'Absent';
+          ? 'Denied'
+          : 'Absent';
 
       const timeSource = t.consumedAt || t.createdAt;
       const hours = timeSource.getHours();
@@ -1816,6 +1817,1054 @@ router.get('/attendance/export/csv', async (req: AuthenticatedManagementRequest,
   } catch (error: any) {
     console.error('Error exporting mess attendance CSV:', error);
     res.status(500).json({ success: false, message: 'Failed to export attendance CSV.' });
+  }
+});
+
+// =========================================================================
+//                       STEP 5: MESS INDENT, ATTENDANCE & FOUR-WAY REPORTING
+// =========================================================================
+
+/**
+ * Helper to classify an eligible student into four-way category or pending
+ */
+export function classifyFourWay(
+  indentMarked: boolean,
+  attendanceStatus: 'PENDING' | 'ATE' | 'DID_NOT_EAT'
+): {
+  categoryKey: 'INDENTED_ATE' | 'NO_INDENT_ATE' | 'INDENTED_NOT_ATE' | 'NO_INDENT_NOT_ATE' | 'PENDING';
+  categoryTitle: string;
+  isFinalized: boolean;
+} {
+  if (attendanceStatus === 'PENDING') {
+    return {
+      categoryKey: 'PENDING',
+      categoryTitle: 'Attendance Pending',
+      isFinalized: false,
+    };
+  }
+  if (indentMarked && attendanceStatus === 'ATE') {
+    return {
+      categoryKey: 'INDENTED_ATE',
+      categoryTitle: 'Indented & Consumed',
+      isFinalized: true,
+    };
+  }
+  if (!indentMarked && attendanceStatus === 'ATE') {
+    return {
+      categoryKey: 'NO_INDENT_ATE',
+      categoryTitle: 'Unindented & Consumed',
+      isFinalized: true,
+    };
+  }
+  if (indentMarked && attendanceStatus === 'DID_NOT_EAT') {
+    return {
+      categoryKey: 'INDENTED_NOT_ATE',
+      categoryTitle: 'Indented & Not Consumed',
+      isFinalized: true,
+    };
+  }
+  return {
+    categoryKey: 'NO_INDENT_NOT_ATE',
+    categoryTitle: 'Unindented & Not Consumed',
+    isFinalized: true,
+  };
+}
+
+/**
+ * GET /api/management/mess/attendance-marking (and /api/management/mess/attendance-sheet)
+ * Displays ALL eligible students with independent Indent and Attendance statuses.
+ * Supports filters: date, mealType, block, attendanceStatus, indentStatus, search, page, limit
+ */
+router.get(['/attendance-marking', '/attendance-sheet'], async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  try {
+    const {
+      date,
+      mealType,
+      block,
+      attendanceStatus = 'ALL',
+      indentStatus = 'ALL',
+      search,
+      page = '1',
+      limit = '50',
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const take = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const skip = (pageNum - 1) * take;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())
+      ? date.trim()
+      : todayStr;
+
+    // Validate mealType or default to active/first meal
+    const configs = await getAuthoritativeMealConfigs();
+    let normalizedMeal: MealType = 'LUNCH';
+    if (typeof mealType === 'string' && mealType.trim() && mealType.trim().toUpperCase() !== 'ALL') {
+      const candidate = mealType.trim().toUpperCase() as MealType;
+      const valid = configs.find((c) => c.type === candidate);
+      if (valid) normalizedMeal = candidate;
+    } else {
+      const activeSlot = getActiveMealSlot(new Date());
+      if (activeSlot.activeMeal) normalizedMeal = activeSlot.activeMeal.type;
+      else if (configs.length > 0) normalizedMeal = configs[0].type;
+    }
+
+    const currentMealConfig = configs.find((c) => c.type === normalizedMeal) || configs[0];
+
+    // 1. Base query for ALL eligible active students
+    const studentWhere: any = {
+      role: 'STUDENT',
+      isActive: true,
+    };
+
+    if (typeof block === 'string' && block.trim() && block.trim().toUpperCase() !== 'ALL') {
+      studentWhere.blockName = { contains: block.trim(), mode: 'insensitive' };
+    }
+
+    if (typeof search === 'string' && search.trim()) {
+      const term = search.trim();
+      studentWhere.OR = [
+        { name: { contains: term, mode: 'insensitive' } },
+        { jntuNo: { contains: term, mode: 'insensitive' } },
+        { email: { contains: term, mode: 'insensitive' } },
+      ];
+    }
+
+    // Fetch all eligible students matching demographic filters
+    const allEligibleStudents = await prisma.student.findMany({
+      where: studentWhere,
+      select: {
+        id: true,
+        name: true,
+        jntuNo: true,
+        email: true,
+        blockName: true,
+        roomNumber: true,
+        bedNumber: true,
+        allocationStatus: true,
+      },
+      orderBy: [{ blockName: 'asc' }, { roomNumber: 'asc' }, { name: 'asc' }],
+    });
+
+    const eligibleStudentIds = allEligibleStudents.map((s) => s.id);
+
+    // 2. Fetch all indents for this date & mealType
+    const [indents, tokens, attendances] = await Promise.all([
+      prisma.messIndent.findMany({
+        where: {
+          date: targetDate,
+          mealType: normalizedMeal,
+          studentId: { in: eligibleStudentIds },
+        },
+      }),
+      prisma.messToken.findMany({
+        where: {
+          date: targetDate,
+          mealType: normalizedMeal,
+          studentId: { in: eligibleStudentIds },
+        },
+      }),
+      prisma.messAttendance.findMany({
+        where: {
+          date: targetDate,
+          mealType: normalizedMeal,
+          studentId: { in: eligibleStudentIds },
+        },
+      }),
+    ]);
+
+    // 3. Build unified mapped record for every eligible student
+    const processedStudents = allEligibleStudents.map((student) => {
+      const indentRecord = indents.find((i) => i.studentId === student.id);
+      const tokenRecord = tokens.find((t) => t.studentId === student.id);
+      const attRecord = attendances.find((a) => a.studentId === student.id);
+
+      // Indent check: true if marked and not skipped
+      const isIndentMarked = Boolean(
+        (indentRecord && indentRecord.status === 'MARKED') ||
+        (!indentRecord &&
+          tokenRecord &&
+          (tokenRecord.attendanceIntent === 'ATTENDING' ||
+            tokenRecord.status === 'BOOKED' ||
+            tokenRecord.status === 'CONSUMED'))
+      );
+
+      const indentTime = indentRecord
+        ? indentRecord.createdAt.toISOString()
+        : tokenRecord
+          ? tokenRecord.createdAt.toISOString()
+          : null;
+
+      // Attendance check: PENDING, ATE, DID_NOT_EAT
+      const currentAttendanceStatus: 'PENDING' | 'ATE' | 'DID_NOT_EAT' = attRecord
+        ? (attRecord.status as 'ATE' | 'DID_NOT_EAT')
+        : 'PENDING';
+
+      const attendanceTime = attRecord ? attRecord.markedAt.toISOString() : null;
+      const markedBy = attRecord?.markedBy || null;
+      const attendanceId = attRecord?.id || null;
+
+      const classification = classifyFourWay(isIndentMarked, currentAttendanceStatus);
+      const academic = decodeAcademicInfo(student.jntuNo);
+
+      return {
+        id: student.id,
+        studentId: student.jntuNo,
+        rollNo: student.jntuNo,
+        studentName: student.name,
+        name: student.name,
+        email: student.email,
+        block: student.blockName || 'Unassigned',
+        blockName: student.blockName || 'Unassigned',
+        room: student.roomNumber || 'N/A',
+        roomNumber: student.roomNumber || 'N/A',
+        bedNumber: student.bedNumber || 'N/A',
+        branch: academic.department,
+        year: academic.year,
+        section: academic.semester,
+        indentMarked: isIndentMarked,
+        indentStatus: isIndentMarked ? 'MARKED' : 'NOT_MARKED',
+        indentTime,
+        attendanceStatus: currentAttendanceStatus,
+        attendanceTime,
+        markedBy,
+        attendanceId,
+        categoryKey: classification.categoryKey,
+        categoryTitle: classification.categoryTitle,
+        isFinalized: classification.isFinalized,
+      };
+    });
+
+    // 4. Calculate authoritative summary across ALL eligible students in scope
+    const totalStudents = processedStudents.length;
+    const indentMarkedCount = processedStudents.filter((s) => s.indentMarked).length;
+    const noIndentCount = totalStudents - indentMarkedCount;
+
+    const ateCount = processedStudents.filter((s) => s.attendanceStatus === 'ATE').length;
+    const didNotEatCount = processedStudents.filter((s) => s.attendanceStatus === 'DID_NOT_EAT').length;
+    const pendingCount = processedStudents.filter((s) => s.attendanceStatus === 'PENDING').length;
+
+    const indentedAndAte = processedStudents.filter((s) => s.categoryKey === 'INDENTED_ATE').length;
+    const unindentedAndAte = processedStudents.filter((s) => s.categoryKey === 'NO_INDENT_ATE').length;
+    const indentedAndNotConsumed = processedStudents.filter((s) => s.categoryKey === 'INDENTED_NOT_ATE').length;
+    const unindentedAndNotConsumed = processedStudents.filter((s) => s.categoryKey === 'NO_INDENT_NOT_ATE').length;
+    const attendancePending = processedStudents.filter((s) => s.categoryKey === 'PENDING').length;
+
+    // 5. Apply table-specific status filtering
+    let filteredList = processedStudents;
+
+    const attStatusFilter = (attendanceStatus as string).trim().toUpperCase();
+    if (attStatusFilter !== 'ALL') {
+      filteredList = filteredList.filter((s) => s.attendanceStatus === attStatusFilter);
+    }
+
+    const indStatusFilter = (indentStatus as string).trim().toUpperCase();
+    if (indStatusFilter !== 'ALL') {
+      filteredList = filteredList.filter((s) => s.indentStatus === indStatusFilter);
+    }
+
+    const filteredTotal = filteredList.length;
+    const paginatedStudents = filteredList.slice(skip, skip + take);
+
+    res.json({
+      success: true,
+      date: targetDate,
+      mealType: normalizedMeal,
+      mealName: currentMealConfig.name,
+      mealTiming: currentMealConfig.timing,
+      summary: {
+        totalStudents,
+        indentMarkedCount,
+        noIndentCount,
+        ateCount,
+        didNotEatCount,
+        pendingCount,
+        indentedAndAte,
+        unindentedAndAte,
+        indentedAndNotConsumed,
+        unindentedAndNotConsumed,
+        attendancePending,
+        isFinalized: attendancePending === 0,
+      },
+      pagination: {
+        total: filteredTotal,
+        page: pageNum,
+        limit: take,
+        totalPages: Math.ceil(filteredTotal / take) || 1,
+      },
+      students: paginatedStudents,
+    });
+  } catch (error: any) {
+    console.error('Error fetching mess attendance marking list:', error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve attendance marking list.' });
+  }
+});
+
+/**
+ * POST /api/management/mess/attendance
+ * Marks individual student attendance (ATE or DID_NOT_EAT) by operator
+ * Supports individual student-by-student marking and immediate upsert.
+ */
+router.post('/attendance', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  try {
+    const { studentId, date, mealType, status } = req.body;
+
+    if (!studentId || typeof studentId !== 'string') {
+      res.status(400).json({ success: false, message: 'Valid studentId is required.' });
+      return;
+    }
+
+    if (!mealType || typeof mealType !== 'string') {
+      res.status(400).json({ success: false, message: 'Valid mealType is required.' });
+      return;
+    }
+
+    const normalizedMeal = mealType.trim().toUpperCase() as MealType;
+    const configs = await getAuthoritativeMealConfigs();
+    const mealCfg = configs.find((c) => c.type === normalizedMeal);
+    if (!mealCfg) {
+      res.status(400).json({
+        success: false,
+        message: `Invalid mealType. Supported meals: ${VALID_MEALS.join(', ')}`,
+      });
+      return;
+    }
+
+    if (!status || !['ATE', 'DID_NOT_EAT'].includes(status.trim().toUpperCase())) {
+      res.status(400).json({
+        success: false,
+        message: "Attendance status must be either 'ATE' or 'DID_NOT_EAT'.",
+      });
+      return;
+    }
+
+    const attendanceStatus = status.trim().toUpperCase() as 'ATE' | 'DID_NOT_EAT';
+    const todayStr = new Date().toISOString().split('T')[0];
+    const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())
+      ? date.trim()
+      : todayStr;
+
+    // Verify student exists and is active
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      select: { id: true, name: true, jntuNo: true, isActive: true, blockName: true, roomNumber: true },
+    });
+
+    if (!student || !student.isActive) {
+      res.status(404).json({ success: false, message: 'Active student record not found.' });
+      return;
+    }
+
+    const staffDisplayName = req.managementUser?.name || req.managementUser?.role || 'Mess Operator';
+    const staffId = req.managementUser?.id || null;
+    const markedAt = new Date();
+
+    // Transactional upsert of attendance and synchronization of token consumed state
+    const [attendanceRecord] = await prisma.$transaction(async (tx) => {
+      const record = await tx.messAttendance.upsert({
+        where: {
+          studentId_date_mealType: {
+            studentId,
+            date: targetDate,
+            mealType: normalizedMeal,
+          },
+        },
+        update: {
+          status: attendanceStatus,
+          markedAt,
+          markedBy: staffDisplayName,
+          markedById: staffId,
+        },
+        create: {
+          studentId,
+          date: targetDate,
+          mealType: normalizedMeal,
+          status: attendanceStatus,
+          markedAt,
+          markedBy: staffDisplayName,
+          markedById: staffId,
+        },
+      });
+
+      // If marked as ATE, sync with MessToken if present
+      if (attendanceStatus === 'ATE') {
+        await tx.messToken.updateMany({
+          where: {
+            studentId,
+            date: targetDate,
+            mealType: normalizedMeal,
+            status: { not: 'CANCELLED' },
+          },
+          data: {
+            status: 'CONSUMED',
+            consumedAt: markedAt,
+          },
+        });
+      }
+
+      await tx.activityLog.create({
+        data: {
+          studentId: staffId || studentId,
+          actionType: 'MESS_MANAGEMENT',
+          action: 'UPDATE',
+          actorRole: req.managementUser?.role || 'MESS_OPERATOR',
+          entity: 'MessAttendance',
+          entityId: record.id,
+          description: `Marked attendance as ${attendanceStatus} for ${student.name} (${student.jntuNo}) - ${mealCfg.name} on ${targetDate}`,
+        },
+      });
+
+      return [record];
+    });
+
+    // SSE event to student
+    complaintEventsService.emitMessEventToStudent(studentId, {
+      type: 'MESS_ATTENDANCE_RECORDED',
+      studentId,
+      date: targetDate,
+      mealType: normalizedMeal,
+      status: attendanceStatus,
+      markedBy: staffDisplayName,
+      timestamp: markedAt.toISOString(),
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Attendance marked as ${attendanceStatus === 'ATE' ? 'Ate' : 'Did Not Eat'} for ${student.name}.`,
+      attendance: {
+        id: attendanceRecord.id,
+        studentId: student.id,
+        studentName: student.name,
+        rollNo: student.jntuNo,
+        date: targetDate,
+        mealType: normalizedMeal,
+        status: attendanceRecord.status,
+        markedAt: attendanceRecord.markedAt,
+        markedBy: attendanceRecord.markedBy,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error marking mess attendance:', error);
+    res.status(500).json({ success: false, message: 'Failed to record attendance.' });
+  }
+});
+
+/**
+ * PATCH /api/management/mess/attendance/:id
+ * Corrects attendance record or resets to PENDING
+ */
+router.patch('/attendance/:id', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!id || typeof id !== 'string') {
+      res.status(400).json({ success: false, message: 'Valid attendance ID is required.' });
+      return;
+    }
+
+    const existing = await prisma.messAttendance.findUnique({
+      where: { id },
+      include: {
+        student: {
+          select: { id: true, name: true, jntuNo: true },
+        },
+      },
+    });
+
+    if (!existing) {
+      res.status(404).json({ success: false, message: 'Attendance record not found.' });
+      return;
+    }
+
+    const staffDisplayName = req.managementUser?.name || req.managementUser?.role || 'Mess Operator';
+    const staffId = req.managementUser?.id || null;
+
+    if (status && status.trim().toUpperCase() === 'PENDING') {
+      // Revert to pending by deleting the attendance record
+      await prisma.$transaction([
+        prisma.messAttendance.delete({ where: { id } }),
+        prisma.activityLog.create({
+          data: {
+            studentId: staffId || existing.studentId,
+            actionType: 'MESS_MANAGEMENT',
+            action: 'DELETE',
+            actorRole: req.managementUser?.role || 'MESS_OPERATOR',
+            entity: 'MessAttendance',
+            entityId: id,
+            description: `Reset attendance to PENDING for ${existing.student.name} (${existing.student.jntuNo}) on ${existing.date} - ${existing.mealType}`,
+          },
+        }),
+      ]);
+
+      res.json({
+        success: true,
+        message: `Attendance reset to Pending for ${existing.student.name}.`,
+        status: 'PENDING',
+      });
+      return;
+    }
+
+    if (!status || !['ATE', 'DID_NOT_EAT'].includes(status.trim().toUpperCase())) {
+      res.status(400).json({
+        success: false,
+        message: "Status must be 'ATE', 'DID_NOT_EAT', or 'PENDING'.",
+      });
+      return;
+    }
+
+    const newStatus = status.trim().toUpperCase() as 'ATE' | 'DID_NOT_EAT';
+    const markedAt = new Date();
+
+    const [updated] = await prisma.$transaction([
+      prisma.messAttendance.update({
+        where: { id },
+        data: {
+          status: newStatus,
+          markedAt,
+          markedBy: staffDisplayName,
+          markedById: staffId,
+        },
+      }),
+      prisma.activityLog.create({
+        data: {
+          studentId: staffId || existing.studentId,
+          actionType: 'MESS_MANAGEMENT',
+          action: 'UPDATE',
+          actorRole: req.managementUser?.role || 'MESS_OPERATOR',
+          entity: 'MessAttendance',
+          entityId: id,
+          description: `Corrected attendance to ${newStatus} for ${existing.student.name} (${existing.student.jntuNo}) on ${existing.date} - ${existing.mealType}`,
+        },
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      message: `Attendance corrected to ${newStatus} for ${existing.student.name}.`,
+      attendance: updated,
+    });
+  } catch (error: any) {
+    console.error('Error correcting mess attendance:', error);
+    res.status(500).json({ success: false, message: 'Failed to update attendance.' });
+  }
+});
+
+/**
+ * Shared helper to load all eligible students with full indent & attendance classification
+ */
+async function getReconciledStudents(
+  targetDate: string,
+  normalizedMeal: MealType,
+  blockFilter?: string,
+  searchFilter?: string
+) {
+  const configs = await getAuthoritativeMealConfigs();
+  const mealCfg = configs.find((c) => c.type === normalizedMeal) || configs[0];
+
+  const studentWhere: any = {
+    role: 'STUDENT',
+    isActive: true,
+  };
+
+  if (blockFilter && blockFilter.trim().toUpperCase() !== 'ALL') {
+    studentWhere.blockName = { contains: blockFilter.trim(), mode: 'insensitive' };
+  }
+
+  if (searchFilter && searchFilter.trim()) {
+    const term = searchFilter.trim();
+    studentWhere.OR = [
+      { name: { contains: term, mode: 'insensitive' } },
+      { jntuNo: { contains: term, mode: 'insensitive' } },
+      { email: { contains: term, mode: 'insensitive' } },
+    ];
+  }
+
+  const eligibleStudents = await prisma.student.findMany({
+    where: studentWhere,
+    select: {
+      id: true,
+      name: true,
+      jntuNo: true,
+      email: true,
+      blockName: true,
+      roomNumber: true,
+      bedNumber: true,
+    },
+    orderBy: [{ blockName: 'asc' }, { roomNumber: 'asc' }, { name: 'asc' }],
+  });
+
+  const studentIds = eligibleStudents.map((s) => s.id);
+
+  const [indents, tokens, attendances] = await Promise.all([
+    prisma.messIndent.findMany({
+      where: {
+        date: targetDate,
+        mealType: normalizedMeal,
+        studentId: { in: studentIds },
+      },
+    }),
+    prisma.messToken.findMany({
+      where: {
+        date: targetDate,
+        mealType: normalizedMeal,
+        studentId: { in: studentIds },
+      },
+    }),
+    prisma.messAttendance.findMany({
+      where: {
+        date: targetDate,
+        mealType: normalizedMeal,
+        studentId: { in: studentIds },
+      },
+    }),
+  ]);
+
+  return eligibleStudents.map((s) => {
+    const indentRecord = indents.find((i) => i.studentId === s.id);
+    const tokenRecord = tokens.find((t) => t.studentId === s.id);
+    const attRecord = attendances.find((a) => a.studentId === s.id);
+
+    const isIndentMarked = Boolean(
+      (indentRecord && indentRecord.status === 'MARKED') ||
+      (!indentRecord &&
+        tokenRecord &&
+        (tokenRecord.attendanceIntent === 'ATTENDING' ||
+          tokenRecord.status === 'BOOKED' ||
+          tokenRecord.status === 'CONSUMED'))
+    );
+
+    const indentTime = indentRecord
+      ? indentRecord.createdAt.toISOString()
+      : tokenRecord
+        ? tokenRecord.createdAt.toISOString()
+        : null;
+
+    const currentAttendanceStatus: 'PENDING' | 'ATE' | 'DID_NOT_EAT' = attRecord
+      ? (attRecord.status as 'ATE' | 'DID_NOT_EAT')
+      : 'PENDING';
+
+    const attendanceTime = attRecord ? attRecord.markedAt.toISOString() : null;
+    const markedBy = attRecord?.markedBy || null;
+
+    const classification = classifyFourWay(isIndentMarked, currentAttendanceStatus);
+    const academic = decodeAcademicInfo(s.jntuNo);
+
+    return {
+      id: s.id,
+      studentId: s.jntuNo,
+      rollNo: s.jntuNo,
+      studentName: s.name,
+      email: s.email,
+      branch: academic.department,
+      year: academic.year,
+      section: academic.semester,
+      hostel: s.blockName || 'Residential Hostel',
+      block: s.blockName || 'Unassigned',
+      room: s.roomNumber || 'N/A',
+      date: targetDate,
+      meal: mealCfg.name,
+      mealType: normalizedMeal,
+      indentMarked: isIndentMarked,
+      indentStatus: isIndentMarked ? 'MARKED' : 'NOT_MARKED',
+      indentTime,
+      attendanceStatus: currentAttendanceStatus,
+      attendanceTime,
+      markedBy,
+      categoryKey: classification.categoryKey,
+      categoryTitle: classification.categoryTitle,
+      isFinalized: classification.isFinalized,
+    };
+  });
+}
+
+/**
+ * GET /api/management/mess/reports/summary
+ * Returns summary counts for all four categories + pending.
+ * Enforces Phase 9: values add up to total eligible students.
+ */
+router.get('/reports/summary', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  try {
+    const { date, mealType, block, search } = req.query;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())
+      ? date.trim()
+      : todayStr;
+
+    const configs = await getAuthoritativeMealConfigs();
+    let normalizedMeal: MealType = 'LUNCH';
+    if (typeof mealType === 'string' && mealType.trim() && mealType.trim().toUpperCase() !== 'ALL') {
+      const candidate = mealType.trim().toUpperCase() as MealType;
+      const valid = configs.find((c) => c.type === candidate);
+      if (valid) normalizedMeal = candidate;
+    }
+
+    const students = await getReconciledStudents(
+      targetDate,
+      normalizedMeal,
+      typeof block === 'string' ? block : undefined,
+      typeof search === 'string' ? search : undefined
+    );
+
+    const totalStudents = students.length;
+    const indentedAndAte = students.filter((s) => s.categoryKey === 'INDENTED_ATE').length;
+    const unindentedAndAte = students.filter((s) => s.categoryKey === 'NO_INDENT_ATE').length;
+    const indentedAndNotConsumed = students.filter((s) => s.categoryKey === 'INDENTED_NOT_ATE').length;
+    const unindentedAndNotConsumed = students.filter((s) => s.categoryKey === 'NO_INDENT_NOT_ATE').length;
+    const attendancePending = students.filter((s) => s.categoryKey === 'PENDING').length;
+
+    res.json({
+      success: true,
+      date: targetDate,
+      mealType: normalizedMeal,
+      summary: {
+        totalStudents,
+        indentedAndAte,
+        unindentedAndAte,
+        indentedAndNotConsumed,
+        unindentedAndNotConsumed,
+        attendancePending,
+        isFinalized: attendancePending === 0,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching reports summary:', error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve reports summary.' });
+  }
+});
+
+/**
+ * GET /api/management/mess/reports/data
+ * Unified report query endpoint supporting category filtering, pagination, and sorting
+ */
+router.get('/reports/data', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  try {
+    const {
+      category = 'all',
+      date,
+      mealType,
+      block,
+      search,
+      page = '1',
+      limit = '50',
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const take = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const skip = (pageNum - 1) * take;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())
+      ? date.trim()
+      : todayStr;
+
+    const configs = await getAuthoritativeMealConfigs();
+    let normalizedMeal: MealType = 'LUNCH';
+    if (typeof mealType === 'string' && mealType.trim() && mealType.trim().toUpperCase() !== 'ALL') {
+      const candidate = mealType.trim().toUpperCase() as MealType;
+      const valid = configs.find((c) => c.type === candidate);
+      if (valid) normalizedMeal = candidate;
+    }
+
+    const students = await getReconciledStudents(
+      targetDate,
+      normalizedMeal,
+      typeof block === 'string' ? block : undefined,
+      typeof search === 'string' ? search : undefined
+    );
+
+    // Map category query string to internal category key
+    const catClean = (category as string).toLowerCase().replace(/_/g, '-');
+    let filtered = students;
+
+    if (catClean === 'indented-ate' || catClean === 'indented_ate') {
+      filtered = students.filter((s) => s.categoryKey === 'INDENTED_ATE');
+    } else if (catClean === 'no-indent-ate' || catClean === 'no_indent_ate') {
+      filtered = students.filter((s) => s.categoryKey === 'NO_INDENT_ATE');
+    } else if (catClean === 'indented-not-ate' || catClean === 'indented_not_ate') {
+      filtered = students.filter((s) => s.categoryKey === 'INDENTED_NOT_ATE');
+    } else if (catClean === 'no-indent-not-ate' || catClean === 'no_indent_not_ate') {
+      filtered = students.filter((s) => s.categoryKey === 'NO_INDENT_NOT_ATE');
+    } else if (catClean === 'pending') {
+      filtered = students.filter((s) => s.categoryKey === 'PENDING');
+    } else {
+      // By default for finalized 4-way reports, exclude PENDING unless requested
+      filtered = students.filter((s) => s.isFinalized);
+    }
+
+    const total = filtered.length;
+    const paginated = filtered.slice(skip, skip + take);
+
+    res.json({
+      success: true,
+      category: catClean,
+      date: targetDate,
+      mealType: normalizedMeal,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: take,
+        totalPages: Math.ceil(total / take) || 1,
+      },
+      records: paginated,
+    });
+  } catch (error: any) {
+    console.error('Error fetching reports data:', error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve reports data.' });
+  }
+});
+
+/**
+ * Dedicated category report routes as requested in Phase 13
+ */
+router.get('/reports/indented-ate', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  req.query.category = 'indented-ate';
+  // Delegate to data handler
+  const { date, mealType, block, search, page = '1', limit = '50' } = req.query;
+  const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+  const take = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+  const skip = (pageNum - 1) * take;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? date.trim() : todayStr;
+  const configs = await getAuthoritativeMealConfigs();
+  let normalizedMeal: MealType = 'LUNCH';
+  if (typeof mealType === 'string' && mealType.trim() && mealType.trim().toUpperCase() !== 'ALL') {
+    const candidate = mealType.trim().toUpperCase() as MealType;
+    if (configs.some((c) => c.type === candidate)) normalizedMeal = candidate;
+  }
+  const students = await getReconciledStudents(targetDate, normalizedMeal, block as string, search as string);
+  const filtered = students.filter((s) => s.categoryKey === 'INDENTED_ATE');
+  res.json({
+    success: true,
+    category: 'indented-ate',
+    categoryTitle: 'Indented & Consumed',
+    date: targetDate,
+    mealType: normalizedMeal,
+    pagination: { total: filtered.length, page: pageNum, limit: take, totalPages: Math.ceil(filtered.length / take) || 1 },
+    records: filtered.slice(skip, skip + take),
+  });
+});
+
+router.get('/reports/no-indent-ate', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  const { date, mealType, block, search, page = '1', limit = '50' } = req.query;
+  const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+  const take = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+  const skip = (pageNum - 1) * take;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? date.trim() : todayStr;
+  const configs = await getAuthoritativeMealConfigs();
+  let normalizedMeal: MealType = 'LUNCH';
+  if (typeof mealType === 'string' && mealType.trim() && mealType.trim().toUpperCase() !== 'ALL') {
+    const candidate = mealType.trim().toUpperCase() as MealType;
+    if (configs.some((c) => c.type === candidate)) normalizedMeal = candidate;
+  }
+  const students = await getReconciledStudents(targetDate, normalizedMeal, block as string, search as string);
+  const filtered = students.filter((s) => s.categoryKey === 'NO_INDENT_ATE');
+  res.json({
+    success: true,
+    category: 'no-indent-ate',
+    categoryTitle: 'Unindented & Consumed',
+    date: targetDate,
+    mealType: normalizedMeal,
+    pagination: { total: filtered.length, page: pageNum, limit: take, totalPages: Math.ceil(filtered.length / take) || 1 },
+    records: filtered.slice(skip, skip + take),
+  });
+});
+
+router.get('/reports/indented-not-ate', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  const { date, mealType, block, search, page = '1', limit = '50' } = req.query;
+  const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+  const take = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+  const skip = (pageNum - 1) * take;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? date.trim() : todayStr;
+  const configs = await getAuthoritativeMealConfigs();
+  let normalizedMeal: MealType = 'LUNCH';
+  if (typeof mealType === 'string' && mealType.trim() && mealType.trim().toUpperCase() !== 'ALL') {
+    const candidate = mealType.trim().toUpperCase() as MealType;
+    if (configs.some((c) => c.type === candidate)) normalizedMeal = candidate;
+  }
+  const students = await getReconciledStudents(targetDate, normalizedMeal, block as string, search as string);
+  const filtered = students.filter((s) => s.categoryKey === 'INDENTED_NOT_ATE');
+  res.json({
+    success: true,
+    category: 'indented-not-ate',
+    categoryTitle: 'Indented & Not Consumed',
+    date: targetDate,
+    mealType: normalizedMeal,
+    pagination: { total: filtered.length, page: pageNum, limit: take, totalPages: Math.ceil(filtered.length / take) || 1 },
+    records: filtered.slice(skip, skip + take),
+  });
+});
+
+router.get('/reports/no-indent-not-ate', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  const { date, mealType, block, search, page = '1', limit = '50' } = req.query;
+  const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+  const take = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+  const skip = (pageNum - 1) * take;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? date.trim() : todayStr;
+  const configs = await getAuthoritativeMealConfigs();
+  let normalizedMeal: MealType = 'LUNCH';
+  if (typeof mealType === 'string' && mealType.trim() && mealType.trim().toUpperCase() !== 'ALL') {
+    const candidate = mealType.trim().toUpperCase() as MealType;
+    if (configs.some((c) => c.type === candidate)) normalizedMeal = candidate;
+  }
+  const students = await getReconciledStudents(targetDate, normalizedMeal, block as string, search as string);
+  const filtered = students.filter((s) => s.categoryKey === 'NO_INDENT_NOT_ATE');
+  res.json({
+    success: true,
+    category: 'no-indent-not-ate',
+    categoryTitle: 'Unindented & Not Consumed',
+    date: targetDate,
+    mealType: normalizedMeal,
+    pagination: { total: filtered.length, page: pageNum, limit: take, totalPages: Math.ceil(filtered.length / take) || 1 },
+    records: filtered.slice(skip, skip + take),
+  });
+});
+
+/**
+ * GET /api/management/mess/reports/export
+ * Exports four-way reports in XLSX or CSV format respecting all selected filters.
+ * Filenames follow Phase 12 format.
+ */
+router.get('/reports/export', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  try {
+    const {
+      category = 'indented-ate',
+      date,
+      mealType,
+      format = 'xlsx',
+      block,
+      search,
+    } = req.query;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())
+      ? date.trim()
+      : todayStr;
+
+    const configs = await getAuthoritativeMealConfigs();
+    let normalizedMeal: MealType = 'LUNCH';
+    if (typeof mealType === 'string' && mealType.trim() && mealType.trim().toUpperCase() !== 'ALL') {
+      const candidate = mealType.trim().toUpperCase() as MealType;
+      const valid = configs.find((c) => c.type === candidate);
+      if (valid) normalizedMeal = candidate;
+    }
+
+    const students = await getReconciledStudents(
+      targetDate,
+      normalizedMeal,
+      typeof block === 'string' ? block : undefined,
+      typeof search === 'string' ? search : undefined
+    );
+
+    const catClean = (category as string).toLowerCase().replace(/_/g, '-');
+    let filtered = students;
+    let fileCategoryTag = 'indented_ate';
+
+    if (catClean === 'indented-ate' || catClean === 'indented_ate') {
+      filtered = students.filter((s) => s.categoryKey === 'INDENTED_ATE');
+      fileCategoryTag = 'indented_ate';
+    } else if (catClean === 'no-indent-ate' || catClean === 'no_indent_ate') {
+      filtered = students.filter((s) => s.categoryKey === 'NO_INDENT_ATE');
+      fileCategoryTag = 'no_indent_ate';
+    } else if (catClean === 'indented-not-ate' || catClean === 'indented_not_ate') {
+      filtered = students.filter((s) => s.categoryKey === 'INDENTED_NOT_ATE');
+      fileCategoryTag = 'indented_not_ate';
+    } else if (catClean === 'no-indent-not-ate' || catClean === 'no_indent_not_ate') {
+      filtered = students.filter((s) => s.categoryKey === 'NO_INDENT_NOT_ATE');
+      fileCategoryTag = 'no_indent_not_ate';
+    } else {
+      fileCategoryTag = 'all_reconciled';
+    }
+
+    // Format rows according to Phase 12 specification
+    const exportRows = filtered.map((item, idx) => ({
+      'S.No': idx + 1,
+      'Student ID / Roll Number': item.studentId,
+      'Student Name': item.studentName,
+      'Branch': item.branch,
+      'Year': item.year,
+      'Section': item.section,
+      'Hostel': item.hostel,
+      'Block': item.block,
+      'Room': item.room,
+      'Date': item.date,
+      'Meal': item.meal,
+      'Indent Status': item.indentStatus,
+      'Indent Time': item.indentTime ? new Date(item.indentTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A',
+      'Attendance Status': item.attendanceStatus,
+      'Attendance Time': item.attendanceTime ? new Date(item.attendanceTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A',
+      'Marked By': item.markedBy || 'N/A',
+      'Classification': item.categoryTitle,
+    }));
+
+    const isCsv = (format as string).toLowerCase() === 'csv';
+    const filename = `mess_${fileCategoryTag}_${targetDate}_${normalizedMeal.toLowerCase()}.${isCsv ? 'csv' : 'xlsx'}`;
+
+    if (isCsv) {
+      const headers = [
+        'Student ID / Roll Number',
+        'Student Name',
+        'Branch',
+        'Year',
+        'Section',
+        'Hostel',
+        'Block',
+        'Room',
+        'Date',
+        'Meal',
+        'Indent Status',
+        'Indent Time',
+        'Attendance Status',
+        'Attendance Time',
+        'Marked By',
+        'Classification',
+      ];
+
+      const csvLines = [headers.map((h) => `"${h}"`).join(',')];
+      for (const row of exportRows) {
+        csvLines.push([
+          `"${row['Student ID / Roll Number']}"`,
+          `"${row['Student Name'].replace(/"/g, '""')}"`,
+          `"${row['Branch'].replace(/"/g, '""')}"`,
+          `"${row['Year']}"`,
+          `"${row['Section']}"`,
+          `"${row['Hostel'].replace(/"/g, '""')}"`,
+          `"${row['Block'].replace(/"/g, '""')}"`,
+          `"${row['Room']}"`,
+          `"${row['Date']}"`,
+          `"${row['Meal']}"`,
+          `"${row['Indent Status']}"`,
+          `"${row['Indent Time']}"`,
+          `"${row['Attendance Status']}"`,
+          `"${row['Attendance Time']}"`,
+          `"${(row['Marked By'] || '').replace(/"/g, '""')}"`,
+          `"${row['Classification']}"`,
+        ].join(','));
+      }
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.status(200).send(csvLines.join('\r\n'));
+      return;
+    }
+
+    // Default: XLSX format
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Reconciliation Report');
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.status(200).send(buffer);
+  } catch (error: any) {
+    console.error('Error exporting mess reconciliation report:', error);
+    res.status(500).json({ success: false, message: 'Failed to export reconciliation report.' });
   }
 });
 

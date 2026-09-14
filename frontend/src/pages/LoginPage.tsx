@@ -5,10 +5,11 @@ import { APP_BRANDING } from '../config/branding';
 
 interface LoginPageProps {
   onLoginSuccess: () => void;
+  onNavigateToRegister?: () => void;
   onNavigateToManagement?: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigateToManagement }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigateToRegister, onNavigateToManagement }) => {
   return (
     <main className="auth-viewport">
       <div className="auth-container">
@@ -84,8 +85,42 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
 
           <LoginForm onSuccess={onLoginSuccess} />
 
+          {/* New Student Registration Option */}
+          {onNavigateToRegister && (
+            <div style={{
+              marginTop: '1.25rem',
+              padding: '0.875rem 1rem',
+              background: '#F8FAFC',
+              borderRadius: '8px',
+              border: '1px solid #E2E8F0',
+              textAlign: 'center',
+            }}>
+              <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.84rem', color: '#64748B' }}>
+                New student applying for hostel residency?
+              </p>
+              <button
+                type="button"
+                onClick={onNavigateToRegister}
+                className="btn btn-secondary"
+                style={{
+                  width: '100%',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  padding: '0.5rem 1rem',
+                  border: '1px solid #CBD5E1',
+                  background: '#FFFFFF',
+                  color: 'var(--primary-navy)',
+                  cursor: 'pointer',
+                  borderRadius: '6px',
+                }}
+              >
+                REGISTER
+              </button>
+            </div>
+          )}
+
           {onNavigateToManagement && (
-            <div style={{ marginTop: '1.25rem', textAlign: 'center' }}>
+            <div style={{ marginTop: '1rem', textAlign: 'center' }}>
               <button
                 type="button"
                 onClick={onNavigateToManagement}

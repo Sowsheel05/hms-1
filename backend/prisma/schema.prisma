@@ -29,6 +29,8 @@ model Student {
   sessions         Session[]
   outings          OutingRequest[]
   messTokens       MessToken[]
+  messIndents      MessIndent[]
+  messAttendances  MessAttendance[]
   leaves           LeaveRequest[]
   suspensions      Suspension[]
   complaints       Complaint[]
@@ -44,6 +46,7 @@ model Student {
   feePayments      FeePayment[]
   feeReceipts      FeeReceipt[]
   feeRefunds       FeeRefund[]
+  hostelApplications HostelApplication[]
 
   @@index([role])
   @@index([isActive])
@@ -111,6 +114,45 @@ model MessToken {
   @@index([date, mealType])
   @@index([date, status])
   @@index([isLocked])
+}
+
+model MessIndent {
+  id        String   @id @default(uuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date      String   // YYYY-MM-DD
+  mealType  String   // BREAKFAST, LUNCH, SNACKS, DINNER
+  status    String   @default("MARKED") // MARKED, NOT_MARKED, SKIPPED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, date, mealType])
+  @@index([date])
+  @@index([date, mealType])
+  @@index([mealType])
+  @@index([status])
+  @@index([studentId])
+}
+
+model MessAttendance {
+  id         String   @id @default(uuid())
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date       String   // YYYY-MM-DD
+  mealType   String   // BREAKFAST, LUNCH, SNACKS, DINNER
+  status     String   // ATE, DID_NOT_EAT
+  markedAt   DateTime @default(now())
+  markedBy   String?  // Staff display name / role
+  markedById String?  // Staff ID
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([studentId, date, mealType])
+  @@index([date])
+  @@index([date, mealType])
+  @@index([mealType])
+  @@index([status])
+  @@index([studentId])
 }
 
 model MealConfig {
@@ -745,6 +787,47 @@ model BiometricDevice {
   @@index([isEnabled])
   @@index([lastSeenAt])
   @@index([location])
+}
+
+model HostelApplication {
+  id                 String    @id @default(uuid())
+  applicationNumber  String    @unique
+  studentId          String
+  student            Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear       String    @default("2026-2027")
+  dob                String?
+  gender             String?   // Male, Female, Other
+  phone              String?
+  branch             String?   // CSE, ECE, EEE, MECH, CIVIL, IT, AIML, etc.
+  yearOfStudy        String?   // 1st Year, 2nd Year, 3rd Year, 4th Year
+  section            String?   // A, B, C
+  semester           String?   // Sem 1, Sem 2
+  guardianName       String?
+  guardianRelation   String?   // Father, Mother, Guardian, Sibling
+  guardianPhone      String?
+  emergencyContact   String?
+  address            String?
+  preferredBlock     String?
+  preferredRoomType  String?   @default("Non-AC Room (2 Sharing)")
+  preferredFloor     Int?
+  stayDuration       String?   @default("Full Academic Year")
+  foodPreference     String?   @default("VEG") // VEG, NON_VEG
+  medicalConditions  String?
+  status             String    @default("PENDING") // PENDING, UNDER_REVIEW, APPROVED, REJECTED, ALLOCATED, CANCELLED
+  remarks            String?
+  rejectionReason    String?
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  allocatedRoomId    String?
+  allocatedBedNumber String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([studentId])
+  @@index([status])
+  @@index([academicYear])
+  @@index([createdAt])
+  @@index([branch])
 }
 
 

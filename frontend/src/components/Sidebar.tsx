@@ -23,6 +23,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { id: 'room', label: 'My Room', path: '/my-room', icon: Bed },
+  { id: 'hostel-application', label: 'Hostel Application', path: '/hostel-application', icon: Building2 },
   { id: 'mess', label: 'Mess Tokens', path: '/mess-tokens', icon: UtensilsCrossed },
   { id: 'outings', label: 'Outing Requests', path: '/outing-requests', icon: Footprints },
   { id: 'complaints', label: 'Complaints', path: '/complaints', icon: AlertCircle },

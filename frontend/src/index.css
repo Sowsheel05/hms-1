@@ -21720,3 +21720,326 @@ input[type="checkbox"] {
     padding: 0.85rem;
   }
 }
+
+/* ==========================================================================
+   HMS MESS INDENT, ATTENDANCE & FOUR-WAY RECONCILIATION STYLES
+   ========================================================================== */
+
+.mess-action-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 0.85rem 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.mess-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.mess-input-control {
+  border: 1px solid #CBD5E1;
+  background-color: #FFFFFF;
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.875rem;
+  color: #1E293B;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.mess-input-control:focus {
+  border-color: #151B54;
+}
+
+.marking-stats-ribbon {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.75rem;
+}
+
+.marking-stat-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.marking-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748B;
+}
+
+.marking-stat-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.btn-mark-ate {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background-color: #10B981;
+  color: #FFFFFF;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.btn-mark-ate:hover {
+  background-color: #059669;
+}
+
+.btn-mark-ate:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-mark-dne {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background-color: #EF4444;
+  color: #FFFFFF;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.btn-mark-dne:hover {
+  background-color: #DC2626;
+}
+
+.btn-mark-dne:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Reports KPI Grid */
+.reports-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.reports-kpi-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  position: relative;
+  overflow: hidden;
+}
+
+.reports-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+}
+
+.reports-kpi-card.kpi-total::before {
+  background: #151B54;
+}
+
+.reports-kpi-card.kpi-indented-ate::before {
+  background: #10B981;
+}
+
+.reports-kpi-card.kpi-no-indent-ate::before {
+  background: #F59E0B;
+}
+
+.reports-kpi-card.kpi-indented-not-ate::before {
+  background: #EC4899;
+}
+
+.reports-kpi-card.kpi-no-indent-not-ate::before {
+  background: #64748B;
+}
+
+.reports-kpi-card.kpi-pending::before {
+  background: #8B5CF6;
+}
+
+.reports-kpi-title {
+  font-size: 0.775rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748B;
+}
+
+.reports-kpi-count {
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: #0F172A;
+  line-height: 1.1;
+}
+
+.reports-kpi-desc {
+  font-size: 0.775rem;
+  color: #94A3B8;
+}
+
+.reconciliation-integrity-banner {
+  background-color: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-left: 4px solid #151B54;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: #334155;
+}
+
+.category-subnav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.category-subnav-btn {
+  background: none;
+  border: none;
+  padding: 0.55rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #64748B;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.category-subnav-btn:hover {
+  color: #151B54;
+  background-color: #F1F5F9;
+}
+
+.category-subnav-btn.active {
+  color: #151B54;
+  font-weight: 600;
+  background-color: #FFFFFF;
+  box-shadow: 0 -2px 0 0 #151B54 inset;
+}
+
+.export-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-export-excel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background-color: #059669;
+  color: #FFFFFF;
+  border: none;
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.825rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.btn-export-excel:hover {
+  background-color: #047857;
+}
+
+.btn-export-csv {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background-color: #2563EB;
+  color: #FFFFFF;
+  border: none;
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.825rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.btn-export-csv:hover {
+  background-color: #1D4ED8;
+}
+
+.mess-report-table-wrapper {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.mess-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.mess-report-table th {
+  background-color: #F8FAFC;
+  padding: 0.85rem 1rem;
+  font-size: 0.775rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.mess-report-table td {
+  padding: 0.85rem 1rem;
+  font-size: 0.85rem;
+  color: #1E293B;
+  border-bottom: 1px solid #F1F5F9;
+  vertical-align: middle;
+}
+
+.mess-report-table tr:hover td {
+  background-color: #F8FAFC;
+}
+

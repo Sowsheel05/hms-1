@@ -214,18 +214,27 @@ router.get('/mess-tokens', authenticateStudent, async (req: AuthenticatedRequest
       year: 'numeric',
     });
 
-    // 2. Fetch tokens for requested targetDate
-    const targetDateTokens = await prisma.messToken.findMany({
-      where: {
-        studentId,
-        date: targetDate,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    // 2. Fetch tokens and indents for requested targetDate
+    const [targetDateTokens, targetDateIndents] = await Promise.all([
+      prisma.messToken.findMany({
+        where: {
+          studentId,
+          date: targetDate,
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.messIndent.findMany({
+        where: {
+          studentId,
+          date: targetDate,
+        },
+      }),
+    ]);
 
     // 3. Map meal slots for targetDate
     const mealSlots = MEAL_CONFIGS.map((config) => {
       const existingRecord = targetDateTokens.find((t) => t.mealType === config.type);
+      const existingIndent = targetDateIndents.find((i) => i.mealType === config.type);
       const deadlineInfo = evaluateMealDeadline(targetDate, config, now);
 
       let slotStatus: 'AVAILABLE' | 'DRAFT' | 'BOOKED' | 'SKIPPED' | 'USED' | 'CLOSED';
@@ -270,26 +279,41 @@ router.get('/mess-tokens', authenticateStudent, async (req: AuthenticatedRequest
         token:
           existingRecord && existingRecord.status !== 'DRAFT'
             ? {
-                id: existingRecord.id,
-                tokenNumber: existingRecord.tokenNumber,
-                date: existingRecord.date,
-                mealType: existingRecord.mealType,
-                status: existingRecord.status,
-                isLocked: existingRecord.isLocked,
-                attendanceIntent: existingRecord.attendanceIntent,
-                createdAt: existingRecord.createdAt,
-                timing: config.timing,
-              }
+              id: existingRecord.id,
+              tokenNumber: existingRecord.tokenNumber,
+              date: existingRecord.date,
+              mealType: existingRecord.mealType,
+              status: existingRecord.status,
+              isLocked: existingRecord.isLocked,
+              attendanceIntent: existingRecord.attendanceIntent,
+              createdAt: existingRecord.createdAt,
+              timing: config.timing,
+            }
             : null,
         draft:
           existingRecord && existingRecord.status === 'DRAFT'
             ? {
-                id: existingRecord.id,
-                date: existingRecord.date,
-                mealType: existingRecord.mealType,
-                attendanceIntent: existingRecord.attendanceIntent,
-                updatedAt: existingRecord.updatedAt,
-              }
+              id: existingRecord.id,
+              date: existingRecord.date,
+              mealType: existingRecord.mealType,
+              attendanceIntent: existingRecord.attendanceIntent,
+              updatedAt: existingRecord.updatedAt,
+            }
+            : null,
+        indent: existingIndent
+          ? {
+            id: existingIndent.id,
+            status: existingIndent.status,
+            markedAt: (existingIndent as any).markedAt ? (existingIndent as any).markedAt.toISOString() : existingIndent.createdAt.toISOString(),
+            createdAt: existingIndent.createdAt.toISOString(),
+          }
+          : existingRecord && (existingRecord.status === 'BOOKED' || existingRecord.status === 'CONSUMED')
+            ? {
+              id: `token-${existingRecord.id}`,
+              status: 'MARKED',
+              markedAt: existingRecord.createdAt.toISOString(),
+              createdAt: existingRecord.createdAt.toISOString(),
+            }
             : null,
       };
     });
@@ -341,8 +365,8 @@ router.get('/mess-tokens', authenticateStudent, async (req: AuthenticatedRequest
       targetDate === todayStr
         ? targetDateTokens
         : await prisma.messToken.findMany({
-            where: { studentId, date: todayStr },
-          });
+          where: { studentId, date: todayStr },
+        });
 
     const activeTokensToday = todayTokens
       .filter((t) => t.status === 'BOOKED' && t.tokenNumber)
@@ -714,6 +738,25 @@ router.post('/mess-tokens/lock', authenticateStudent, async (req: AuthenticatedR
           throw { code: 'ALREADY_LOCKED', message: `You have already submitted and locked your indent for ${mealConfig.name} on ${targetDate}.` };
         }
 
+        await tx.messIndent.upsert({
+          where: {
+            studentId_date_mealType: {
+              studentId,
+              date: targetDate,
+              mealType: normalizedMeal,
+            },
+          },
+          update: {
+            status: isAttending ? 'MARKED' : 'SKIPPED',
+          },
+          create: {
+            studentId,
+            date: targetDate,
+            mealType: normalizedMeal,
+            status: isAttending ? 'MARKED' : 'SKIPPED',
+          },
+        });
+
         await tx.activityLog.create({
           data: {
             studentId,
@@ -736,6 +779,25 @@ router.post('/mess-tokens/lock', authenticateStudent, async (req: AuthenticatedR
             lockedAt,
             attendanceIntent,
             tokenNumber,
+          },
+        });
+
+        await tx.messIndent.upsert({
+          where: {
+            studentId_date_mealType: {
+              studentId,
+              date: targetDate,
+              mealType: normalizedMeal,
+            },
+          },
+          update: {
+            status: isAttending ? 'MARKED' : 'SKIPPED',
+          },
+          create: {
+            studentId,
+            date: targetDate,
+            mealType: normalizedMeal,
+            status: isAttending ? 'MARKED' : 'SKIPPED',
           },
         });
 
@@ -979,6 +1041,238 @@ router.get(['/mess/qr', '/mess-qr'], authenticateStudent, (req: AuthenticatedReq
     success: true,
     ...STATIC_MESS_QR_CONFIG,
   });
+});
+
+/**
+ * POST /api/student/mess/indent (and /api/student/mess-indent)
+ * Student Portal Indent Marking (Phase 2 & Phase 13)
+ * Stores: studentId, date, mealType, status (MARKED/NOT_MARKED/SKIPPED), timestamp
+ * Prevents duplicate indent records with uniqueness constraint.
+ */
+router.post(['/mess/indent', '/mess-indent'], authenticateStudent, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.student) {
+      res.status(401).json({ success: false, message: 'Authentication required.' });
+      return;
+    }
+
+    const studentId = req.student.id;
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    const student = await prisma.student.findUnique({ where: { id: studentId } });
+    if (!student || !student.isActive) {
+      res.status(404).json({ success: false, message: 'This account is currently unavailable.' });
+      return;
+    }
+
+    const activeSuspension = await prisma.suspension.findFirst({
+      where: {
+        studentId,
+        status: 'ACTIVE',
+        startDate: { lte: now },
+        endDate: { gte: now },
+      },
+    });
+
+    if (activeSuspension) {
+      res.status(403).json({
+        success: false,
+        message: 'Access denied. Your hostel mess privileges are suspended.',
+      });
+      return;
+    }
+
+    const { mealType, date, status, attendanceIntent } = req.body;
+
+    if (!mealType || typeof mealType !== 'string') {
+      res.status(400).json({ success: false, message: 'Valid mealType is required.' });
+      return;
+    }
+
+    const normalizedMeal = mealType.toUpperCase() as MealType;
+    const mealConfig = MEAL_CONFIGS.find((c) => c.type === normalizedMeal);
+    if (!mealConfig) {
+      res.status(400).json({
+        success: false,
+        message: `Invalid mealType. Supported meals: ${VALID_MEALS.join(', ')}`,
+      });
+      return;
+    }
+
+    const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? date.trim() : todayStr;
+
+    // Determine if meal is intended/attending
+    const isAttending = !(
+      status === 'NOT_MARKED' ||
+      status === 'SKIPPED' ||
+      attendanceIntent === 'SKIPPED' ||
+      req.body.indentMarked === false
+    );
+
+    const indentStatus = isAttending ? 'MARKED' : 'SKIPPED';
+    const finalTokenStatus = isAttending ? 'BOOKED' : 'SKIPPED';
+    const finalAttendanceIntent = isAttending ? 'ATTENDING' : 'SKIPPED';
+    const tokenNumber = isAttending ? generateTokenNumber(targetDate, normalizedMeal) : null;
+    const lockedAt = new Date();
+
+    const [savedIndent] = await prisma.$transaction([
+      prisma.messIndent.upsert({
+        where: {
+          studentId_date_mealType: {
+            studentId,
+            date: targetDate,
+            mealType: normalizedMeal,
+          },
+        },
+        update: {
+          status: indentStatus,
+        },
+        create: {
+          studentId,
+          date: targetDate,
+          mealType: normalizedMeal,
+          status: indentStatus,
+        },
+      }),
+      prisma.messToken.upsert({
+        where: {
+          studentId_date_mealType: {
+            studentId,
+            date: targetDate,
+            mealType: normalizedMeal,
+          },
+        },
+        update: {
+          status: finalTokenStatus,
+          isLocked: true,
+          lockedAt,
+          attendanceIntent: finalAttendanceIntent,
+          ...(tokenNumber ? { tokenNumber } : {}),
+        },
+        create: {
+          studentId,
+          date: targetDate,
+          mealType: normalizedMeal,
+          status: finalTokenStatus,
+          isLocked: true,
+          lockedAt,
+          attendanceIntent: finalAttendanceIntent,
+          tokenNumber,
+        },
+      }),
+      prisma.activityLog.create({
+        data: {
+          studentId,
+          actionType: 'MESS',
+          description: isAttending
+            ? `Marked indent for ${mealConfig.name} on ${targetDate}`
+            : `Skipped indent for ${mealConfig.name} on ${targetDate}`,
+        },
+      }),
+    ]);
+
+    // Real-time notification/SSE
+    complaintEventsService.emitMessEventToStudent(studentId, {
+      type: 'MESS_INDENT_UPDATED',
+      studentId,
+      date: targetDate,
+      mealType: normalizedMeal,
+      status: indentStatus,
+      timestamp: lockedAt.toISOString(),
+    });
+
+    res.status(200).json({
+      success: true,
+      message: isAttending
+        ? `Indent marked successfully for ${mealConfig.name} on ${targetDate}.`
+        : `Meal marked as skipped for ${mealConfig.name} on ${targetDate}.`,
+      indent: {
+        id: savedIndent.id,
+        studentId: savedIndent.studentId,
+        date: savedIndent.date,
+        mealType: savedIndent.mealType,
+        mealName: mealConfig.name,
+        status: savedIndent.status,
+        indentMarked: isAttending,
+        markedAt: savedIndent.updatedAt || savedIndent.createdAt,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error marking mess indent:', error);
+    res.status(500).json({ success: false, message: 'Unable to record mess indent. Please try again.' });
+  }
+});
+
+/**
+ * GET /api/student/mess/indent (and /api/student/mess-indent)
+ * Student views their indent status for date / meals (Phase 2 & Phase 13)
+ */
+router.get(['/mess/indent', '/mess-indent'], authenticateStudent, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.student) {
+      res.status(401).json({ success: false, message: 'Authentication required.' });
+      return;
+    }
+
+    const studentId = req.student.id;
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    const { date, mealType } = req.query;
+    const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? date.trim() : todayStr;
+
+    const where: any = { studentId, date: targetDate };
+    if (typeof mealType === 'string' && mealType.trim()) {
+      where.mealType = mealType.trim().toUpperCase();
+    }
+
+    const [indents, tokens] = await Promise.all([
+      prisma.messIndent.findMany({ where }),
+      prisma.messToken.findMany({ where }),
+    ]);
+
+    const meals = MEAL_CONFIGS
+      .filter((cfg) => !where.mealType || cfg.type === where.mealType)
+      .map((cfg) => {
+        const indentRecord = indents.find((i) => i.mealType === cfg.type);
+        const tokenRecord = tokens.find((t) => t.mealType === cfg.type);
+
+        const isIndentMarked = Boolean(
+          (indentRecord && indentRecord.status === 'MARKED') ||
+          (!indentRecord &&
+            tokenRecord &&
+            (tokenRecord.attendanceIntent === 'ATTENDING' ||
+              tokenRecord.status === 'BOOKED' ||
+              tokenRecord.status === 'CONSUMED'))
+        );
+
+        const markedAt = indentRecord
+          ? indentRecord.createdAt
+          : tokenRecord
+            ? tokenRecord.createdAt
+            : null;
+
+        return {
+          mealType: cfg.type,
+          name: cfg.name,
+          timing: cfg.timing,
+          indentMarked: isIndentMarked,
+          status: isIndentMarked ? 'MARKED' : 'NOT_MARKED',
+          markedAt,
+        };
+      });
+
+    res.json({
+      success: true,
+      date: targetDate,
+      studentId,
+      meals,
+    });
+  } catch (error: any) {
+    console.error('Error fetching student indent status:', error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve indent status.' });
+  }
 });
 
 export default router;

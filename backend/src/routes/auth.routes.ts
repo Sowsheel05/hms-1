@@ -2,8 +2,76 @@ import { Router, Response } from 'express';
 import { AuthService } from '../services/auth.service';
 import { loginRateLimiter } from '../middleware/rate-limiter';
 import { authenticateStudent, AuthenticatedRequest } from '../middleware/auth.middleware';
+import { prisma } from '../services/prisma.service';
 
 const router = Router();
+
+/**
+ * POST /api/auth/register
+ * Public student registration and hostel application submission.
+ * Creates an inactive student account and pending application for Admin review.
+ */
+router.post('/register', loginRateLimiter, async (req, res): Promise<void> => {
+  try {
+    const result = await AuthService.registerStudent(req.body);
+
+    res.status(201).json({
+      success: true,
+      message: 'Registration submitted successfully for Admin verification.',
+      applicationId: result.applicationNumber,
+      application: {
+        id: result.applicationId,
+        applicationNumber: result.applicationNumber,
+        status: result.status,
+      },
+      status: result.status,
+      student: {
+        id: result.studentId,
+        name: result.name,
+        jntuNo: result.jntuNo,
+      },
+    });
+  } catch (error: any) {
+    if (error.status) {
+      res.status(error.status).json({
+        success: false,
+        message: error.message,
+      });
+      return;
+    }
+
+    console.error('Registration error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit registration application.',
+    });
+  }
+});
+
+/**
+ * GET /api/auth/register-blocks
+ * Public endpoint to fetch active hostel blocks for registration form selection.
+ */
+router.get('/register-blocks', async (_req, res): Promise<void> => {
+  try {
+    const blocks = await prisma.block.findMany({
+      where: { status: 'ACTIVE' },
+      select: { id: true, name: true, code: true, description: true },
+      orderBy: { name: 'asc' },
+    });
+
+    res.status(200).json({
+      success: true,
+      blocks,
+    });
+  } catch (error) {
+    console.error('Error fetching register blocks:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Unable to fetch hostel block options.',
+    });
+  }
+});
 
 /**
  * POST /api/auth/login

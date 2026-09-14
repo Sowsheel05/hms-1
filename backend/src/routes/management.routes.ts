@@ -26,6 +26,7 @@ import feeCollectionRouter from './fee-collection.routes';
 import outingLogHistoryRouter from './outing-log-history.routes';
 import deviceRouter from './device.routes';
 import adminNotificationRouter from './admin-notification.routes';
+import hostelApplicationManagementRouter from './hostel-application-management.routes';
 import { auditService } from '../services/audit.service';
 
 
@@ -48,6 +49,7 @@ router.use('/users', userManagementRouter);
 router.use('/fee-management', feeManagementRouter);
 router.use('/fee-collection', feeCollectionRouter);
 router.use('/notifications', adminNotificationRouter);
+router.use('/hostel-applications', hostelApplicationManagementRouter);
 
 
 /**
@@ -166,12 +168,12 @@ router.post('/auth/login', loginRateLimiter, async (req, res): Promise<void> => 
     const hostelScope = user.role === 'CHIEF_WARDEN_BOYS'
       ? 'BOYS'
       : user.role === 'CHIEF_WARDEN_GIRLS'
-      ? 'GIRLS'
-      : user.blockName?.toLowerCase().includes('girls')
-      ? 'GIRLS'
-      : user.blockName?.toLowerCase().includes('boys')
-      ? 'BOYS'
-      : 'ALL';
+        ? 'GIRLS'
+        : user.blockName?.toLowerCase().includes('girls')
+          ? 'GIRLS'
+          : user.blockName?.toLowerCase().includes('boys')
+            ? 'BOYS'
+            : 'ALL';
 
     res.status(200).json({
       success: true,
@@ -211,7 +213,7 @@ router.post('/auth/logout', async (req, res): Promise<void> => {
       });
 
       if (session) {
-        await prisma.session.delete({ where: { token } }).catch(() => {});
+        await prisma.session.delete({ where: { token } }).catch(() => { });
         auditService
           .recordLog({
             actorId: session.student.id,

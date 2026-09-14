@@ -19,6 +19,10 @@ import {
   FileText,
   Fingerprint,
   Users,
+  FileSpreadsheet,
+  Check,
+  Slash,
+  RefreshCw,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -29,17 +33,21 @@ import {
   MessAttendanceData,
   AttendanceRecordItem,
   IndentStudentRecord,
+  AttendanceMarkingStudent,
+  AttendanceMarkingResponse,
+  MessReportSummary,
+  MessReportItem,
 } from '../services/api';
 
 interface MessManagementPageProps {
   onNavigate?: (path: string) => void;
 }
 
-type MessTab = 'configuration' | 'analytics' | 'indent' | 'attendance';
+type MessTab = 'attendance-marking' | 'reports' | 'indent' | 'attendance' | 'analytics' | 'configuration';
 
 export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
-  // Navigation Tabs: 'configuration' | 'analytics' | 'indent' | 'attendance'
-  const [activeTab, setActiveTab] = useState<MessTab>('configuration');
+  // Navigation Tabs: 'attendance-marking' | 'reports' | 'indent' | 'attendance' | 'analytics' | 'configuration'
+  const [activeTab, setActiveTab] = useState<MessTab>('attendance-marking');
 
   // Date selection (defaults to today's local YYYY-MM-DD)
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -386,6 +394,199 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
   };
 
   // =========================================================================
+  // TAB: MESS ATTENDANCE MARKING (Phase 3 & 4)
+  // =========================================================================
+  const [markingDate, setMarkingDate] = useState<string>(todayStr);
+  const [markingMeal, setMarkingMeal] = useState<string>('LUNCH');
+  const [markingBlock, setMarkingBlock] = useState<string>('ALL');
+  const [markingSearch, setMarkingSearch] = useState<string>('');
+  const [markingPage, setMarkingPage] = useState<number>(1);
+  const [markingData, setMarkingData] = useState<AttendanceMarkingResponse | null>(null);
+  const [isMarkingLoading, setIsMarkingLoading] = useState<boolean>(false);
+  const [markingStudentAction, setMarkingStudentAction] = useState<string | null>(null);
+
+  // Attendance Correction Modal State
+  const [correctionTarget, setCorrectionTarget] = useState<AttendanceMarkingStudent | null>(null);
+  const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState<boolean>(false);
+  const [isCorrectionSubmitting, setIsCorrectionSubmitting] = useState<boolean>(false);
+
+  const fetchAttendanceMarking = useCallback(async (page = markingPage, isBg = false) => {
+    if (!isBg) setIsMarkingLoading(true);
+    try {
+      const res = await managementApiService.getAttendanceMarking({
+        date: markingDate,
+        mealType: markingMeal,
+        block: markingBlock,
+        search: markingSearch.trim() || undefined,
+        page,
+        limit: 15,
+      });
+      if (res.success) {
+        setMarkingData(res);
+        setMarkingPage(res.pagination.page);
+      }
+    } catch (err: any) {
+      console.error('Failed to load attendance marking:', err);
+      showToast(err.message || 'Failed to load eligible students list.', 'error');
+    } finally {
+      setIsMarkingLoading(false);
+    }
+  }, [markingDate, markingMeal, markingBlock, markingSearch, markingPage]);
+
+  // Quick Inline Action: Mark Attendance (ATE or DID_NOT_EAT)
+  const handleQuickMarkAttendance = async (student: AttendanceMarkingStudent, status: 'ATE' | 'DID_NOT_EAT') => {
+    setMarkingStudentAction(student.studentId);
+    try {
+      const res = await managementApiService.markAttendance({
+        studentId: student.studentId,
+        date: markingDate,
+        mealType: markingMeal,
+        status,
+      });
+      if (res.success) {
+        showToast(`Marked ${student.studentName} as ${status === 'ATE' ? 'ATE (Consumed)' : 'DID NOT EAT'}`);
+        await fetchAttendanceMarking(markingPage, true);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update attendance.', 'error');
+    } finally {
+      setMarkingStudentAction(null);
+    }
+  };
+
+  const handleOpenCorrection = (student: AttendanceMarkingStudent) => {
+    setCorrectionTarget(student);
+    setIsCorrectionModalOpen(true);
+  };
+
+  const handleSaveCorrection = async (newStatus: 'ATE' | 'DID_NOT_EAT' | 'PENDING') => {
+    if (!correctionTarget) return;
+    setIsCorrectionSubmitting(true);
+    try {
+      if (correctionTarget.attendanceId) {
+        const res = await managementApiService.correctAttendance(correctionTarget.attendanceId, newStatus);
+        if (res.success) {
+          showToast(`Attendance updated to ${newStatus}`);
+        }
+      } else {
+        if (newStatus === 'PENDING') {
+          showToast('Attendance is already pending.');
+        } else {
+          const res = await managementApiService.markAttendance({
+            studentId: correctionTarget.studentId,
+            date: markingDate,
+            mealType: markingMeal,
+            status: newStatus,
+          });
+          if (res.success) {
+            showToast(`Attendance marked as ${newStatus}`);
+          }
+        }
+      }
+      setIsCorrectionModalOpen(false);
+      setCorrectionTarget(null);
+      await fetchAttendanceMarking(markingPage, true);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to correct attendance.', 'error');
+    } finally {
+      setIsCorrectionSubmitting(false);
+    }
+  };
+
+  // =========================================================================
+  // TAB: FOUR-WAY RECONCILIATION REPORTS & EXPORT (Phase 6 to 12)
+  // =========================================================================
+  const [reportDate, setReportDate] = useState<string>(todayStr);
+  const [reportMeal, setReportMeal] = useState<string>('LUNCH');
+  const [reportBlock, setReportBlock] = useState<string>('ALL');
+  const [reportSearch, setReportSearch] = useState<string>('');
+  const [reportCategory, setReportCategory] = useState<'INDENTED_ATE' | 'NO_INDENT_ATE' | 'INDENTED_NOT_ATE' | 'NO_INDENT_NOT_ATE' | 'PENDING' | 'ALL'>('INDENTED_ATE');
+  const [reportPage, setReportPage] = useState<number>(1);
+
+  const [reportsSummary, setReportsSummary] = useState<MessReportSummary | null>(null);
+  const [reportsData, setReportsData] = useState<MessReportItem[]>([]);
+  const [reportsPagination, setReportsPagination] = useState<{ total: number; page: number; limit: number; totalPages: number }>({
+    total: 0,
+    page: 1,
+    limit: 15,
+    totalPages: 1,
+  });
+  const [isReportsLoading, setIsReportsLoading] = useState<boolean>(false);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+
+  const fetchReportsSummary = useCallback(async (_isBg = false) => {
+    try {
+      const res = await managementApiService.getMessReportsSummary({
+        date: reportDate,
+        mealType: reportMeal,
+        block: reportBlock,
+        search: reportSearch.trim() || undefined,
+      });
+      if (res.success) {
+        setReportsSummary(res.summary);
+      }
+    } catch (err: any) {
+      console.error('Failed to load reports summary:', err);
+    }
+  }, [reportDate, reportMeal, reportBlock, reportSearch]);
+
+  const fetchReportsData = useCallback(async (page = reportPage, isBg = false) => {
+    if (!isBg) setIsReportsLoading(true);
+    try {
+      const res = await managementApiService.getMessReportsData({
+        category: reportCategory === 'ALL' ? undefined : reportCategory,
+        date: reportDate,
+        mealType: reportMeal,
+        block: reportBlock,
+        search: reportSearch.trim() || undefined,
+        page,
+        limit: 15,
+      });
+      if (res.success) {
+        setReportsData(res.records);
+        setReportsPagination(res.pagination);
+        setReportPage(res.pagination.page);
+      }
+    } catch (err: any) {
+      console.error('Failed to load reports data:', err);
+      showToast(err.message || 'Failed to load report dataset.', 'error');
+    } finally {
+      setIsReportsLoading(false);
+    }
+  }, [reportCategory, reportDate, reportMeal, reportBlock, reportSearch, reportPage]);
+
+  const handleExportReconciliationReport = async (format: 'xlsx' | 'csv') => {
+    setIsExporting(true);
+    try {
+      const categorySlug = reportCategory.toLowerCase();
+      const blob = await managementApiService.exportMessReport({
+        category: reportCategory,
+        date: reportDate,
+        mealType: reportMeal,
+        format,
+        block: reportBlock,
+        search: reportSearch.trim() || undefined,
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const cleanMeal = reportMeal.toLowerCase();
+      link.setAttribute('download', `mess_${categorySlug}_${reportDate}_${cleanMeal}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      showToast(`Exported ${format.toUpperCase()} report successfully.`);
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      showToast(err.message || 'Failed to export report.', 'error');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // =========================================================================
   // INITIAL DATA LOADING & SSE
   // =========================================================================
   useEffect(() => {
@@ -395,7 +596,12 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'configuration') {
+    if (activeTab === 'attendance-marking') {
+      fetchAttendanceMarking(1);
+    } else if (activeTab === 'reports') {
+      fetchReportsSummary();
+      fetchReportsData(1);
+    } else if (activeTab === 'configuration') {
       fetchMeals();
     } else if (activeTab === 'analytics') {
       fetchAnalytics();
@@ -404,7 +610,20 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
     } else if (activeTab === 'attendance') {
       fetchAttendance(1);
     }
-  }, [activeTab, fetchMeals, fetchAnalytics, fetchIndentPlan, fetchAttendance]);
+  }, [activeTab, fetchAttendanceMarking, fetchReportsSummary, fetchReportsData, fetchMeals, fetchAnalytics, fetchIndentPlan, fetchAttendance]);
+
+  useEffect(() => {
+    if (activeTab === 'attendance-marking') {
+      fetchAttendanceMarking(1);
+    }
+  }, [activeTab, markingDate, markingMeal, markingBlock, markingSearch, fetchAttendanceMarking]);
+
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      fetchReportsSummary();
+      fetchReportsData(1);
+    }
+  }, [activeTab, reportDate, reportMeal, reportBlock, reportSearch, reportCategory, fetchReportsSummary, fetchReportsData]);
 
   // Unified SSE Subscription
   useEffect(() => {
@@ -425,6 +644,11 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
           event?.type === 'MESS_ATTENDANCE_UPDATED' ||
           event?.type === 'MESS_STATS_UPDATED'
         ) {
+          if (activeTab === 'attendance-marking') fetchAttendanceMarking(markingPage, true);
+          if (activeTab === 'reports') {
+            fetchReportsSummary(true);
+            fetchReportsData(reportPage, true);
+          }
           if (activeTab === 'analytics') fetchAnalytics(true);
           if (activeTab === 'indent') fetchIndentPlan(true);
           if (activeTab === 'attendance') fetchAttendance(attendancePage, true);
@@ -436,12 +660,16 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
     );
 
     return () => unsubscribe();
-  }, [activeTab, fetchMeals, fetchAnalytics, fetchIndentPlan, fetchAttendance, attendancePage]);
+  }, [activeTab, fetchAttendanceMarking, fetchReportsSummary, fetchReportsData, fetchMeals, fetchAnalytics, fetchIndentPlan, fetchAttendance, attendancePage, markingPage, reportPage]);
 
   // Global manual refresh
   const handleGlobalRefresh = async () => {
     setIsRefreshing(true);
-    if (activeTab === 'configuration') await fetchMeals(true);
+    if (activeTab === 'attendance-marking') await fetchAttendanceMarking(markingPage, true);
+    else if (activeTab === 'reports') {
+      await Promise.all([fetchReportsSummary(true), fetchReportsData(reportPage, true)]);
+    }
+    else if (activeTab === 'configuration') await fetchMeals(true);
     else if (activeTab === 'analytics') await fetchAnalytics(true);
     else if (activeTab === 'indent') await fetchIndentPlan(true);
     else if (activeTab === 'attendance') await fetchAttendance(attendancePage, true);
@@ -494,21 +722,27 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
         </div>
       </header>
 
-      {/* 4 Navigation Tabs */}
+      {/* Navigation Tabs */}
       <nav className="mess-nav-tabs" aria-label="Mess Management Tabs">
         <button
           type="button"
-          className={`mess-nav-tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
-          onClick={() => setActiveTab('configuration')}
+          className={`mess-nav-tab-btn ${activeTab === 'attendance-marking' ? 'active' : ''}`}
+          onClick={() => setActiveTab('attendance-marking')}
         >
-          Configuration
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Users size={16} />
+            Mess Attendance
+          </span>
         </button>
         <button
           type="button"
-          className={`mess-nav-tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
-          onClick={() => setActiveTab('analytics')}
+          className={`mess-nav-tab-btn ${activeTab === 'reports' ? 'active' : ''}`}
+          onClick={() => setActiveTab('reports')}
         >
-          Analytics
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <FileSpreadsheet size={16} />
+            Four-Way Reports
+          </span>
         </button>
         <button
           type="button"
@@ -522,9 +756,732 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
           className={`mess-nav-tab-btn ${activeTab === 'attendance' ? 'active' : ''}`}
           onClick={() => setActiveTab('attendance')}
         >
-          Attendance
+          Biometric Scans
+        </button>
+        <button
+          type="button"
+          className={`mess-nav-tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+          onClick={() => setActiveTab('analytics')}
+        >
+          Analytics
+        </button>
+        <button
+          type="button"
+          className={`mess-nav-tab-btn ${activeTab === 'configuration' ? 'active' : ''}`}
+          onClick={() => setActiveTab('configuration')}
+        >
+          Meal Schedules
         </button>
       </nav>
+
+      {/* =================================================================== */}
+      {/* TAB: MESS ATTENDANCE MARKING (Phase 3 & 4)                         */}
+      {/* =================================================================== */}
+      {activeTab === 'attendance-marking' && (
+        <section className="mess-tab-panel" aria-label="Mess Attendance Marking Panel">
+          {/* Action Toolbar */}
+          <div className="mess-action-toolbar">
+            <div className="mess-filter-group">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Calendar size={15} style={{ color: '#64748B' }} />
+                <input
+                  type="date"
+                  value={markingDate}
+                  onChange={(e) => {
+                    setMarkingDate(e.target.value);
+                    setMarkingPage(1);
+                  }}
+                  className="mess-input-control"
+                  aria-label="Attendance Date"
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <UtensilsCrossed size={15} style={{ color: '#64748B' }} />
+                <select
+                  value={markingMeal}
+                  onChange={(e) => {
+                    setMarkingMeal(e.target.value);
+                    setMarkingPage(1);
+                  }}
+                  className="mess-input-control"
+                  aria-label="Attendance Meal"
+                >
+                  <option value="BREAKFAST">Breakfast</option>
+                  <option value="LUNCH">Lunch</option>
+                  <option value="SNACKS">Snacks</option>
+                  <option value="DINNER">Dinner</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Filter size={15} style={{ color: '#64748B' }} />
+                <select
+                  value={markingBlock}
+                  onChange={(e) => {
+                    setMarkingBlock(e.target.value);
+                    setMarkingPage(1);
+                  }}
+                  className="mess-input-control"
+                  aria-label="Filter by Block"
+                >
+                  <option value="ALL">All Blocks</option>
+                  {blocks.map((b) => (
+                    <option key={b.id} value={b.name}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div className="search-field-wrap" style={{ minWidth: '240px' }}>
+                <Search size={15} className="search-input-icon" />
+                <input
+                  type="text"
+                  placeholder="Search student or roll no..."
+                  value={markingSearch}
+                  onChange={(e) => {
+                    setMarkingSearch(e.target.value);
+                    setMarkingPage(1);
+                  }}
+                  className="allocation-search-input"
+                  aria-label="Search students by name or roll number"
+                />
+              </div>
+
+              <button
+                type="button"
+                className="btn-light-secondary btn-sm"
+                onClick={() => fetchAttendanceMarking(markingPage)}
+                title="Refresh Attendance List"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              >
+                <RefreshCw size={14} />
+                <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Real-Time Attendance Marking Summary Ribbon */}
+          {markingData?.summary && (
+            <div className="marking-stats-ribbon">
+              <div className="marking-stat-card">
+                <span className="marking-stat-label">Total Eligible</span>
+                <span className="marking-stat-value">{markingData.summary.totalStudents}</span>
+              </div>
+              <div className="marking-stat-card" style={{ borderLeft: '3px solid #10B981' }}>
+                <span className="marking-stat-label">Indent Marked</span>
+                <span className="marking-stat-value" style={{ color: '#059669' }}>
+                  {markingData.summary.indentMarkedCount}
+                </span>
+              </div>
+              <div className="marking-stat-card" style={{ borderLeft: '3px solid #94A3B8' }}>
+                <span className="marking-stat-label">No Indent</span>
+                <span className="marking-stat-value" style={{ color: '#64748B' }}>
+                  {markingData.summary.noIndentCount}
+                </span>
+              </div>
+              <div className="marking-stat-card" style={{ borderLeft: '3px solid #059669' }}>
+                <span className="marking-stat-label">✓ Ate (Consumed)</span>
+                <span className="marking-stat-value" style={{ color: '#059669' }}>
+                  {markingData.summary.ateCount}
+                </span>
+              </div>
+              <div className="marking-stat-card" style={{ borderLeft: '3px solid #EF4444' }}>
+                <span className="marking-stat-label">✗ Did Not Eat</span>
+                <span className="marking-stat-value" style={{ color: '#DC2626' }}>
+                  {markingData.summary.didNotEatCount}
+                </span>
+              </div>
+              <div className="marking-stat-card" style={{ borderLeft: '3px solid #F59E0B' }}>
+                <span className="marking-stat-label">○ Pending</span>
+                <span className="marking-stat-value" style={{ color: '#D97706' }}>
+                  {markingData.summary.pendingCount}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Student Table */}
+          {isMarkingLoading ? (
+            <div className="allocation-loading-state">
+              <RotateCw size={28} className="spin-anim" style={{ color: '#151B54', margin: '0 auto 0.75rem' }} />
+              <p>Loading eligible students for {markingMeal} ({markingDate})...</p>
+            </div>
+          ) : !markingData || markingData.students.length === 0 ? (
+            <div className="allocation-empty-state">
+              <Users size={40} style={{ color: '#94A3B8' }} />
+              <h3 className="empty-state-title">No eligible students found</h3>
+              <p className="empty-state-desc">Try changing your search query, block filter, or selected meal.</p>
+            </div>
+          ) : (
+            <div className="mess-report-table-wrapper">
+              <table className="mess-report-table">
+                <thead>
+                  <tr>
+                    <th>Roll No</th>
+                    <th>Student Name</th>
+                    <th>Block / Room</th>
+                    <th>Indent Status</th>
+                    <th>Attendance Status</th>
+                    <th style={{ textAlign: 'right' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {markingData.students.map((student) => {
+                    const isBusy = markingStudentAction === student.studentId;
+                    return (
+                      <tr key={student.studentId}>
+                        <td>
+                          <span className="status-badge badge-neutral" style={{ fontWeight: 600 }}>
+                            {student.rollNo}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: 600, color: '#0F172A' }}>{student.studentName}</span>
+                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>{student.email}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: '0.825rem', color: '#334155' }}>
+                            {student.blockName || student.block} · Room {student.roomNumber || student.room}
+                          </span>
+                        </td>
+                        <td>
+                          {student.indentMarked ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                              <span className="status-badge badge-verified" style={{ width: 'fit-content' }}>
+                                ✓ Marked
+                              </span>
+                              {student.indentTime && (
+                                <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                  {new Date(student.indentTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="status-badge badge-neutral" style={{ width: 'fit-content' }}>
+                              ✗ No Indent
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {student.attendanceStatus === 'ATE' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                              <span className="status-badge badge-verified" style={{ width: 'fit-content' }}>
+                                ✓ Ate
+                              </span>
+                              {student.attendanceTime && (
+                                <span style={{ fontSize: '0.7rem', color: '#047857' }}>
+                                  {new Date(student.attendanceTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </div>
+                          ) : student.attendanceStatus === 'DID_NOT_EAT' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                              <span className="status-badge badge-denied" style={{ width: 'fit-content' }}>
+                                ✗ Did Not Eat
+                              </span>
+                              {student.attendanceTime && (
+                                <span style={{ fontSize: '0.7rem', color: '#B91C1C' }}>
+                                  {new Date(student.attendanceTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="status-badge badge-pending" style={{ width: 'fit-content' }}>
+                              ○ Pending
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                            {student.attendanceStatus === 'PENDING' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn-mark-ate"
+                                  disabled={isBusy}
+                                  onClick={() => handleQuickMarkAttendance(student, 'ATE')}
+                                  title="Mark student as Ate / Consumed"
+                                >
+                                  {isBusy ? <RotateCw size={12} className="spin-anim" /> : <Check size={13} />}
+                                  <span>Ate</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-mark-dne"
+                                  disabled={isBusy}
+                                  onClick={() => handleQuickMarkAttendance(student, 'DID_NOT_EAT')}
+                                  title="Mark student as Did Not Eat"
+                                >
+                                  {isBusy ? <RotateCw size={12} className="spin-anim" /> : <Slash size={13} />}
+                                  <span>Did Not Eat</span>
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn-light-secondary btn-sm"
+                                onClick={() => handleOpenCorrection(student)}
+                                title="Change or correct attendance status"
+                              >
+                                <Edit2 size={12} />
+                                <span>Correct</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {/* Pagination */}
+              {markingData.pagination.totalPages > 1 && (
+                <div className="pagination-controls-bar" style={{ padding: '0.75rem 1rem' }}>
+                  <button
+                    type="button"
+                    className="btn-light-secondary btn-sm"
+                    disabled={markingPage <= 1}
+                    onClick={() => {
+                      const prev = Math.max(1, markingPage - 1);
+                      setMarkingPage(prev);
+                      fetchAttendanceMarking(prev);
+                    }}
+                  >
+                    <ChevronLeft size={16} />
+                    <span>Previous</span>
+                  </button>
+
+                  <span className="pagination-page-indicator">
+                    Page {markingData.pagination.page} of {markingData.pagination.totalPages} ({markingData.pagination.total} students)
+                  </span>
+
+                  <button
+                    type="button"
+                    className="btn-light-secondary btn-sm"
+                    disabled={markingPage >= markingData.pagination.totalPages}
+                    onClick={() => {
+                      const next = Math.min(markingData.pagination.totalPages, markingPage + 1);
+                      setMarkingPage(next);
+                      fetchAttendanceMarking(next);
+                    }}
+                  >
+                    <span>Next</span>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* =================================================================== */}
+      {/* TAB: FOUR-WAY RECONCILIATION REPORTS (Phase 6 to 12)               */}
+      {/* =================================================================== */}
+      {activeTab === 'reports' && (
+        <section className="mess-tab-panel" aria-label="Four-Way Reconciliation Reports Panel">
+          {/* Top Filters & Export Bar */}
+          <div className="mess-action-toolbar">
+            <div className="mess-filter-group">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Calendar size={15} style={{ color: '#64748B' }} />
+                <input
+                  type="date"
+                  value={reportDate}
+                  onChange={(e) => {
+                    setReportDate(e.target.value);
+                    setReportPage(1);
+                  }}
+                  className="mess-input-control"
+                  aria-label="Report Date"
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <UtensilsCrossed size={15} style={{ color: '#64748B' }} />
+                <select
+                  value={reportMeal}
+                  onChange={(e) => {
+                    setReportMeal(e.target.value);
+                    setReportPage(1);
+                  }}
+                  className="mess-input-control"
+                  aria-label="Report Meal"
+                >
+                  <option value="ALL">All Meals</option>
+                  <option value="BREAKFAST">Breakfast</option>
+                  <option value="LUNCH">Lunch</option>
+                  <option value="SNACKS">Snacks</option>
+                  <option value="DINNER">Dinner</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Filter size={15} style={{ color: '#64748B' }} />
+                <select
+                  value={reportBlock}
+                  onChange={(e) => {
+                    setReportBlock(e.target.value);
+                    setReportPage(1);
+                  }}
+                  className="mess-input-control"
+                  aria-label="Filter by Block"
+                >
+                  <option value="ALL">All Blocks</option>
+                  {blocks.map((b) => (
+                    <option key={b.id} value={b.name}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div className="search-field-wrap" style={{ minWidth: '220px' }}>
+                <Search size={15} className="search-input-icon" />
+                <input
+                  type="text"
+                  placeholder="Search student or roll no..."
+                  value={reportSearch}
+                  onChange={(e) => {
+                    setReportSearch(e.target.value);
+                    setReportPage(1);
+                  }}
+                  className="allocation-search-input"
+                  aria-label="Search reconciled records"
+                />
+              </div>
+
+              <div className="export-btn-group">
+                <button
+                  type="button"
+                  className="btn-export-excel"
+                  disabled={isExporting}
+                  onClick={() => handleExportReconciliationReport('xlsx')}
+                  title="Export filtered dataset to Excel (.xlsx)"
+                >
+                  <Download size={14} />
+                  <span>Excel (.xlsx)</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-export-csv"
+                  disabled={isExporting}
+                  onClick={() => handleExportReconciliationReport('csv')}
+                  title="Export filtered dataset to CSV (.csv)"
+                >
+                  <Download size={14} />
+                  <span>CSV (.csv)</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-light-secondary btn-sm"
+                  onClick={handleExportPdf}
+                  title="Print / Save PDF"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <FileText size={14} />
+                  <span>PDF</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Four-Way Summary Cards (Phase 9 & 10) */}
+          {reportsSummary && (
+            <>
+              <div className="reports-kpi-grid">
+                <div className="reports-kpi-card kpi-total">
+                  <span className="reports-kpi-title">Total Students</span>
+                  <span className="reports-kpi-count">{reportsSummary.totalStudents}</span>
+                  <span className="reports-kpi-desc">Total cohort eligible</span>
+                </div>
+
+                <div className="reports-kpi-card kpi-indented-ate">
+                  <span className="reports-kpi-title">Indented & Ate</span>
+                  <span className="reports-kpi-count" style={{ color: '#059669' }}>
+                    {reportsSummary.indentedAndAte}
+                  </span>
+                  <span className="reports-kpi-desc">Indented & Consumed</span>
+                </div>
+
+                <div className="reports-kpi-card kpi-no-indent-ate">
+                  <span className="reports-kpi-title">No Indent & Ate</span>
+                  <span className="reports-kpi-count" style={{ color: '#D97706' }}>
+                    {reportsSummary.unindentedAndAte}
+                  </span>
+                  <span className="reports-kpi-desc">Unindented & Consumed</span>
+                </div>
+
+                <div className="reports-kpi-card kpi-indented-not-ate">
+                  <span className="reports-kpi-title">Indented & Not Eat</span>
+                  <span className="reports-kpi-count" style={{ color: '#DB2777' }}>
+                    {reportsSummary.indentedAndNotConsumed}
+                  </span>
+                  <span className="reports-kpi-desc">Indented & Not Consumed (Wasted)</span>
+                </div>
+
+                <div className="reports-kpi-card kpi-no-indent-not-ate">
+                  <span className="reports-kpi-title">No Indent & Not Eat</span>
+                  <span className="reports-kpi-count" style={{ color: '#475569' }}>
+                    {reportsSummary.unindentedAndNotConsumed}
+                  </span>
+                  <span className="reports-kpi-desc">Unindented & Not Consumed</span>
+                </div>
+
+                <div className="reports-kpi-card kpi-pending">
+                  <span className="reports-kpi-title">Attendance Pending</span>
+                  <span className="reports-kpi-count" style={{ color: '#7C3AED' }}>
+                    {reportsSummary.attendancePending}
+                  </span>
+                  <span className="reports-kpi-desc">Excluded from 4-way reports</span>
+                </div>
+              </div>
+
+              {/* Mathematical Integrity Banner */}
+              <div className="reconciliation-integrity-banner">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <CheckCircle2 size={16} style={{ color: '#059669' }} />
+                  <span>
+                    <strong>Reconciliation Balance Check:</strong> {reportsSummary.totalStudents} Total ={' '}
+                    {reportsSummary.indentedAndAte} (Indented & Ate) + {reportsSummary.unindentedAndAte} (No Indent & Ate) +{' '}
+                    {reportsSummary.indentedAndNotConsumed} (Indented & Not Eat) +{' '}
+                    {reportsSummary.unindentedAndNotConsumed} (No Indent & Not Eat) +{' '}
+                    {reportsSummary.attendancePending} (Pending)
+                  </span>
+                </div>
+                <span className={`status-badge ${reportsSummary.isFinalized ? 'badge-verified' : 'badge-pending'}`}>
+                  {reportsSummary.isFinalized ? 'Finalized' : 'Attendance In Progress'}
+                </span>
+              </div>
+            </>
+          )}
+
+          {/* Category Tabs (Phase 7 & 8) */}
+          <div className="category-subnav-tabs">
+            <button
+              type="button"
+              className={`category-subnav-btn ${reportCategory === 'INDENTED_ATE' ? 'active' : ''}`}
+              onClick={() => {
+                setReportCategory('INDENTED_ATE');
+                setReportPage(1);
+              }}
+            >
+              Report 1: Indented & Ate ({reportsSummary?.indentedAndAte ?? 0})
+            </button>
+            <button
+              type="button"
+              className={`category-subnav-btn ${reportCategory === 'NO_INDENT_ATE' ? 'active' : ''}`}
+              onClick={() => {
+                setReportCategory('NO_INDENT_ATE');
+                setReportPage(1);
+              }}
+            >
+              Report 2: No Indent & Ate ({reportsSummary?.unindentedAndAte ?? 0})
+            </button>
+            <button
+              type="button"
+              className={`category-subnav-btn ${reportCategory === 'INDENTED_NOT_ATE' ? 'active' : ''}`}
+              onClick={() => {
+                setReportCategory('INDENTED_NOT_ATE');
+                setReportPage(1);
+              }}
+            >
+              Report 3: Indented & Did Not Eat ({reportsSummary?.indentedAndNotConsumed ?? 0})
+            </button>
+            <button
+              type="button"
+              className={`category-subnav-btn ${reportCategory === 'NO_INDENT_NOT_ATE' ? 'active' : ''}`}
+              onClick={() => {
+                setReportCategory('NO_INDENT_NOT_ATE');
+                setReportPage(1);
+              }}
+            >
+              Report 4: No Indent & Did Not Eat ({reportsSummary?.unindentedAndNotConsumed ?? 0})
+            </button>
+            <button
+              type="button"
+              className={`category-subnav-btn ${reportCategory === 'PENDING' ? 'active' : ''}`}
+              onClick={() => {
+                setReportCategory('PENDING');
+                setReportPage(1);
+              }}
+            >
+              Pending Attendance ({reportsSummary?.attendancePending ?? 0})
+            </button>
+            <button
+              type="button"
+              className={`category-subnav-btn ${reportCategory === 'ALL' ? 'active' : ''}`}
+              onClick={() => {
+                setReportCategory('ALL');
+                setReportPage(1);
+              }}
+            >
+              All Finalized Records
+            </button>
+          </div>
+
+          {/* Detailed Reports Data Table */}
+          {isReportsLoading ? (
+            <div className="allocation-loading-state">
+              <RotateCw size={28} className="spin-anim" style={{ color: '#151B54', margin: '0 auto 0.75rem' }} />
+              <p>Fetching reconciled dataset from PostgreSQL...</p>
+            </div>
+          ) : reportsData.length === 0 ? (
+            <div className="allocation-empty-state">
+              <FileSpreadsheet size={40} style={{ color: '#94A3B8' }} />
+              <h3 className="empty-state-title">No records in this report category</h3>
+              <p className="empty-state-desc">No students match the current category, meal, date, or search filter.</p>
+            </div>
+          ) : (
+            <div className="mess-report-table-wrapper">
+              <table className="mess-report-table">
+                <thead>
+                  <tr>
+                    <th>Roll No</th>
+                    <th>Student Name</th>
+                    <th>Branch / Year</th>
+                    <th>Block / Room</th>
+                    <th>Meal</th>
+                    <th>Indent Status</th>
+                    <th>Attendance Status</th>
+                    <th>Marked By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportsData.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        <span className="status-badge badge-neutral" style={{ fontWeight: 600 }}>
+                          {item.rollNo}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 600, color: '#0F172A' }}>{item.studentName}</span>
+                          <span style={{ fontSize: '0.75rem', color: '#64748B' }}>{item.email}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '0.825rem', color: '#334155' }}>
+                          {item.branch} · {item.year} {item.section ? `(${item.section})` : ''}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '0.825rem', color: '#334155' }}>
+                          {item.block} · Room {item.room}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="status-badge badge-neutral" style={{ textTransform: 'capitalize' }}>
+                          {item.meal}
+                        </span>
+                      </td>
+                      <td>
+                        {item.indentMarked ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                            <span className="status-badge badge-verified" style={{ width: 'fit-content' }}>
+                              ✓ Marked
+                            </span>
+                            {item.indentTime && (
+                              <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                {new Date(item.indentTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="status-badge badge-neutral" style={{ width: 'fit-content' }}>
+                            ✗ No Indent
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {item.attendanceStatus === 'ATE' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                            <span className="status-badge badge-verified" style={{ width: 'fit-content' }}>
+                              ✓ Ate
+                            </span>
+                            {item.attendanceTime && (
+                              <span style={{ fontSize: '0.7rem', color: '#047857' }}>
+                                {new Date(item.attendanceTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
+                        ) : item.attendanceStatus === 'DID_NOT_EAT' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                            <span className="status-badge badge-denied" style={{ width: 'fit-content' }}>
+                              ✗ Did Not Eat
+                            </span>
+                            {item.attendanceTime && (
+                              <span style={{ fontSize: '0.7rem', color: '#B91C1C' }}>
+                                {new Date(item.attendanceTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="status-badge badge-pending" style={{ width: 'fit-content' }}>
+                            ○ Pending
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                          {item.markedBy || 'System/Scanner'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Pagination */}
+              {reportsPagination.totalPages > 1 && (
+                <div className="pagination-controls-bar" style={{ padding: '0.75rem 1rem' }}>
+                  <button
+                    type="button"
+                    className="btn-light-secondary btn-sm"
+                    disabled={reportPage <= 1}
+                    onClick={() => {
+                      const prev = Math.max(1, reportPage - 1);
+                      setReportPage(prev);
+                      fetchReportsData(prev);
+                    }}
+                  >
+                    <ChevronLeft size={16} />
+                    <span>Previous</span>
+                  </button>
+
+                  <span className="pagination-page-indicator">
+                    Page {reportsPagination.page} of {reportsPagination.totalPages} ({reportsPagination.total} records)
+                  </span>
+
+                  <button
+                    type="button"
+                    className="btn-light-secondary btn-sm"
+                    disabled={reportPage >= reportsPagination.totalPages}
+                    onClick={() => {
+                      const next = Math.min(reportsPagination.totalPages, reportPage + 1);
+                      setReportPage(next);
+                      fetchReportsData(next);
+                    }}
+                  >
+                    <span>Next</span>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* TAB 1: CONFIGURATION */}
       {activeTab === 'configuration' && (
@@ -1410,6 +2367,94 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
                   onClick={handleApplyAttendanceFilters}
                 >
                   Apply Filters
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Attendance Correction Modal */}
+      {isCorrectionModalOpen && correctionTarget && (
+        <div
+          className="notice-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Correct Attendance"
+        >
+          <div className="notice-modal-card" style={{ maxWidth: '460px' }}>
+            <div className="notice-modal-header">
+              <h2 className="notice-modal-title">Correct Mess Attendance</h2>
+              <button
+                type="button"
+                className="notice-close-btn"
+                onClick={() => setIsCorrectionModalOpen(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="notice-form-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ backgroundColor: '#F8FAFC', padding: '0.85rem', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                <p style={{ margin: 0, fontWeight: 700, color: '#0F172A', fontSize: '1rem' }}>{correctionTarget.studentName}</p>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.825rem', color: '#64748B' }}>
+                  Roll No: <strong style={{ color: '#0F172A' }}>{correctionTarget.rollNo}</strong> · {correctionTarget.blockName || correctionTarget.block} (Room {correctionTarget.roomNumber || correctionTarget.room})
+                </p>
+                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#475569' }}>Meal Indent:</span>
+                  <span className={`status-badge ${correctionTarget.indentMarked ? 'badge-verified' : 'badge-neutral'}`}>
+                    {correctionTarget.indentMarked ? '✓ Indent Marked' : '✗ No Indent'}
+                  </span>
+                </div>
+              </div>
+
+              <p style={{ margin: 0, fontSize: '0.875rem', color: '#475569' }}>
+                Select the authoritative attendance state for <strong>{markingMeal}</strong> on <strong>{markingDate}</strong>:
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                <button
+                  type="button"
+                  className="btn-mark-ate"
+                  disabled={isCorrectionSubmitting}
+                  style={{ justifyContent: 'center', padding: '0.65rem 1rem', fontSize: '0.9rem' }}
+                  onClick={() => handleSaveCorrection('ATE')}
+                >
+                  <Check size={16} />
+                  <span>Mark as Ate (Consumed)</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-mark-dne"
+                  disabled={isCorrectionSubmitting}
+                  style={{ justifyContent: 'center', padding: '0.65rem 1rem', fontSize: '0.9rem' }}
+                  onClick={() => handleSaveCorrection('DID_NOT_EAT')}
+                >
+                  <Slash size={16} />
+                  <span>Mark as Did Not Eat</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-light-secondary"
+                  disabled={isCorrectionSubmitting}
+                  style={{ justifyContent: 'center', padding: '0.65rem 1rem', fontSize: '0.9rem' }}
+                  onClick={() => handleSaveCorrection('PENDING')}
+                >
+                  <RotateCw size={14} />
+                  <span>Reset to Pending (Unmarked)</span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn-light-secondary"
+                  onClick={() => setIsCorrectionModalOpen(false)}
+                >
+                  Cancel
                 </button>
               </div>
             </div>

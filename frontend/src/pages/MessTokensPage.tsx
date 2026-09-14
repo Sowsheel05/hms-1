@@ -517,6 +517,53 @@ export const MessTokensPage: React.FC = () => {
                     <Clock size={12} className="deadline-icon" />
                     <span>Cutoff: {slot.deadlineFormatted || 'Check Schedule'}</span>
                   </div>
+
+                  {/* Indent Status Display (Phase 2) */}
+                  <div
+                    style={{
+                      marginTop: '0.75rem',
+                      padding: '0.55rem 0.75rem',
+                      borderRadius: '8px',
+                      backgroundColor: slot.indent?.status === 'MARKED' || isBooked ? '#ECFDF5' : '#F8FAFC',
+                      border: `1px solid ${slot.indent?.status === 'MARKED' || isBooked ? '#A7F3D0' : '#E2E8F0'}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span
+                        style={{
+                          fontSize: '0.825rem',
+                          fontWeight: 600,
+                          color: slot.indent?.status === 'MARKED' || isBooked ? '#065F46' : '#64748B',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                        }}
+                      >
+                        {slot.indent?.status === 'MARKED' || isBooked ? (
+                          <>
+                            <CheckCircle2 size={14} style={{ color: '#059669' }} />
+                            <span>[✓ Indent Marked]</span>
+                          </>
+                        ) : (
+                          <>
+                            <Slash size={14} style={{ color: '#94A3B8' }} />
+                            <span>[✗ Indent Not Marked]</span>
+                          </>
+                        )}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 500 }}>
+                        Date: {selectedDate}
+                      </span>
+                    </div>
+                    {(slot.indent?.markedAt || slot.token?.createdAt) && (slot.indent?.status === 'MARKED' || isBooked) && (
+                      <span style={{ fontSize: '0.75rem', color: '#047857' }}>
+                        Marked at: {formatDateTime(slot.indent?.markedAt || slot.token?.createdAt)}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="meal-card-footer">

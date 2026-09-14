@@ -142,6 +142,12 @@ export interface MessMealSlot {
     attendanceIntent: 'ATTENDING' | 'SKIPPED';
     updatedAt: string;
   } | null;
+  indent?: {
+    id: string;
+    status: 'MARKED' | 'NOT_MARKED';
+    markedAt: string;
+    createdAt: string;
+  } | null;
 }
 
 export interface ActiveMessToken {
@@ -758,6 +764,52 @@ export const apiService = {
       throw new Error(data.message || 'Failed to lock meal indent.');
     }
 
+    return data;
+  },
+
+  /**
+   * Mark student mess indent (Phase 2 & Phase 13)
+   */
+  async markStudentIndent(
+    mealType: string,
+    date?: string,
+    status?: 'MARKED' | 'NOT_MARKED' | 'SKIPPED'
+  ): Promise<{ success: boolean; message: string; indent: any }> {
+    const token = authStorage.getToken();
+    if (!token) throw new Error('Authentication session missing.');
+
+    const response = await fetch('/api/student/mess/indent', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ mealType, date, status: status || 'MARKED' }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Failed to record meal indent.');
+    return data;
+  },
+
+  /**
+   * Get student indent status
+   */
+  async getStudentIndentStatus(date?: string, mealType?: string): Promise<{ success: boolean; date: string; meals: any[] }> {
+    const token = authStorage.getToken();
+    if (!token) throw new Error('Authentication session missing.');
+
+    const query = new URLSearchParams();
+    if (date) query.append('date', date);
+    if (mealType) query.append('mealType', mealType);
+
+    const qs = query.toString();
+    const response = await fetch(`/api/student/mess/indent${qs ? `?${qs}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Failed to load indent status.');
     return data;
   },
 
@@ -1380,6 +1432,44 @@ export const apiService = {
    */
   subscribeToStudentEvents(onEvent: (event: any) => void): () => void {
     return studentRealtimeClient.subscribe('all', onEvent);
+  },
+
+  /**
+   * Public Student Registration & Hostel Application
+   */
+  async registerStudent(payload: StudentRegistrationDto): Promise<StudentRegistrationResponse> {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Registration failed.');
+    return data;
+  },
+
+  /**
+   * Public: Fetch active hostel blocks for registration form
+   */
+  async getRegistrationBlocks(): Promise<{ success: boolean; blocks: Array<{ id: string; name: string; code: string; description: string | null }> }> {
+    const res = await fetch('/api/auth/register-blocks');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch blocks.');
+    return data;
+  },
+
+  /**
+   * Authenticated: Fetch student hostel application overview & active allocation
+   */
+  async getHostelApplicationOverview(): Promise<HostelApplicationOverviewResponse> {
+    const token = authStorage.getToken();
+    if (!token) throw new Error('Authentication required.');
+    const res = await fetch('/api/student/hostel-application', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch application overview.');
+    return data;
   },
 };
 
@@ -2418,6 +2508,181 @@ export const managementApiService = {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) throw new Error('Failed to export mess attendance CSV.');
+    return await res.blob();
+  },
+
+  /**
+   * Phase 3: Get Attendance Marking Sheet displaying ALL eligible students with Indent and Attendance statuses
+   */
+  async getAttendanceMarking(params?: {
+    date?: string;
+    mealType?: string;
+    block?: string;
+    attendanceStatus?: string;
+    indentStatus?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<AttendanceMarkingResponse> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const query = new URLSearchParams();
+    if (params?.date) query.append('date', params.date);
+    if (params?.mealType && params.mealType !== 'ALL') query.append('mealType', params.mealType);
+    if (params?.block && params.block !== 'ALL') query.append('block', params.block);
+    if (params?.attendanceStatus && params.attendanceStatus !== 'ALL') query.append('attendanceStatus', params.attendanceStatus);
+    if (params?.indentStatus && params.indentStatus !== 'ALL') query.append('indentStatus', params.indentStatus);
+    if (params?.search && params.search.trim()) query.append('search', params.search.trim());
+    if (params?.page) query.append('page', params.page.toString());
+    if (params?.limit) query.append('limit', params.limit.toString());
+
+    const qs = query.toString();
+    const res = await fetch(`/api/management/mess/attendance-marking${qs ? `?${qs}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to retrieve attendance marking sheet.');
+    return data;
+  },
+
+  /**
+   * Phase 4: Mark Individual Student Attendance (ATE or DID_NOT_EAT)
+   */
+  async markAttendance(payload: {
+    studentId: string;
+    date: string;
+    mealType: string;
+    status: 'ATE' | 'DID_NOT_EAT';
+  }): Promise<{ success: boolean; message: string; attendance: any }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const res = await fetch('/api/management/mess/attendance', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to record attendance.');
+    return data;
+  },
+
+  /**
+   * Phase 4: Correct / Reset Attendance
+   */
+  async correctAttendance(
+    attendanceId: string,
+    status: 'ATE' | 'DID_NOT_EAT' | 'PENDING'
+  ): Promise<{ success: boolean; message: string; attendance?: any }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const res = await fetch(`/api/management/mess/attendance/${attendanceId}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ status }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to correct attendance.');
+    return data;
+  },
+
+  /**
+   * Phase 9: Get Four-Way Reconciliation Reports Summary
+   */
+  async getMessReportsSummary(params?: {
+    date?: string;
+    mealType?: string;
+    block?: string;
+    search?: string;
+  }): Promise<MessReportSummaryResponse> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const query = new URLSearchParams();
+    if (params?.date) query.append('date', params.date);
+    if (params?.mealType && params.mealType !== 'ALL') query.append('mealType', params.mealType);
+    if (params?.block && params.block !== 'ALL') query.append('block', params.block);
+    if (params?.search && params.search.trim()) query.append('search', params.search.trim());
+
+    const qs = query.toString();
+    const res = await fetch(`/api/management/mess/reports/summary${qs ? `?${qs}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to load reports summary.');
+    return data;
+  },
+
+  /**
+   * Phase 7 & 8: Get Four-Way Reconciliation Reports Data
+   */
+  async getMessReportsData(params?: {
+    category?: string;
+    date?: string;
+    mealType?: string;
+    block?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<MessReportsDataResponse> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const query = new URLSearchParams();
+    if (params?.category) query.append('category', params.category);
+    if (params?.date) query.append('date', params.date);
+    if (params?.mealType && params.mealType !== 'ALL') query.append('mealType', params.mealType);
+    if (params?.block && params.block !== 'ALL') query.append('block', params.block);
+    if (params?.search && params.search.trim()) query.append('search', params.search.trim());
+    if (params?.page) query.append('page', params.page.toString());
+    if (params?.limit) query.append('limit', params.limit.toString());
+
+    const qs = query.toString();
+    const res = await fetch(`/api/management/mess/reports/data${qs ? `?${qs}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to retrieve reports data.');
+    return data;
+  },
+
+  /**
+   * Phase 11 & 12: Export Reconciliation Report in XLSX or CSV
+   */
+  async exportMessReport(params: {
+    category: string;
+    date?: string;
+    mealType?: string;
+    format: 'xlsx' | 'csv';
+    block?: string;
+    search?: string;
+  }): Promise<Blob> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const query = new URLSearchParams();
+    query.append('category', params.category);
+    if (params.date) query.append('date', params.date);
+    if (params.mealType && params.mealType !== 'ALL') query.append('mealType', params.mealType);
+    query.append('format', params.format);
+    if (params.block && params.block !== 'ALL') query.append('block', params.block);
+    if (params.search && params.search.trim()) query.append('search', params.search.trim());
+
+    const qs = query.toString();
+    const res = await fetch(`/api/management/mess/reports/export?${qs}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to export reconciliation report.');
     return await res.blob();
   },
 
@@ -4317,7 +4582,211 @@ export const managementApiService = {
     if (!res.ok) throw new Error(data.message || 'Failed to fetch notification statistics.');
     return data;
   },
+
+  /**
+   * Management: list all student hostel registrations/applications with metrics & filters
+   */
+  async getHostelApplications(params?: {
+    status?: string;
+    academicYear?: string;
+    preferredBlock?: string;
+    search?: string;
+  }): Promise<ManagementHostelApplicationsResponse> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+    const query = new URLSearchParams();
+    if (params?.status && params.status !== 'ALL') query.append('status', params.status);
+    if (params?.academicYear && params.academicYear !== 'ALL') query.append('academicYear', params.academicYear);
+    if (params?.preferredBlock && params.preferredBlock !== 'ALL') query.append('preferredBlock', params.preferredBlock);
+    if (params?.search) query.append('search', params.search);
+
+    const res = await fetch(`/api/management/hostel-applications?${query.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch hostel applications.');
+    return data;
+  },
+
+  /**
+   * Management: inspect application details
+   */
+  async getHostelApplicationDetail(id: string): Promise<{ success: boolean; application: HostelApplicationItem }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+    const res = await fetch(`/api/management/hostel-applications/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch application detail.');
+    return data;
+  },
+
+  /**
+   * Management: update application review status (UNDER_REVIEW, REJECTED)
+   */
+  async updateHostelApplicationStatus(
+    id: string,
+    payload: { status: string; remarks?: string; rejectionReason?: string }
+  ): Promise<{ success: boolean; message: string; application: HostelApplicationItem }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+    const res = await fetch(`/api/management/hostel-applications/${id}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update application status.');
+    return data;
+  },
+
+  /**
+   * Management: directly approve, activate student account, and allocate room & bed
+   */
+  async allocateHostelApplication(
+    id: string,
+    payload: { roomId: string; bedNumber: string }
+  ): Promise<{ success: boolean; message: string; allocation: any; application: HostelApplicationItem }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+    const res = await fetch(`/api/management/hostel-applications/${id}/allocate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to allocate room for application.');
+    return data;
+  },
 };
+
+export interface StudentRegistrationDto {
+  name: string;
+  dob?: string;
+  gender?: string;
+  phone?: string;
+  email: string;
+  password: string;
+  jntuNo: string;
+  branch?: string;
+  yearOfStudy?: string;
+  section?: string;
+  semester?: string;
+  guardianName?: string;
+  guardianRelation?: string;
+  guardianPhone?: string;
+  emergencyContact?: string;
+  address?: string;
+  preferredBlock?: string;
+  preferredRoomType?: string;
+  preferredFloor?: number;
+  stayDuration?: string;
+  foodPreference?: string;
+  medicalConditions?: string;
+}
+
+export interface StudentRegistrationResponse {
+  success: boolean;
+  message: string;
+  applicationId: string;
+  status: string;
+  student?: {
+    id: string;
+    name: string;
+    jntuNo: string;
+  };
+}
+
+export interface HostelApplicationItem {
+  id: string;
+  applicationNumber: string;
+  studentId: string;
+  student?: {
+    id: string;
+    name: string;
+    jntuNo: string;
+    email: string;
+    isActive: boolean;
+    allocationStatus: string;
+    blockName?: string | null;
+    roomNumber?: string | null;
+    bedNumber?: string | null;
+  };
+  academicYear: string;
+  dob?: string | null;
+  gender?: string | null;
+  phone?: string | null;
+  branch?: string | null;
+  yearOfStudy?: string | null;
+  section?: string | null;
+  semester?: string | null;
+  guardianName?: string | null;
+  guardianRelation?: string | null;
+  guardianPhone?: string | null;
+  emergencyContact?: string | null;
+  address?: string | null;
+  preferredBlock?: string | null;
+  preferredRoomType?: string | null;
+  preferredFloor?: number | null;
+  stayDuration?: string | null;
+  foodPreference?: string | null;
+  medicalConditions?: string | null;
+  status: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'ALLOCATED' | 'CANCELLED';
+  remarks?: string | null;
+  rejectionReason?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  allocatedRoomId?: string | null;
+  allocatedBedNumber?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HostelApplicationOverviewResponse {
+  success: boolean;
+  student: {
+    id: string;
+    name: string;
+    jntuNo: string;
+    email: string;
+    allocationStatus: string;
+    blockName?: string | null;
+    roomNumber?: string | null;
+    floorName?: string | null;
+    bedNumber?: string | null;
+    roomType?: string | null;
+  };
+  activeAllocation: any | null;
+  activeApplication: HostelApplicationItem | null;
+  applications: HostelApplicationItem[];
+  availableBlocks: Array<{
+    id: string;
+    name: string;
+    code: string;
+    description: string | null;
+  }>;
+}
+
+export interface ManagementHostelApplicationsResponse {
+  success: boolean;
+  metrics: {
+    total: number;
+    pending: number;
+    underReview: number;
+    approved: number;
+    allocated: number;
+    rejected: number;
+  };
+  applications: HostelApplicationItem[];
+  blocks: Array<{ id: string; name: string; code: string }>;
+}
 
 
 export interface Block {
@@ -4807,7 +5276,7 @@ export interface ManagementSuspensionItem {
   student: ManagementLeaveStudent | null;
 }
 
-export interface ManagementSuspensionDetail extends ManagementSuspensionItem {}
+export interface ManagementSuspensionDetail extends ManagementSuspensionItem { }
 
 export interface SuspensionsQueryParams {
   status?: string;
@@ -5897,4 +6366,119 @@ export interface MessAttendanceData {
   limit: number;
   totalPages: number;
   data: AttendanceRecordItem[];
+}
+
+export interface AttendanceMarkingStudent {
+  id: string;
+  studentId: string;
+  rollNo: string;
+  studentName: string;
+  name: string;
+  email: string;
+  block: string;
+  blockName: string;
+  room: string;
+  roomNumber: string;
+  bedNumber: string;
+  branch: string;
+  year: string;
+  section: string;
+  indentMarked: boolean;
+  indentStatus: 'MARKED' | 'NOT_MARKED';
+  indentTime: string | null;
+  attendanceStatus: 'PENDING' | 'ATE' | 'DID_NOT_EAT';
+  attendanceTime: string | null;
+  markedBy: string | null;
+  attendanceId: string | null;
+  categoryKey: 'INDENTED_ATE' | 'NO_INDENT_ATE' | 'INDENTED_NOT_ATE' | 'NO_INDENT_NOT_ATE' | 'PENDING';
+  categoryTitle: string;
+  isFinalized: boolean;
+}
+
+export interface AttendanceMarkingSummary {
+  totalStudents: number;
+  indentMarkedCount: number;
+  noIndentCount: number;
+  ateCount: number;
+  didNotEatCount: number;
+  pendingCount: number;
+  indentedAndAte: number;
+  unindentedAndAte: number;
+  indentedAndNotConsumed: number;
+  unindentedAndNotConsumed: number;
+  attendancePending: number;
+  isFinalized: boolean;
+}
+
+export interface AttendanceMarkingResponse {
+  success: boolean;
+  date: string;
+  mealType: string;
+  mealName: string;
+  mealTiming: string;
+  summary: AttendanceMarkingSummary;
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  students: AttendanceMarkingStudent[];
+}
+
+export interface MessReportSummary {
+  totalStudents: number;
+  indentedAndAte: number;
+  unindentedAndAte: number;
+  indentedAndNotConsumed: number;
+  unindentedAndNotConsumed: number;
+  attendancePending: number;
+  isFinalized: boolean;
+}
+
+export interface MessReportSummaryResponse {
+  success: boolean;
+  date: string;
+  mealType: string;
+  summary: MessReportSummary;
+}
+
+export interface MessReportItem {
+  id: string;
+  studentId: string;
+  rollNo: string;
+  studentName: string;
+  email: string;
+  branch: string;
+  year: string;
+  section: string;
+  hostel: string;
+  block: string;
+  room: string;
+  date: string;
+  meal: string;
+  mealType: string;
+  indentMarked: boolean;
+  indentStatus: 'MARKED' | 'NOT_MARKED';
+  indentTime: string | null;
+  attendanceStatus: 'PENDING' | 'ATE' | 'DID_NOT_EAT';
+  attendanceTime: string | null;
+  markedBy: string | null;
+  categoryKey: string;
+  categoryTitle: string;
+  isFinalized: boolean;
+}
+
+export interface MessReportsDataResponse {
+  success: boolean;
+  category: string;
+  date: string;
+  mealType: string;
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  records: MessReportItem[];
 }

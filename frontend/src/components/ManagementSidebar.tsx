@@ -32,6 +32,7 @@ export interface ManagementNavItem {
 
 export const MANAGEMENT_NAV_ITEMS: ManagementNavItem[] = [
   { id: 'dashboard', label: 'Dashboard', path: '/management/dashboard', icon: LayoutDashboard, isAvailable: true },
+  { id: 'hostel-applications', label: 'Hostel Applications', path: '/management/hostel-applications', icon: ClipboardList, isAvailable: true },
   { id: 'fee-management', label: 'Fee Management', path: '/management/fee-management', icon: CreditCard, isAvailable: true },
   { id: 'fee-collection', label: 'Fee Collection', path: '/management/fee-collection', icon: Landmark, isAvailable: true },
   { id: 'blocks', label: 'Block Management', path: '/management/blocks', icon: Building, isAvailable: true },

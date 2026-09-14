@@ -110,6 +110,7 @@ export type MessEventType =
   | 'MEAL_CREATED'
   | 'MEAL_UPDATED'
   | 'MEAL_DELETED'
+  | 'MESS_ATTENDANCE_RECORDED'
   | 'MESS_ATTENDANCE_UPDATED';
 
 export interface MessDomainEvent {
@@ -119,6 +120,7 @@ export interface MessDomainEvent {
   date?: string;
   mealType?: string;
   status?: string;
+  markedBy?: string;
   details?: any;
   timestamp: string;
 }
