@@ -22,7 +22,7 @@ import {
   FileSpreadsheet,
   Check,
   Slash,
-  RefreshCw,
+  ExternalLink,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -400,10 +400,16 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
   const [markingMeal, setMarkingMeal] = useState<string>('LUNCH');
   const [markingBlock, setMarkingBlock] = useState<string>('ALL');
   const [markingSearch, setMarkingSearch] = useState<string>('');
+  const [markingIndentFilter, setMarkingIndentFilter] = useState<'ALL' | 'MARKED' | 'SKIPPED' | 'NOT_MARKED'>('ALL');
+  const [markingAttStatusFilter, setMarkingAttStatusFilter] = useState<'ALL' | 'ATE' | 'DID_NOT_EAT' | 'PENDING'>('ALL');
   const [markingPage, setMarkingPage] = useState<number>(1);
   const [markingData, setMarkingData] = useState<AttendanceMarkingResponse | null>(null);
   const [isMarkingLoading, setIsMarkingLoading] = useState<boolean>(false);
-  const [markingStudentAction, setMarkingStudentAction] = useState<string | null>(null);
+
+  // Auto-Save Engine State
+  const [pendingSaves, setPendingSaves] = useState<{ studentId: string; status: 'ATE' | 'DID_NOT_EAT' | 'PENDING' }[]>([]);
+  const [isAutoSaving, setIsAutoSaving] = useState<boolean>(false);
+  const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
 
   // Attendance Correction Modal State
   const [correctionTarget, setCorrectionTarget] = useState<AttendanceMarkingStudent | null>(null);
@@ -417,9 +423,11 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
         date: markingDate,
         mealType: markingMeal,
         block: markingBlock,
+        attendanceStatus: markingAttStatusFilter,
+        indentStatus: markingIndentFilter,
         search: markingSearch.trim() || undefined,
         page,
-        limit: 15,
+        limit: 50,
       });
       if (res.success) {
         setMarkingData(res);
@@ -431,27 +439,124 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
     } finally {
       setIsMarkingLoading(false);
     }
-  }, [markingDate, markingMeal, markingBlock, markingSearch, markingPage]);
+  }, [markingDate, markingMeal, markingBlock, markingSearch, markingIndentFilter, markingAttStatusFilter, markingPage]);
 
-  // Quick Inline Action: Mark Attendance (ATE or DID_NOT_EAT)
-  const handleQuickMarkAttendance = async (student: AttendanceMarkingStudent, status: 'ATE' | 'DID_NOT_EAT') => {
-    setMarkingStudentAction(student.studentId);
-    try {
-      const res = await managementApiService.markAttendance({
-        studentId: student.studentId,
-        date: markingDate,
-        mealType: markingMeal,
-        status,
-      });
-      if (res.success) {
-        showToast(`Marked ${student.studentName} as ${status === 'ATE' ? 'ATE (Consumed)' : 'DID NOT EAT'}`);
+  // Debounced Auto-Save Effect
+  useEffect(() => {
+    if (pendingSaves.length === 0) return;
+    
+    const timer = setTimeout(async () => {
+      setIsAutoSaving(true);
+      const itemsToSave = [...pendingSaves];
+      setPendingSaves([]); 
+      
+      try {
+        await managementApiService.batchMarkAttendance({
+          date: markingDate,
+          mealType: markingMeal,
+          items: itemsToSave,
+        });
+        setLastAutoSaveTime(new Date());
         await fetchAttendanceMarking(markingPage, true);
+      } catch (err: any) {
+        setPendingSaves(prev => [...itemsToSave, ...prev]);
+        showToast('Auto-save failed, retrying...', 'error');
+      } finally {
+        setIsAutoSaving(false);
       }
-    } catch (err: any) {
-      showToast(err.message || 'Failed to update attendance.', 'error');
-    } finally {
-      setMarkingStudentAction(null);
+    }, 800); 
+
+    return () => clearTimeout(timer);
+  }, [pendingSaves, markingDate, markingMeal, markingPage, fetchAttendanceMarking]);
+
+  const handleStudentStatusUpdate = (student: AttendanceMarkingStudent, targetStatus: 'ATE' | 'DID_NOT_EAT' | 'PENDING') => {
+    const oldStatus = student.attendanceStatus;
+    if (oldStatus === targetStatus) return;
+
+    setMarkingData(prev => {
+      if (!prev) return prev;
+      const updatedStudents = prev.students.map(s => {
+        if (s.studentId === student.studentId || s.id === student.id) {
+          return {
+            ...s,
+            attendanceStatus: targetStatus,
+            attendanceTime: targetStatus !== 'PENDING' ? new Date().toISOString() : null
+          };
+        }
+        return s;
+      });
+
+      // Optimistically update summary ribbon counts
+      let ateDiff = 0;
+      let dneDiff = 0;
+      let pendingDiff = 0;
+
+      if (oldStatus === 'ATE') ateDiff--;
+      if (oldStatus === 'DID_NOT_EAT') dneDiff--;
+      if (oldStatus === 'PENDING') pendingDiff--;
+
+      if (targetStatus === 'ATE') ateDiff++;
+      if (targetStatus === 'DID_NOT_EAT') dneDiff++;
+      if (targetStatus === 'PENDING') pendingDiff++;
+
+      const updatedSummary = prev.summary ? {
+        ...prev.summary,
+        ateCount: Math.max(0, prev.summary.ateCount + ateDiff),
+        didNotEatCount: Math.max(0, prev.summary.didNotEatCount + dneDiff),
+        pendingCount: Math.max(0, prev.summary.pendingCount + pendingDiff),
+      } : prev.summary;
+
+      return {
+        ...prev,
+        summary: updatedSummary,
+        students: updatedStudents,
+      };
+    });
+
+    setPendingSaves(prev => {
+      const targetId = student.id || student.studentId;
+      const filtered = prev.filter(p => p.studentId !== targetId);
+      return [...filtered, { studentId: targetId, status: targetStatus }];
+    });
+  };
+
+  const handleMarkAllIndentedAte = () => {
+    if (!markingData) return;
+    const indentedPending = markingData.students.filter(s => s.indentMarked && s.attendanceStatus !== 'ATE');
+    if (indentedPending.length === 0) {
+      showToast('All indented students on this page are already marked Ate.');
+      return;
     }
+    
+    const itemsToSave = indentedPending.map(s => ({ studentId: s.id || s.studentId, status: 'ATE' as const }));
+    setMarkingData(prev => {
+      if (!prev) return prev;
+      const updatedStudents = prev.students.map(s => {
+        if (s.indentMarked && s.attendanceStatus !== 'ATE') {
+          return { ...s, attendanceStatus: 'ATE' as const, attendanceTime: new Date().toISOString() };
+        }
+        return s;
+      });
+
+      const ateDiff = indentedPending.length;
+      const updatedSummary = prev.summary ? {
+        ...prev.summary,
+        ateCount: prev.summary.ateCount + ateDiff,
+        pendingCount: Math.max(0, prev.summary.pendingCount - ateDiff),
+      } : prev.summary;
+
+      return {
+        ...prev,
+        summary: updatedSummary,
+        students: updatedStudents,
+      };
+    });
+
+    setPendingSaves(prev => {
+      const existingIds = new Set(itemsToSave.map(i => i.studentId));
+      const filtered = prev.filter(p => !existingIds.has(p.studentId));
+      return [...filtered, ...itemsToSave];
+    });
   };
 
   const handleOpenCorrection = (student: AttendanceMarkingStudent) => {
@@ -463,31 +568,25 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
     if (!correctionTarget) return;
     setIsCorrectionSubmitting(true);
     try {
+      handleStudentStatusUpdate(correctionTarget, newStatus);
+      showToast(`Attendance updated to ${newStatus === 'ATE' ? 'Ate (Consumed)' : newStatus === 'DID_NOT_EAT' ? 'Did Not Eat' : 'Pending'}`);
+
       if (correctionTarget.attendanceId) {
-        const res = await managementApiService.correctAttendance(correctionTarget.attendanceId, newStatus);
-        if (res.success) {
-          showToast(`Attendance updated to ${newStatus}`);
-        }
-      } else {
-        if (newStatus === 'PENDING') {
-          showToast('Attendance is already pending.');
-        } else {
-          const res = await managementApiService.markAttendance({
-            studentId: correctionTarget.studentId,
-            date: markingDate,
-            mealType: markingMeal,
-            status: newStatus,
-          });
-          if (res.success) {
-            showToast(`Attendance marked as ${newStatus}`);
-          }
-        }
+        await managementApiService.correctAttendance(correctionTarget.attendanceId, newStatus);
+      } else if (newStatus !== 'PENDING') {
+        await managementApiService.markAttendance({
+          studentId: correctionTarget.id || correctionTarget.studentId,
+          date: markingDate,
+          mealType: markingMeal,
+          status: newStatus,
+        });
       }
+
       setIsCorrectionModalOpen(false);
       setCorrectionTarget(null);
       await fetchAttendanceMarking(markingPage, true);
     } catch (err: any) {
-      showToast(err.message || 'Failed to correct attendance.', 'error');
+      showToast(err.message || 'Failed to update attendance.', 'error');
     } finally {
       setIsCorrectionSubmitting(false);
     }
@@ -616,7 +715,7 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
     if (activeTab === 'attendance-marking') {
       fetchAttendanceMarking(1);
     }
-  }, [activeTab, markingDate, markingMeal, markingBlock, markingSearch, fetchAttendanceMarking]);
+  }, [activeTab, markingDate, markingMeal, markingBlock, markingSearch, markingIndentFilter, markingAttStatusFilter, fetchAttendanceMarking]);
 
   useEffect(() => {
     if (activeTab === 'reports') {
@@ -779,304 +878,530 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
       {/* =================================================================== */}
       {activeTab === 'attendance-marking' && (
         <section className="mess-tab-panel" aria-label="Mess Attendance Marking Panel">
-          {/* Action Toolbar */}
-          <div className="mess-action-toolbar">
-            <div className="mess-filter-group">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <Calendar size={15} style={{ color: '#64748B' }} />
-                <input
-                  type="date"
-                  value={markingDate}
-                  onChange={(e) => {
-                    setMarkingDate(e.target.value);
-                    setMarkingPage(1);
-                  }}
-                  className="mess-input-control"
-                  aria-label="Attendance Date"
-                />
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <UtensilsCrossed size={15} style={{ color: '#64748B' }} />
-                <select
-                  value={markingMeal}
-                  onChange={(e) => {
-                    setMarkingMeal(e.target.value);
-                    setMarkingPage(1);
-                  }}
-                  className="mess-input-control"
-                  aria-label="Attendance Meal"
-                >
-                  <option value="BREAKFAST">Breakfast</option>
-                  <option value="LUNCH">Lunch</option>
-                  <option value="SNACKS">Snacks</option>
-                  <option value="DINNER">Dinner</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <Filter size={15} style={{ color: '#64748B' }} />
-                <select
-                  value={markingBlock}
-                  onChange={(e) => {
-                    setMarkingBlock(e.target.value);
-                    setMarkingPage(1);
-                  }}
-                  className="mess-input-control"
-                  aria-label="Filter by Block"
-                >
-                  <option value="ALL">All Blocks</option>
-                  {blocks.map((b) => (
-                    <option key={b.id} value={b.name}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          {/* Top Info Banner */}
+          <div style={{ backgroundColor: '#F1F5F9', padding: '0.75rem 1.25rem', borderBottom: '1px solid #E2E8F0', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <UtensilsCrossed size={18} style={{ color: '#151B54' }} />
+              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#151B54' }}>Daily Mess Attendance Entry</h2>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '12px', backgroundColor: '#EEF2FF', color: '#151B54', border: '1px solid #C7D2FE' }}>
+                {markingMeal} • {markingDate}
+              </span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <div className="search-field-wrap" style={{ minWidth: '240px' }}>
-                <Search size={15} className="search-input-icon" />
-                <input
-                  type="text"
-                  placeholder="Search student or roll no..."
-                  value={markingSearch}
-                  onChange={(e) => {
-                    setMarkingSearch(e.target.value);
-                    setMarkingPage(1);
-                  }}
-                  className="allocation-search-input"
-                  aria-label="Search students by name or roll number"
-                />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem' }}>
+              {isAutoSaving ? (
+                <span style={{ color: '#D97706', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#FEF3C7', padding: '0.25rem 0.65rem', borderRadius: '6px' }}>
+                  <RotateCw size={14} className="spin-anim" /> Syncing ({pendingSaves.length} pending)...
+                </span>
+              ) : lastAutoSaveTime ? (
+                <span style={{ color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#D1FAE5', padding: '0.25rem 0.65rem', borderRadius: '6px' }}>
+                  <CheckCircle2 size={14} /> Synced live at {lastAutoSaveTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              ) : (
+                <span style={{ color: '#64748B', fontWeight: 600 }}>💡 Tap student cards to mark attendance</span>
+              )}
+            </div>
+          </div>
+
+          {/* Action & Filter Controls Box */}
+          <div className="mess-action-toolbar" style={{ backgroundColor: '#FFFFFF', padding: '1rem 1.25rem', borderBottom: '1px solid #E2E8F0', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div className="mess-filter-group" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              
+              {/* Date Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Date</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '0.45rem 0.75rem', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                  <Calendar size={15} style={{ color: '#151B54' }} />
+                  <input
+                    type="date"
+                    value={markingDate}
+                    onChange={(e) => {
+                      setMarkingDate(e.target.value);
+                      setMarkingPage(1);
+                    }}
+                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.875rem', fontWeight: 600, color: '#0F172A', cursor: 'pointer' }}
+                    aria-label="Attendance Date"
+                  />
+                </div>
+              </div>
+
+              {/* Meal Slot Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Meal Slot</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '0.45rem 0.75rem', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                  <UtensilsCrossed size={15} style={{ color: '#151B54' }} />
+                  <select
+                    value={markingMeal}
+                    onChange={(e) => {
+                      setMarkingMeal(e.target.value);
+                      setMarkingPage(1);
+                    }}
+                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.875rem', fontWeight: 600, color: '#0F172A', cursor: 'pointer' }}
+                    aria-label="Attendance Meal"
+                  >
+                    <option value="BREAKFAST">🍳 Breakfast</option>
+                    <option value="LUNCH">🍲 Lunch</option>
+                    <option value="SNACKS">☕ Snacks</option>
+                    <option value="DINNER">🍛 Dinner</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Hostel Block Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Hostel Block</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '0.45rem 0.75rem', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                  <Filter size={15} style={{ color: '#151B54' }} />
+                  <select
+                    value={markingBlock}
+                    onChange={(e) => {
+                      setMarkingBlock(e.target.value);
+                      setMarkingPage(1);
+                    }}
+                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.875rem', fontWeight: 600, color: '#0F172A', cursor: 'pointer' }}
+                    aria-label="Filter by Block"
+                  >
+                    <option value="ALL">🏢 All Blocks</option>
+                    {blocks.map((b) => (
+                      <option key={b.id} value={b.name}>
+                        🏢 {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Search Box & Quick Batch Action */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.75rem', flexWrap: 'wrap', marginLeft: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '240px' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Search Student</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '0.45rem 0.75rem', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                  <Search size={15} style={{ color: '#64748B' }} />
+                  <input
+                    type="text"
+                    placeholder="Roll No or Student Name..."
+                    value={markingSearch}
+                    onChange={(e) => {
+                      setMarkingSearch(e.target.value);
+                      setMarkingPage(1);
+                    }}
+                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.875rem', color: '#0F172A', width: '100%' }}
+                    aria-label="Search students by name or roll number"
+                  />
+                </div>
               </div>
 
               <button
                 type="button"
-                className="btn-light-secondary btn-sm"
-                onClick={() => fetchAttendanceMarking(markingPage)}
-                title="Refresh Attendance List"
-                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                className="btn-mark-ate"
+                onClick={handleMarkAllIndentedAte}
+                disabled={!markingData || markingData.students.length === 0}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.5rem 0.85rem', height: '38px', borderRadius: '8px', fontWeight: 700 }}
               >
-                <RefreshCw size={14} />
-                <span>Refresh</span>
+                <Check size={16} />
+                <span>Mark All Indented</span>
               </button>
             </div>
           </div>
 
-          {/* Real-Time Attendance Marking Summary Ribbon */}
+          {/* Metric Summary Cards (Deep Navy CampusStay Theme #151B54) */}
           {markingData?.summary && (
-            <div className="marking-stats-ribbon">
-              <div className="marking-stat-card">
-                <span className="marking-stat-label">Total Eligible</span>
-                <span className="marking-stat-value">{markingData.summary.totalStudents}</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1rem', padding: '1rem 1.25rem 0.5rem' }}>
+              {/* Total Eligible Card */}
+              <div
+                onClick={() => { setMarkingIndentFilter('ALL'); setMarkingAttStatusFilter('ALL'); setMarkingPage(1); }}
+                style={{
+                  backgroundColor: '#151B54',
+                  color: 'white',
+                  borderRadius: '12px',
+                  padding: '1.15rem 1.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  outline: markingIndentFilter === 'ALL' && markingAttStatusFilter === 'ALL' ? '3px solid #38BDF8' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Click to view All Students"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>TOTAL ELIGIBLE</span>
+                  <Users size={16} style={{ color: '#38BDF8' }} />
+                </div>
+                <span style={{ fontSize: '2.2rem', fontWeight: 800, color: '#FFFFFF', letterSpacing: '-0.02em', lineHeight: 1 }}>{markingData.summary.totalStudents}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 600, paddingTop: '0.4rem', marginTop: '0.2rem', borderTop: '1px solid rgba(255,255,255,0.12)', gap: '0.25rem', flexWrap: 'wrap' }}>
+                  <span style={{ color: '#38BDF8' }}>✓ Indented: {markingData.summary.indentMarkedCount}</span>
+                  <span style={{ color: '#C084FC' }}>🚫 Skipped: {markingData.summary.indentSkippedCount || 0}</span>
+                  <span style={{ color: '#94A3B8' }}>✗ No Indent: {markingData.summary.noIndentCount}</span>
+                </div>
               </div>
-              <div className="marking-stat-card" style={{ borderLeft: '3px solid #10B981' }}>
-                <span className="marking-stat-label">Indent Marked</span>
-                <span className="marking-stat-value" style={{ color: '#059669' }}>
-                  {markingData.summary.indentMarkedCount}
-                </span>
+
+              {/* Attended / Ate Card */}
+              <div
+                onClick={() => { setMarkingAttStatusFilter('ATE'); setMarkingIndentFilter('ALL'); setMarkingPage(1); }}
+                style={{
+                  backgroundColor: '#151B54',
+                  color: 'white',
+                  borderRadius: '12px',
+                  padding: '1.15rem 1.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  borderLeft: '4px solid #10B981',
+                  outline: markingAttStatusFilter === 'ATE' ? '3px solid #10B981' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Click to view Attended (Ate)"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#A7F3D0', textTransform: 'uppercase', letterSpacing: '0.04em' }}>✓ ATE / ALLOWED</span>
+                  <CheckCircle2 size={16} style={{ color: '#10B981' }} />
+                </div>
+                <span style={{ fontSize: '2.2rem', fontWeight: 800, color: '#10B981', letterSpacing: '-0.02em', lineHeight: 1 }}>{markingData.summary.ateCount}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 600, paddingTop: '0.4rem', marginTop: '0.2rem', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+                  <span style={{ color: '#34D399' }}>Consumed</span>
+                  <span style={{ color: '#A7F3D0' }}>
+                    {markingData.summary.totalStudents > 0 ? Math.round((markingData.summary.ateCount / markingData.summary.totalStudents) * 100) : 0}%
+                  </span>
+                </div>
               </div>
-              <div className="marking-stat-card" style={{ borderLeft: '3px solid #94A3B8' }}>
-                <span className="marking-stat-label">No Indent</span>
-                <span className="marking-stat-value" style={{ color: '#64748B' }}>
-                  {markingData.summary.noIndentCount}
-                </span>
+
+              {/* Absent / Did Not Eat Card */}
+              <div
+                onClick={() => { setMarkingAttStatusFilter('DID_NOT_EAT'); setMarkingIndentFilter('ALL'); setMarkingPage(1); }}
+                style={{
+                  backgroundColor: '#151B54',
+                  color: 'white',
+                  borderRadius: '12px',
+                  padding: '1.15rem 1.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  borderLeft: '4px solid #EF4444',
+                  outline: markingAttStatusFilter === 'DID_NOT_EAT' ? '3px solid #EF4444' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Click to view Absent (Did Not Eat)"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#FCA5A5', textTransform: 'uppercase', letterSpacing: '0.04em' }}>✗ ABSENT (NOT EAT)</span>
+                  <Slash size={16} style={{ color: '#EF4444' }} />
+                </div>
+                <span style={{ fontSize: '2.2rem', fontWeight: 800, color: '#F87171', letterSpacing: '-0.02em', lineHeight: 1 }}>{markingData.summary.didNotEatCount}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 600, paddingTop: '0.4rem', marginTop: '0.2rem', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+                  <span style={{ color: '#F87171' }}>Did Not Eat</span>
+                  <span style={{ color: '#FCA5A5' }}>
+                    {markingData.summary.totalStudents > 0 ? Math.round((markingData.summary.didNotEatCount / markingData.summary.totalStudents) * 100) : 0}%
+                  </span>
+                </div>
               </div>
-              <div className="marking-stat-card" style={{ borderLeft: '3px solid #059669' }}>
-                <span className="marking-stat-label">✓ Ate (Consumed)</span>
-                <span className="marking-stat-value" style={{ color: '#059669' }}>
-                  {markingData.summary.ateCount}
-                </span>
-              </div>
-              <div className="marking-stat-card" style={{ borderLeft: '3px solid #EF4444' }}>
-                <span className="marking-stat-label">✗ Did Not Eat</span>
-                <span className="marking-stat-value" style={{ color: '#DC2626' }}>
-                  {markingData.summary.didNotEatCount}
-                </span>
-              </div>
-              <div className="marking-stat-card" style={{ borderLeft: '3px solid #F59E0B' }}>
-                <span className="marking-stat-label">○ Pending</span>
-                <span className="marking-stat-value" style={{ color: '#D97706' }}>
-                  {markingData.summary.pendingCount}
-                </span>
+
+              {/* Pending Card */}
+              <div
+                onClick={() => { setMarkingAttStatusFilter('PENDING'); setMarkingIndentFilter('ALL'); setMarkingPage(1); }}
+                style={{
+                  backgroundColor: '#151B54',
+                  color: 'white',
+                  borderRadius: '12px',
+                  padding: '1.15rem 1.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  borderLeft: '4px solid #F59E0B',
+                  outline: markingAttStatusFilter === 'PENDING' ? '3px solid #F59E0B' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Click to view Pending"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#FDE68A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>○ PENDING</span>
+                  <Clock size={16} style={{ color: '#F59E0B' }} />
+                </div>
+                <span style={{ fontSize: '2.2rem', fontWeight: 800, color: '#FBBF24', letterSpacing: '-0.02em', lineHeight: 1 }}>{markingData.summary.pendingCount}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 600, paddingTop: '0.4rem', marginTop: '0.2rem', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+                  <span style={{ color: '#FBBF24' }}>Awaiting Action</span>
+                  <span style={{ color: '#FDE68A' }}>
+                    {markingData.summary.totalStudents > 0 ? Math.round((markingData.summary.pendingCount / markingData.summary.totalStudents) * 100) : 0}%
+                  </span>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Student Table */}
+          {/* Quick Segment Filter Pills */}
+          <div style={{ padding: '0.75rem 1.25rem 0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.775rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: '0.25rem' }}>FILTER VIEW:</span>
+            <button
+              type="button"
+              className="btn-light-secondary btn-sm"
+              style={markingIndentFilter === 'ALL' && markingAttStatusFilter === 'ALL' ? { backgroundColor: '#151B54', color: 'white', fontWeight: 700 } : {}}
+              onClick={() => { setMarkingIndentFilter('ALL'); setMarkingAttStatusFilter('ALL'); setMarkingPage(1); }}
+            >
+              All ({markingData?.summary?.totalStudents || 0})
+            </button>
+            <button
+              type="button"
+              className="btn-light-secondary btn-sm"
+              style={markingIndentFilter === 'MARKED' && markingAttStatusFilter === 'ALL' ? { backgroundColor: '#151B54', color: 'white', fontWeight: 700 } : {}}
+              onClick={() => { setMarkingIndentFilter('MARKED'); setMarkingAttStatusFilter('ALL'); setMarkingPage(1); }}
+            >
+              Who Kept Indent ({markingData?.summary?.indentMarkedCount || 0})
+            </button>
+            <button
+              type="button"
+              className="btn-light-secondary btn-sm"
+              style={markingIndentFilter === 'SKIPPED' && markingAttStatusFilter === 'ALL' ? { backgroundColor: '#7E22CE', color: 'white', fontWeight: 700 } : {}}
+              onClick={() => { setMarkingIndentFilter('SKIPPED'); setMarkingAttStatusFilter('ALL'); setMarkingPage(1); }}
+            >
+              🚫 Skipped / Not Coming ({markingData?.summary?.indentSkippedCount || 0})
+            </button>
+            <button
+              type="button"
+              className="btn-light-secondary btn-sm"
+              style={markingIndentFilter === 'NOT_MARKED' && markingAttStatusFilter === 'ALL' ? { backgroundColor: '#151B54', color: 'white', fontWeight: 700 } : {}}
+              onClick={() => { setMarkingIndentFilter('NOT_MARKED'); setMarkingAttStatusFilter('ALL'); setMarkingPage(1); }}
+            >
+              No Indent ({markingData?.summary?.noIndentCount || 0})
+            </button>
+            <button
+              type="button"
+              className="btn-light-secondary btn-sm"
+              style={markingAttStatusFilter === 'ATE' ? { backgroundColor: '#059669', color: 'white', fontWeight: 700 } : {}}
+              onClick={() => { setMarkingAttStatusFilter('ATE'); setMarkingIndentFilter('ALL'); setMarkingPage(1); }}
+            >
+              ✓ Ate ({markingData?.summary?.ateCount || 0})
+            </button>
+            <button
+              type="button"
+              className="btn-light-secondary btn-sm"
+              style={markingAttStatusFilter === 'DID_NOT_EAT' ? { backgroundColor: '#DC2626', color: 'white', fontWeight: 700 } : {}}
+              onClick={() => { setMarkingAttStatusFilter('DID_NOT_EAT'); setMarkingIndentFilter('ALL'); setMarkingPage(1); }}
+            >
+              ✗ Absent ({markingData?.summary?.didNotEatCount || 0})
+            </button>
+            <button
+              type="button"
+              className="btn-light-secondary btn-sm"
+              style={markingAttStatusFilter === 'PENDING' ? { backgroundColor: '#D97706', color: 'white', fontWeight: 700 } : {}}
+              onClick={() => { setMarkingAttStatusFilter('PENDING'); setMarkingIndentFilter('ALL'); setMarkingPage(1); }}
+            >
+              ○ Pending ({markingData?.summary?.pendingCount || 0})
+            </button>
+          </div>
+
+          {/* Student Cards Grid */}
           {isMarkingLoading ? (
-            <div className="allocation-loading-state">
-              <RotateCw size={28} className="spin-anim" style={{ color: '#151B54', margin: '0 auto 0.75rem' }} />
-              <p>Loading eligible students for {markingMeal} ({markingDate})...</p>
+            <div className="allocation-loading-state" style={{ padding: '3rem 1rem' }}>
+              <RotateCw size={32} className="spin-anim" style={{ color: '#151B54', margin: '0 auto 0.75rem' }} />
+              <p style={{ fontWeight: 600, color: '#334155' }}>Loading student list for {markingMeal} ({markingDate})...</p>
             </div>
           ) : !markingData || markingData.students.length === 0 ? (
-            <div className="allocation-empty-state">
-              <Users size={40} style={{ color: '#94A3B8' }} />
-              <h3 className="empty-state-title">No eligible students found</h3>
-              <p className="empty-state-desc">Try changing your search query, block filter, or selected meal.</p>
+            <div className="allocation-empty-state" style={{ padding: '3rem 1rem' }}>
+              <Users size={48} style={{ color: '#94A3B8', margin: '0 auto 0.5rem' }} />
+              <h3 className="empty-state-title" style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0F172A' }}>No matching students found</h3>
+              <p className="empty-state-desc" style={{ color: '#64748B' }}>Try clearing your search query or selecting a different filter.</p>
             </div>
           ) : (
-            <div className="mess-report-table-wrapper">
-              <table className="mess-report-table">
-                <thead>
-                  <tr>
-                    <th>Roll No</th>
-                    <th>Student Name</th>
-                    <th>Block / Room</th>
-                    <th>Indent Status</th>
-                    <th>Attendance Status</th>
-                    <th style={{ textAlign: 'right' }}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {markingData.students.map((student) => {
-                    const isBusy = markingStudentAction === student.studentId;
-                    return (
-                      <tr key={student.studentId}>
-                        <td>
-                          <span className="status-badge badge-neutral" style={{ fontWeight: 600 }}>
-                            {student.rollNo}
-                          </span>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontWeight: 600, color: '#0F172A' }}>{student.studentName}</span>
-                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>{student.email}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <span style={{ fontSize: '0.825rem', color: '#334155' }}>
-                            {student.blockName || student.block} · Room {student.roomNumber || student.room}
-                          </span>
-                        </td>
-                        <td>
-                          {student.indentMarked ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                              <span className="status-badge badge-verified" style={{ width: 'fit-content' }}>
-                                ✓ Marked
-                              </span>
-                              {student.indentTime && (
-                                <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                  {new Date(student.indentTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="status-badge badge-neutral" style={{ width: 'fit-content' }}>
-                              ✗ No Indent
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          {student.attendanceStatus === 'ATE' ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                              <span className="status-badge badge-verified" style={{ width: 'fit-content' }}>
-                                ✓ Ate
-                              </span>
-                              {student.attendanceTime && (
-                                <span style={{ fontSize: '0.7rem', color: '#047857' }}>
-                                  {new Date(student.attendanceTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              )}
-                            </div>
-                          ) : student.attendanceStatus === 'DID_NOT_EAT' ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                              <span className="status-badge badge-denied" style={{ width: 'fit-content' }}>
-                                ✗ Did Not Eat
-                              </span>
-                              {student.attendanceTime && (
-                                <span style={{ fontSize: '0.7rem', color: '#B91C1C' }}>
-                                  {new Date(student.attendanceTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="status-badge badge-pending" style={{ width: 'fit-content' }}>
-                              ○ Pending
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
-                            {student.attendanceStatus === 'PENDING' ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="btn-mark-ate"
-                                  disabled={isBusy}
-                                  onClick={() => handleQuickMarkAttendance(student, 'ATE')}
-                                  title="Mark student as Ate / Consumed"
-                                >
-                                  {isBusy ? <RotateCw size={12} className="spin-anim" /> : <Check size={13} />}
-                                  <span>Ate</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn-mark-dne"
-                                  disabled={isBusy}
-                                  onClick={() => handleQuickMarkAttendance(student, 'DID_NOT_EAT')}
-                                  title="Mark student as Did Not Eat"
-                                >
-                                  {isBusy ? <RotateCw size={12} className="spin-anim" /> : <Slash size={13} />}
-                                  <span>Did Not Eat</span>
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                type="button"
-                                className="btn-light-secondary btn-sm"
-                                onClick={() => handleOpenCorrection(student)}
-                                title="Change or correct attendance status"
-                              >
-                                <Edit2 size={12} />
-                                <span>Correct</span>
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem', padding: '1.25rem' }}>
+              {markingData.students.map((student) => {
+                const isAte = student.attendanceStatus === 'ATE';
+                const isDne = student.attendanceStatus === 'DID_NOT_EAT';
+                const isIndented = student.indentMarked;
+                const initial = student.studentName ? student.studentName.charAt(0).toUpperCase() : 'S';
 
-              {/* Pagination */}
-              {markingData.pagination.totalPages > 1 && (
-                <div className="pagination-controls-bar" style={{ padding: '0.75rem 1rem' }}>
-                  <button
-                    type="button"
-                    className="btn-light-secondary btn-sm"
-                    disabled={markingPage <= 1}
-                    onClick={() => {
-                      const prev = Math.max(1, markingPage - 1);
-                      setMarkingPage(prev);
-                      fetchAttendanceMarking(prev);
+                return (
+                  <div
+                    key={student.studentId}
+                    style={{
+                      border: '1px solid',
+                      borderColor: isAte ? '#A7F3D0' : isDne ? '#FECACA' : '#E2E8F0',
+                      backgroundColor: isAte ? '#F0FDF4' : isDne ? '#FEF2F2' : '#FFFFFF',
+                      borderTop: `4px solid ${isAte ? '#10B981' : isDne ? '#EF4444' : isIndented ? '#F59E0B' : '#94A3B8'}`,
+                      borderRadius: '12px',
+                      padding: '1rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      gap: '0.75rem',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+                      transition: 'all 0.15s ease-in-out',
                     }}
                   >
-                    <ChevronLeft size={16} />
-                    <span>Previous</span>
-                  </button>
+                    {/* Card Body: Click to open popup */}
+                    <div
+                      onClick={() => handleOpenCorrection(student)}
+                      style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}
+                      title="Click for detailed popup view"
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '50%',
+                            backgroundColor: isAte ? '#D1FAE5' : isDne ? '#FEE2E2' : '#EEF2FF',
+                            color: isAte ? '#047857' : isDne ? '#B91C1C' : '#151B54',
+                            fontWeight: 800,
+                            fontSize: '1.05rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: `2px solid ${isAte ? '#10B981' : isDne ? '#EF4444' : '#C7D2FE'}`,
+                            flexShrink: 0
+                          }}>
+                            {initial}
+                          </div>
 
-                  <span className="pagination-page-indicator">
-                    Page {markingData.pagination.page} of {markingData.pagination.totalPages} ({markingData.pagination.total} students)
-                  </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {student.studentName}
+                            </span>
+                            <span style={{ fontSize: '0.775rem', fontWeight: 700, color: '#151B54', backgroundColor: '#EEF2FF', padding: '0.1rem 0.45rem', borderRadius: '4px', width: 'fit-content', marginTop: '0.15rem' }}>
+                              {student.rollNo}
+                            </span>
+                          </div>
+                        </div>
 
-                  <button
-                    type="button"
-                    className="btn-light-secondary btn-sm"
-                    disabled={markingPage >= markingData.pagination.totalPages}
-                    onClick={() => {
-                      const next = Math.min(markingData.pagination.totalPages, markingPage + 1);
-                      setMarkingPage(next);
-                      fetchAttendanceMarking(next);
-                    }}
-                  >
-                    <span>Next</span>
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              )}
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleOpenCorrection(student); }}
+                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '0.2rem', color: '#64748B' }}
+                          title="Open Details Popup"
+                        >
+                          <ExternalLink size={15} />
+                        </button>
+                      </div>
+
+                      {/* Hostel & Room Info */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', backgroundColor: '#F8FAFC', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
+                        <span style={{ color: '#475569', fontWeight: 600 }}>{student.blockName || student.block}</span>
+                        <span style={{ fontWeight: 700, color: '#334155' }}>Rm {student.roomNumber || student.room}</span>
+                      </div>
+
+                      {/* Indent Status Pill */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{
+                          fontSize: '0.725rem',
+                          fontWeight: 700,
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '4px',
+                          backgroundColor: isIndented ? '#DCFCE7' : '#F1F5F9',
+                          color: isIndented ? '#15803D' : '#64748B'
+                        }}>
+                          {isIndented ? '✓ INDENT KEPT' : '✗ NO INDENT'}
+                        </span>
+                        
+                        <span style={{ fontSize: '0.725rem', fontWeight: 700, color: isAte ? '#059669' : isDne ? '#DC2626' : '#D97706' }}>
+                          {isAte ? '✓ ALLOWED' : isDne ? '✗ ABSENT' : '○ PENDING'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Quick Direct 1-Tap Attendance Buttons */}
+                    <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: '0.6rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleStudentStatusUpdate(student, 'ATE')}
+                        style={{
+                          flex: 1,
+                          padding: '0.45rem 0.5rem',
+                          borderRadius: '6px',
+                          border: '1px solid',
+                          borderColor: isAte ? '#10B981' : '#CBD5E1',
+                          backgroundColor: isAte ? '#10B981' : '#FFFFFF',
+                          color: isAte ? '#FFFFFF' : '#059669',
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.25rem',
+                          cursor: 'pointer',
+                          boxShadow: isAte ? '0 2px 4px rgba(16,185,129,0.2)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                        title="Mark student as Ate (Consumed)"
+                      >
+                        <Check size={14} />
+                        <span>{isAte ? 'ATE' : 'Mark Ate'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleStudentStatusUpdate(student, 'DID_NOT_EAT')}
+                        style={{
+                          flex: 1,
+                          padding: '0.45rem 0.5rem',
+                          borderRadius: '6px',
+                          border: '1px solid',
+                          borderColor: isDne ? '#EF4444' : '#CBD5E1',
+                          backgroundColor: isDne ? '#EF4444' : '#FFFFFF',
+                          color: isDne ? '#FFFFFF' : '#DC2626',
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.25rem',
+                          cursor: 'pointer',
+                          boxShadow: isDne ? '0 2px 4px rgba(239,68,68,0.2)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                        title="Mark student as Absent (Did Not Eat)"
+                      >
+                        <Slash size={13} />
+                        <span>{isDne ? 'ABSENT' : 'Absent'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {markingData && markingData.pagination.totalPages > 1 && (
+            <div className="pagination-controls-bar" style={{ padding: '0.75rem 1.25rem', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                className="btn-light-secondary btn-sm"
+                disabled={markingPage <= 1}
+                onClick={() => {
+                  const prev = Math.max(1, markingPage - 1);
+                  setMarkingPage(prev);
+                  fetchAttendanceMarking(prev);
+                }}
+              >
+                <ChevronLeft size={16} />
+                <span>Previous</span>
+              </button>
+
+              <span className="pagination-page-indicator">
+                Page {markingData.pagination.page} of {markingData.pagination.totalPages} ({markingData.pagination.total} students)
+              </span>
+
+              <button
+                type="button"
+                className="btn-light-secondary btn-sm"
+                disabled={markingPage >= markingData.pagination.totalPages}
+                onClick={() => {
+                  const next = Math.min(markingData.pagination.totalPages, markingPage + 1);
+                  setMarkingPage(next);
+                  fetchAttendanceMarking(next);
+                }}
+              >
+                <span>Next</span>
+                <ChevronRight size={16} />
+              </button>
             </div>
           )}
         </section>
@@ -2381,80 +2706,144 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
           role="dialog"
           aria-modal="true"
           aria-label="Correct Attendance"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(5px)',
+            WebkitBackdropFilter: 'blur(5px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '1.5rem',
+            boxSizing: 'border-box',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsCorrectionModalOpen(false);
+          }}
         >
-          <div className="notice-modal-card" style={{ maxWidth: '460px' }}>
-            <div className="notice-modal-header">
-              <h2 className="notice-modal-title">Correct Mess Attendance</h2>
+          <div
+            className="notice-modal-card"
+            style={{
+              maxWidth: '480px',
+              width: '100%',
+              backgroundColor: '#FFFFFF',
+              borderRadius: '14px',
+              boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35)',
+              overflow: 'hidden',
+              position: 'relative',
+              zIndex: 100000,
+            }}
+          >
+            <div className="notice-modal-header" style={{ backgroundColor: '#151B54', color: 'white', padding: '1rem 1.25rem' }}>
+              <h2 className="notice-modal-title" style={{ color: 'white', fontSize: '1.05rem', fontWeight: 700, margin: 0 }}>Student Mess Attendance Action</h2>
               <button
                 type="button"
                 className="notice-close-btn"
                 onClick={() => setIsCorrectionModalOpen(false)}
                 aria-label="Close"
+                style={{ color: '#94A3B8' }}
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="notice-form-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ backgroundColor: '#F8FAFC', padding: '0.85rem', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                <p style={{ margin: 0, fontWeight: 700, color: '#0F172A', fontSize: '1rem' }}>{correctionTarget.studentName}</p>
-                <p style={{ margin: '0.25rem 0 0', fontSize: '0.825rem', color: '#64748B' }}>
-                  Roll No: <strong style={{ color: '#0F172A' }}>{correctionTarget.rollNo}</strong> · {correctionTarget.blockName || correctionTarget.block} (Room {correctionTarget.roomNumber || correctionTarget.room})
-                </p>
-                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#475569' }}>Meal Indent:</span>
-                  <span className={`status-badge ${correctionTarget.indentMarked ? 'badge-verified' : 'badge-neutral'}`}>
-                    {correctionTarget.indentMarked ? '✓ Indent Marked' : '✗ No Indent'}
-                  </span>
+            <div className="notice-form-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1.25rem' }}>
+              {/* Student Summary Info */}
+              <div style={{ backgroundColor: '#F8FAFC', padding: '1rem', borderRadius: '10px', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                <div style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  backgroundColor: correctionTarget.attendanceStatus === 'ATE' ? '#D1FAE5' : correctionTarget.attendanceStatus === 'DID_NOT_EAT' ? '#FEE2E2' : '#EEF2FF',
+                  color: correctionTarget.attendanceStatus === 'ATE' ? '#047857' : correctionTarget.attendanceStatus === 'DID_NOT_EAT' ? '#B91C1C' : '#151B54',
+                  fontWeight: 800,
+                  fontSize: '1.2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: `2px solid ${correctionTarget.attendanceStatus === 'ATE' ? '#10B981' : correctionTarget.attendanceStatus === 'DID_NOT_EAT' ? '#EF4444' : '#C7D2FE'}`,
+                  flexShrink: 0
+                }}>
+                  {correctionTarget.studentName ? correctionTarget.studentName.charAt(0).toUpperCase() : 'S'}
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                  <p style={{ margin: 0, fontWeight: 700, color: '#0F172A', fontSize: '1.05rem', lineHeight: 1.2 }}>{correctionTarget.studentName}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', fontSize: '0.8rem' }}>
+                    <span style={{ fontWeight: 700, color: '#151B54', backgroundColor: '#EEF2FF', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
+                      {correctionTarget.rollNo}
+                    </span>
+                    <span style={{ color: '#64748B', fontWeight: 600 }}>
+                      {correctionTarget.blockName || correctionTarget.block} • Rm {correctionTarget.roomNumber || correctionTarget.room}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <p style={{ margin: 0, fontSize: '0.875rem', color: '#475569' }}>
-                Select the authoritative attendance state for <strong>{markingMeal}</strong> on <strong>{markingDate}</strong>:
-              </p>
+              {/* Meal Context & Indent Callout */}
+              <div style={{ padding: '0.75rem 1rem', borderRadius: '8px', backgroundColor: correctionTarget.indentMarked ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${correctionTarget.indentMarked ? '#BBF7D0' : '#FECACA'}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <span style={{ fontSize: '0.725rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block' }}>TARGET MEAL SLOT</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0F172A' }}>{markingMeal} ({markingDate})</span>
+                </div>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.25rem 0.65rem', borderRadius: '6px', backgroundColor: correctionTarget.indentMarked ? '#10B981' : '#EF4444', color: '#FFFFFF' }}>
+                  {correctionTarget.indentMarked ? '✓ INDENT KEPT' : '✗ NO INDENT'}
+                </span>
+              </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              {/* Attendance State Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                <label style={{ fontSize: '0.775rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Select Attendance Status:</label>
+                
                 <button
                   type="button"
                   className="btn-mark-ate"
                   disabled={isCorrectionSubmitting}
-                  style={{ justifyContent: 'center', padding: '0.65rem 1rem', fontSize: '0.9rem' }}
+                  style={{ justifyContent: 'center', padding: '0.75rem 1rem', fontSize: '0.95rem', fontWeight: 700, borderRadius: '8px', backgroundColor: '#10B981', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
                   onClick={() => handleSaveCorrection('ATE')}
                 >
-                  <Check size={16} />
-                  <span>Mark as Ate (Consumed)</span>
+                  <Check size={18} />
+                  <span>Mark as Ate (Allowed / Consumed)</span>
                 </button>
 
                 <button
                   type="button"
                   className="btn-mark-dne"
                   disabled={isCorrectionSubmitting}
-                  style={{ justifyContent: 'center', padding: '0.65rem 1rem', fontSize: '0.9rem' }}
+                  style={{ justifyContent: 'center', padding: '0.75rem 1rem', fontSize: '0.95rem', fontWeight: 700, borderRadius: '8px', backgroundColor: '#EF4444', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
                   onClick={() => handleSaveCorrection('DID_NOT_EAT')}
                 >
-                  <Slash size={16} />
-                  <span>Mark as Did Not Eat</span>
+                  <Slash size={18} />
+                  <span>Mark as Did Not Eat (Absent)</span>
                 </button>
 
                 <button
                   type="button"
                   className="btn-light-secondary"
                   disabled={isCorrectionSubmitting}
-                  style={{ justifyContent: 'center', padding: '0.65rem 1rem', fontSize: '0.9rem' }}
+                  style={{ justifyContent: 'center', padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 600, borderRadius: '8px', color: '#475569', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
                   onClick={() => handleSaveCorrection('PENDING')}
                 >
-                  <RotateCw size={14} />
+                  <RotateCw size={15} />
                   <span>Reset to Pending (Unmarked)</span>
                 </button>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem', paddingTop: '0.75rem', borderTop: '1px solid #F1F5F9' }}>
                 <button
                   type="button"
                   className="btn-light-secondary"
                   onClick={() => setIsCorrectionModalOpen(false)}
+                  style={{ padding: '0.45rem 1rem', fontWeight: 600 }}
                 >
-                  Cancel
+                  Close
                 </button>
               </div>
             </div>

@@ -167,7 +167,11 @@ export const ManagementUserManagementPage: React.FC<ManagementUserManagementPage
     try {
       const res = await managementApiService.getUserRoles();
       if (res.success) {
-        setAvailableRoles(res.roles || []);
+        // Exclude reserved ADMIN and HOSTEL_ADMIN roles as well as generic duplicate CHIEF_WARDEN
+        const creatable = (res.roles || []).filter(
+          (r: any) => !['ADMIN', 'HOSTEL_ADMIN', 'CHIEF_WARDEN'].includes(r.role)
+        );
+        setAvailableRoles(creatable);
       }
     } catch (err) {
       console.error('Failed to load supported user roles:', err);

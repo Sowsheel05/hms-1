@@ -1637,49 +1637,32 @@ let _inMemoryManagementToken: string | null = null;
 
 export const managementAuthStorage = {
   getToken(): string | null {
-    if (_inMemoryManagementToken) return _inMemoryManagementToken;
-    try {
-      const token =
-        localStorage.getItem(MANAGEMENT_TOKEN_STORAGE_KEY) ||
-        localStorage.getItem('managementToken') ||
-        localStorage.getItem('token') ||
-        sessionStorage.getItem(MANAGEMENT_TOKEN_STORAGE_KEY) ||
-        sessionStorage.getItem('managementToken') ||
-        sessionStorage.getItem('token');
-      if (token) {
-        _inMemoryManagementToken = token;
-        return token;
-      }
-    } catch {
-      return null;
+    const token = localStorage.getItem(MANAGEMENT_TOKEN_STORAGE_KEY);
+    if (token) {
+      _inMemoryManagementToken = token;
+      return token;
     }
     return null;
   },
-  setToken(token: string): void {
-    _inMemoryManagementToken = token;
-    try {
-      localStorage.setItem(MANAGEMENT_TOKEN_STORAGE_KEY, token);
-      localStorage.setItem('managementToken', token);
-      localStorage.setItem('token', token);
-      sessionStorage.setItem(MANAGEMENT_TOKEN_STORAGE_KEY, token);
-    } catch (e) {
-      console.error('Failed to persist management auth token', e);
-    }
-  },
-  clearToken(): void {
-    _inMemoryManagementToken = null;
-    try {
-      localStorage.removeItem(MANAGEMENT_TOKEN_STORAGE_KEY);
-      localStorage.removeItem('managementToken');
-      localStorage.removeItem('token');
-      sessionStorage.removeItem(MANAGEMENT_TOKEN_STORAGE_KEY);
-    } catch (e) {
-      console.error('Failed to remove management auth token', e);
-    }
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('management_auth_logout'));
-    }
-  },
+    setToken(token: string): void {
+      _inMemoryManagementToken = token;
+      try {
+        localStorage.setItem(MANAGEMENT_TOKEN_STORAGE_KEY, token);
+      } catch (e) {
+        console.error('Failed to persist management auth token', e);
+      }
+    },
+    clearToken(): void {
+      _inMemoryManagementToken = null;
+      try {
+        localStorage.removeItem(MANAGEMENT_TOKEN_STORAGE_KEY);
+      } catch (e) {
+        console.error('Failed to remove management auth token', e);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('management_auth_logout'));
+      }
+    },
 };
 
 export const managementApiService = {
@@ -2569,6 +2552,31 @@ export const managementApiService = {
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to record attendance.');
+    return data;
+  },
+
+  /**
+   * Phase 4 Add-on: Batch Mark Attendance for rapid Roll Number auto-save
+   */
+  async batchMarkAttendance(payload: {
+    date: string;
+    mealType: string;
+    items: { studentId: string; status: 'ATE' | 'DID_NOT_EAT' | 'PENDING' }[];
+  }): Promise<{ success: boolean; message: string; processedCount: number }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const res = await fetch('/api/management/mess/attendance/batch', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to process batch attendance.');
     return data;
   },
 
@@ -6384,7 +6392,7 @@ export interface AttendanceMarkingStudent {
   year: string;
   section: string;
   indentMarked: boolean;
-  indentStatus: 'MARKED' | 'NOT_MARKED';
+  indentStatus: 'MARKED' | 'SKIPPED' | 'NOT_MARKED';
   indentTime: string | null;
   attendanceStatus: 'PENDING' | 'ATE' | 'DID_NOT_EAT';
   attendanceTime: string | null;
@@ -6398,6 +6406,7 @@ export interface AttendanceMarkingStudent {
 export interface AttendanceMarkingSummary {
   totalStudents: number;
   indentMarkedCount: number;
+  indentSkippedCount?: number;
   noIndentCount: number;
   ateCount: number;
   didNotEatCount: number;

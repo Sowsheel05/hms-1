@@ -358,10 +358,8 @@ export class BiometricService {
     const student = await prisma.student.findUnique({
       where: { id: dto.studentId },
     });
-    if (!student) {
-      const err: any = new Error('Invalid student reference.');
-      err.statusCode = 404;
-      throw err;
+    if (!student || !student.isActive) {
+      return { event: null, isDuplicate: true };
     }
 
     // 2. Validate event parameters

@@ -69,6 +69,7 @@ userManagementRouter.get('/roles', async (_req: AuthenticatedManagementRequest, 
       role,
       label: ROLE_LABELS[role] || role,
       category: role === 'STUDENT' ? 'STUDENT' : ['MAINTENANCE_STAFF', 'MESS_STAFF'].includes(role) ? 'SUPPORT' : 'MANAGEMENT',
+      isCreatable: !['ADMIN', 'HOSTEL_ADMIN'].includes(role),
     }));
 
     res.json({
@@ -316,6 +317,14 @@ userManagementRouter.post('/', async (req: AuthenticatedManagementRequest, res: 
 
     if (!role || !(AUTHORIZED_ROLES as readonly string[]).includes(role)) {
       res.status(400).json({ success: false, message: `Invalid role specified. Supported roles: ${AUTHORIZED_ROLES.join(', ')}` });
+      return;
+    }
+
+    if (role === 'ADMIN' || role === 'HOSTEL_ADMIN') {
+      res.status(400).json({
+        success: false,
+        message: 'Main Admin (ADMIN) and Sub Admin (HOSTEL_ADMIN) roles are unique system roles and cannot be created via user management.',
+      });
       return;
     }
 

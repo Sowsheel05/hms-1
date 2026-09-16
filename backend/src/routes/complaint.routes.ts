@@ -579,7 +579,7 @@ router.post('/complaints/:id/comment', authenticateStudent, async (req: Authenti
     }
 
     const newCommentEntry = {
-      id: Math.random().toString(36).substring(2, 9),
+      const commentId = crypto.randomUUID();
       author: req.student.name || 'Student',
       text: comment.trim(),
       createdAt: new Date().toISOString(),

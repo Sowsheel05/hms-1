@@ -12,7 +12,6 @@ import {
   AlertCircle,
   RefreshCw,
   Ticket,
-  ShieldCheck,
   X,
   FileEdit,
   Lock,
@@ -304,10 +303,10 @@ export const MessTokensPage: React.FC = () => {
       )}
 
       {/* Page Title & Refresh Control */}
-      <div className="mess-page-header">
+      <div className="mess-page-header" style={{ backgroundColor: '#151B54', color: 'white', padding: '1.5rem 1.75rem', borderRadius: '14px', marginBottom: '1.25rem', boxShadow: '0 10px 25px -5px rgba(21, 27, 84, 0.25)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 className="mess-page-title">Mess Tokens</h1>
-          <p className="mess-page-subtitle">
+          <h1 className="mess-page-title" style={{ color: 'white', fontSize: '1.6rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Hostel Mess Tokens & Meal Indents</h1>
+          <p className="mess-page-subtitle" style={{ color: '#94A3B8', fontSize: '0.875rem', marginTop: '0.35rem', margin: 0 }}>
             Plan multi-day hostel meal indents, place attendance choices, and manage active digital dining passes.
           </p>
         </div>
@@ -318,43 +317,44 @@ export const MessTokensPage: React.FC = () => {
           disabled={isRefreshing}
           aria-label="Refresh mess tokens"
           title="Refresh mess tokens"
+          style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', padding: '0.55rem 1rem', borderRadius: '8px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer' }}
         >
-          <RefreshCw size={16} />
-          <span>{isRefreshing ? 'Syncing...' : 'Refresh'}</span>
+          <RefreshCw size={15} />
+          <span>{isRefreshing ? 'Syncing...' : 'Refresh Tokens'}</span>
         </button>
       </div>
 
       {/* Booking Deadline Guidance Banner */}
-      <section className="mess-rules-card" aria-label="Booking Guidelines">
-        <div className="rules-icon-wrap">
-          <Info size={22} className="rules-info-icon" />
+      <section className="mess-rules-card" aria-label="Booking Guidelines" style={{ backgroundColor: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: '12px', padding: '1rem 1.25rem', display: 'flex', alignItems: 'flex-start', gap: '0.85rem', marginBottom: '1.25rem' }}>
+        <div className="rules-icon-wrap" style={{ backgroundColor: '#151B54', color: 'white', width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Info size={20} />
         </div>
         <div className="rules-body">
-          <h3 className="rules-title">Daily Meal Indent & Booking Cutoff Guidelines</h3>
-          <p className="rules-desc">
-            To ensure zero food waste and hot dining service, meals must be indented prior to cutoff times:
-            <strong> Breakfast</strong> by 07:00 AM ·
-            <strong> Lunch</strong> by 10:00 AM ·
-            <strong> Evening Snacks</strong> by 03:00 PM ·
-            <strong> Dinner</strong> by 05:30 PM.
-            You can <strong>Save Draft</strong> anytime to prepare your intent, or <strong>Submit & Lock Indent</strong> to finalize your token.
+          <h3 className="rules-title" style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#151B54' }}>Daily Meal Indent & Cutoff Guidelines</h3>
+          <p className="rules-desc" style={{ margin: '0.35rem 0 0', fontSize: '0.825rem', color: '#334155', lineHeight: 1.5 }}>
+            To prevent food wastage, please select your meal intent prior to cutoff times:
+            <strong> Breakfast</strong> (07:00 AM) ·
+            <strong> Lunch</strong> (10:00 AM) ·
+            <strong> Evening Snacks</strong> (03:00 PM) ·
+            <strong> Dinner</strong> (05:30 PM).
+            Select <strong>[✓ Attending]</strong> or <strong>[✗ Skipping]</strong> for each meal slot.
           </p>
         </div>
       </section>
 
       {/* Multi-Day Planning Date Selector Ribbon */}
-      <section className="mess-section" aria-label="Meal Date Selection">
-        <div className="section-title-group">
-          <div className="flex items-center gap-2">
-            <Calendar size={18} className="text-primary" />
-            <h2 className="mess-section-title">Meal Planning Horizon</h2>
+      <section className="mess-section" aria-label="Meal Date Selection" style={{ marginBottom: '1.25rem' }}>
+        <div className="section-title-group" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Calendar size={18} style={{ color: '#151B54' }} />
+            <h2 className="mess-section-title" style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#151B54' }}>Meal Planning Horizon</h2>
           </div>
-          <span className="section-badge highlight">
+          <span className="section-badge highlight" style={{ backgroundColor: '#151B54', color: 'white', fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '12px' }}>
             7-Day Booking Window
           </span>
         </div>
 
-        <div className="mess-date-ribbon" role="tablist" aria-label="Planning dates">
+        <div className="mess-date-ribbon" role="tablist" aria-label="Planning dates" style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
           {horizonDates.map((item: HorizonDateItem) => {
             const isSelected = item.date === selectedDate;
             return (
@@ -365,14 +365,28 @@ export const MessTokensPage: React.FC = () => {
                 aria-selected={isSelected}
                 className={`date-ribbon-card ${isSelected ? 'active' : ''} ${item.isToday ? 'is-today' : ''}`}
                 onClick={() => setSelectedDate(item.date)}
+                style={{
+                  minWidth: '100px',
+                  padding: '0.85rem 0.75rem',
+                  borderRadius: '12px',
+                  border: isSelected ? '2px solid #151B54' : '1px solid #E2E8F0',
+                  backgroundColor: isSelected ? '#151B54' : '#FFFFFF',
+                  color: isSelected ? '#FFFFFF' : '#0F172A',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '0.2rem',
+                  boxShadow: isSelected ? '0 4px 12px rgba(21, 27, 84, 0.2)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
               >
-                <div className="date-card-top">
+                <div className="date-card-top" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, opacity: isSelected ? 0.9 : 0.6 }}>
                   <span className="day-name">{item.dayName}</span>
-                  {item.isToday && <span className="today-badge">Today</span>}
+                  {item.isToday && <span style={{ backgroundColor: isSelected ? '#38BDF8' : '#EEF2FF', color: isSelected ? '#151B54' : '#151B54', padding: '0.05rem 0.35rem', borderRadius: '4px', fontSize: '0.65rem' }}>Today</span>}
                 </div>
-                <div className="day-number">{item.dayNumber}</div>
-                <div className="month-name">{item.monthName}</div>
-                {isSelected && <div className="active-pill-dot" />}
+                <div className="day-number" style={{ fontSize: '1.4rem', fontWeight: 800 }}>{item.dayNumber}</div>
+                <div className="month-name" style={{ fontSize: '0.725rem', fontWeight: 600, opacity: isSelected ? 0.8 : 0.6 }}>{item.monthName}</div>
               </button>
             );
           })}
@@ -380,17 +394,17 @@ export const MessTokensPage: React.FC = () => {
       </section>
 
       {/* Selected Date Summary Banner */}
-      <section className="mess-summary-banner" aria-label="Selected Date Summary">
+      <section className="mess-summary-banner" aria-label="Selected Date Summary" style={{ backgroundColor: '#151B54', color: 'white', padding: '1.25rem 1.5rem', borderRadius: '14px', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
         <div className="summary-banner-left">
-          <div className="summary-date-badge">
-            <Calendar size={18} />
+          <div className="summary-date-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', backgroundColor: 'rgba(255,255,255,0.12)', padding: '0.25rem 0.65rem', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 700, color: '#38BDF8' }}>
+            <Calendar size={15} />
             <span>{selectedDayData?.formattedDate || selectedDate}</span>
-            {isSelectedDateToday && <span className="badge-today-chip">· Today</span>}
+            {isSelectedDateToday && <span style={{ color: '#A7F3D0' }}>· Today</span>}
           </div>
-          <h2 className="summary-main-stat">
+          <h2 className="summary-main-stat" style={{ margin: '0.5rem 0 0.15rem', fontSize: '1.6rem', fontWeight: 800, color: 'white' }}>
             {summary?.bookedCount || 0} Booked · {summary?.skippedCount || 0} Skipped
           </h2>
-          <p className="summary-subtext">
+          <p className="summary-subtext" style={{ margin: 0, fontSize: '0.825rem', color: '#94A3B8' }}>
             {summary?.remainingCount === 0
               ? 'All daily meal indents have been finalized for this date.'
               : `${summary?.remainingCount} meal${
@@ -399,32 +413,20 @@ export const MessTokensPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="summary-banner-right">
-          <div className="summary-pill-group">
-            <div className="summary-stat-box">
-              <span className="stat-number">{summary?.bookedCount || 0}</span>
-              <span className="stat-label">Booked</span>
+        <div className="summary-banner-right" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div className="summary-pill-group" style={{ display: 'flex', gap: '0.75rem' }}>
+            <div className="summary-stat-box" style={{ backgroundColor: 'rgba(255,255,255,0.08)', padding: '0.5rem 0.85rem', borderRadius: '8px', textAlign: 'center' }}>
+              <span className="stat-number" style={{ display: 'block', fontSize: '1.25rem', fontWeight: 800, color: '#10B981' }}>{summary?.bookedCount || 0}</span>
+              <span className="stat-label" style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 600 }}>Booked</span>
             </div>
-            <div className="summary-stat-box">
-              <span className="stat-number">{summary?.skippedCount || 0}</span>
-              <span className="stat-label">Skipped</span>
+            <div className="summary-stat-box" style={{ backgroundColor: 'rgba(255,255,255,0.08)', padding: '0.5rem 0.85rem', borderRadius: '8px', textAlign: 'center' }}>
+              <span className="stat-number" style={{ display: 'block', fontSize: '1.25rem', fontWeight: 800, color: '#EF4444' }}>{summary?.skippedCount || 0}</span>
+              <span className="stat-label" style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 600 }}>Skipped</span>
             </div>
-            <div className="summary-stat-box">
-              <span className="stat-number">{summary?.draftCount || 0}</span>
-              <span className="stat-label">Drafts</span>
+            <div className="summary-stat-box" style={{ backgroundColor: 'rgba(255,255,255,0.08)', padding: '0.5rem 0.85rem', borderRadius: '8px', textAlign: 'center' }}>
+              <span className="stat-number" style={{ display: 'block', fontSize: '1.25rem', fontWeight: 800, color: '#F59E0B' }}>{summary?.draftCount || 0}</span>
+              <span className="stat-label" style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 600 }}>Drafts</span>
             </div>
-          </div>
-          <div
-            className={`status-pill ${
-              summary?.bookedCount === 4
-                ? 'status-pill-success'
-                : summary?.bookedCount! > 0
-                ? 'status-pill-info'
-                : 'status-pill-neutral'
-            }`}
-          >
-            <ShieldCheck size={14} />
-            <span>{summary?.summaryStatus || 'Active Indent Window'}</span>
           </div>
         </div>
       </section>

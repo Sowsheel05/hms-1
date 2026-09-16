@@ -71,7 +71,14 @@ router.get('/my-room', authenticateStudent, async (req: AuthenticatedRequest, re
           orderBy: { bedNumber: 'asc' },
         });
 
-        const capacity = student.roomCapacity || 2;
+        const roomData = await prisma.room.findFirst({
+          where: {
+            blockName: student.blockName,
+            roomNumber: student.roomNumber,
+          },
+          select: { capacity: true },
+        });
+        const capacity = roomData?.capacity || student.roomCapacity || 2;
         const occupancy = allocatedOccupants.length;
         const occupancyStatus = occupancy >= capacity ? 'Occupied' : 'Partially Occupied';
 

@@ -1871,6 +1871,26 @@ export function classifyFourWay(
 }
 
 /**
+ * Helper to check if a meal timing window has finished
+ */
+function isMealSlotEnded(dateStr: string, endHour?: number, endMinute?: number): boolean {
+  if (endHour === undefined || endMinute === undefined) return false;
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+
+  if (dateStr < todayStr) return true;
+  if (dateStr > todayStr) return false;
+
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+
+  if (currentHour > endHour) return true;
+  if (currentHour === endHour && currentMinute >= endMinute) return true;
+
+  return false;
+}
+
+/**
  * GET /api/management/mess/attendance-marking (and /api/management/mess/attendance-sheet)
  * Displays ALL eligible students with independent Indent and Attendance statuses.
  * Supports filters: date, mealType, block, attendanceStatus, indentStatus, search, page, limit
@@ -1981,6 +2001,11 @@ router.get(['/attendance-marking', '/attendance-sheet'], async (req: Authenticat
       const attRecord = attendances.find((a) => a.studentId === student.id);
 
       // Indent check: true if marked and not skipped
+      const isIndentSkipped = Boolean(
+        (indentRecord && indentRecord.status === 'SKIPPED') ||
+        (tokenRecord && (tokenRecord.status === 'SKIPPED' || tokenRecord.attendanceIntent === 'SKIPPED'))
+      );
+
       const isIndentMarked = Boolean(
         (indentRecord && indentRecord.status === 'MARKED') ||
         (!indentRecord &&
@@ -1990,16 +2015,25 @@ router.get(['/attendance-marking', '/attendance-sheet'], async (req: Authenticat
             tokenRecord.status === 'CONSUMED'))
       );
 
+      const computedIndentStatus: 'MARKED' | 'SKIPPED' | 'NOT_MARKED' = isIndentMarked
+        ? 'MARKED'
+        : isIndentSkipped
+          ? 'SKIPPED'
+          : 'NOT_MARKED';
+
       const indentTime = indentRecord
         ? indentRecord.createdAt.toISOString()
         : tokenRecord
           ? tokenRecord.createdAt.toISOString()
           : null;
 
-      // Attendance check: PENDING, ATE, DID_NOT_EAT
+      // Attendance check: PENDING, ATE, DID_NOT_EAT (Auto-resolve to DID_NOT_EAT if meal slot ended)
+      const isSlotEnded = isMealSlotEnded(targetDate, currentMealConfig.endHour, currentMealConfig.endMinute);
       const currentAttendanceStatus: 'PENDING' | 'ATE' | 'DID_NOT_EAT' = attRecord
         ? (attRecord.status as 'ATE' | 'DID_NOT_EAT')
-        : 'PENDING';
+        : isSlotEnded
+          ? 'DID_NOT_EAT'
+          : 'PENDING';
 
       const attendanceTime = attRecord ? attRecord.markedAt.toISOString() : null;
       const markedBy = attRecord?.markedBy || null;
@@ -2024,7 +2058,7 @@ router.get(['/attendance-marking', '/attendance-sheet'], async (req: Authenticat
         year: academic.year,
         section: academic.semester,
         indentMarked: isIndentMarked,
-        indentStatus: isIndentMarked ? 'MARKED' : 'NOT_MARKED',
+        indentStatus: computedIndentStatus,
         indentTime,
         attendanceStatus: currentAttendanceStatus,
         attendanceTime,
@@ -2038,8 +2072,9 @@ router.get(['/attendance-marking', '/attendance-sheet'], async (req: Authenticat
 
     // 4. Calculate authoritative summary across ALL eligible students in scope
     const totalStudents = processedStudents.length;
-    const indentMarkedCount = processedStudents.filter((s) => s.indentMarked).length;
-    const noIndentCount = totalStudents - indentMarkedCount;
+    const indentMarkedCount = processedStudents.filter((s) => s.indentStatus === 'MARKED').length;
+    const indentSkippedCount = processedStudents.filter((s) => s.indentStatus === 'SKIPPED').length;
+    const noIndentCount = processedStudents.filter((s) => s.indentStatus === 'NOT_MARKED').length;
 
     const ateCount = processedStudents.filter((s) => s.attendanceStatus === 'ATE').length;
     const didNotEatCount = processedStudents.filter((s) => s.attendanceStatus === 'DID_NOT_EAT').length;
@@ -2076,6 +2111,7 @@ router.get(['/attendance-marking', '/attendance-sheet'], async (req: Authenticat
       summary: {
         totalStudents,
         indentMarkedCount,
+        indentSkippedCount,
         noIndentCount,
         ateCount,
         didNotEatCount,
@@ -2247,6 +2283,194 @@ router.post('/attendance', async (req: AuthenticatedManagementRequest, res: Resp
   } catch (error: any) {
     console.error('Error marking mess attendance:', error);
     res.status(500).json({ success: false, message: 'Failed to record attendance.' });
+  }
+});
+
+/**
+ * POST /api/management/mess/attendance/batch
+ * Batch saves attendance for multiple students simultaneously.
+ * Ideal for rapid tap-to-mark Roll Number auto-save queue processing.
+ */
+router.post('/attendance/batch', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+  try {
+    const { date, mealType, items } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ success: false, message: 'Batch items array is required.' });
+      return;
+    }
+
+    if (!mealType || typeof mealType !== 'string') {
+      res.status(400).json({ success: false, message: 'Valid mealType is required.' });
+      return;
+    }
+
+    const normalizedMeal = mealType.trim().toUpperCase() as MealType;
+    const configs = await getAuthoritativeMealConfigs();
+    const mealCfg = configs.find((c) => c.type === normalizedMeal);
+    if (!mealCfg) {
+      res.status(400).json({ success: false, message: `Invalid mealType. Supported meals: ${VALID_MEALS.join(', ')}` });
+      return;
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())
+      ? date.trim()
+      : todayStr;
+
+    const staffDisplayName = req.managementUser?.name || req.managementUser?.role || 'Mess Operator';
+    const staffId = req.managementUser?.id || null;
+    const markedAt = new Date();
+
+    const studentIds = items.map((i: any) => String(i.studentId));
+    
+    // Verify students by id or jntuNo
+    const students = await prisma.student.findMany({
+      where: {
+        OR: [
+          { id: { in: studentIds } },
+          { jntuNo: { in: studentIds } }
+        ],
+        isActive: true
+      },
+      select: { id: true, name: true, jntuNo: true }
+    });
+
+    // Map any passed jntuNo back to canonical Prisma student.id
+    const idMap = new Map<string, string>();
+    students.forEach(s => {
+      idMap.set(s.id, s.id);
+      idMap.set(s.jntuNo, s.id);
+    });
+
+    const validItems: { studentId: string; status: 'ATE' | 'DID_NOT_EAT' | 'PENDING' }[] = [];
+    for (const item of items) {
+      const canonicalId = idMap.get(String(item.studentId));
+      if (canonicalId && ['ATE', 'DID_NOT_EAT', 'PENDING'].includes(item.status)) {
+        validItems.push({
+          studentId: canonicalId,
+          status: item.status as 'ATE' | 'DID_NOT_EAT' | 'PENDING'
+        });
+      }
+    }
+
+    if (validItems.length === 0) {
+      res.status(400).json({ success: false, message: 'No valid active students found in batch.' });
+      return;
+    }
+
+    // Atomic transaction for all items
+    await prisma.$transaction(async (tx) => {
+      for (const item of validItems) {
+        if (item.status === 'PENDING') {
+          // Reset to pending -> Delete the attendance record and revert token
+          const existing = await tx.messAttendance.findUnique({
+            where: { studentId_date_mealType: { studentId: item.studentId, date: targetDate, mealType: normalizedMeal } }
+          });
+          
+          if (existing) {
+            await tx.messAttendance.delete({
+              where: { studentId_date_mealType: { studentId: item.studentId, date: targetDate, mealType: normalizedMeal } }
+            });
+            
+            await tx.messToken.updateMany({
+              where: {
+                studentId: item.studentId,
+                date: targetDate,
+                mealType: normalizedMeal,
+                status: 'CONSUMED'
+              },
+              data: {
+                status: 'BOOKED',
+                consumedAt: null
+              }
+            });
+          }
+        } else {
+          // Upsert attendance
+          const record = await tx.messAttendance.upsert({
+            where: {
+              studentId_date_mealType: { studentId: item.studentId, date: targetDate, mealType: normalizedMeal },
+            },
+            update: {
+              status: item.status,
+              markedAt,
+              markedBy: staffDisplayName,
+              markedById: staffId,
+            },
+            create: {
+              studentId: item.studentId,
+              date: targetDate,
+              mealType: normalizedMeal,
+              status: item.status,
+              markedAt,
+              markedBy: staffDisplayName,
+              markedById: staffId,
+            },
+          });
+
+          // Sync tokens
+          if (item.status === 'ATE') {
+            await tx.messToken.updateMany({
+              where: {
+                studentId: item.studentId,
+                date: targetDate,
+                mealType: normalizedMeal,
+                status: { not: 'CANCELLED' },
+              },
+              data: { status: 'CONSUMED', consumedAt: markedAt },
+            });
+          } else if (item.status === 'DID_NOT_EAT') {
+            await tx.messToken.updateMany({
+              where: {
+                studentId: item.studentId,
+                date: targetDate,
+                mealType: normalizedMeal,
+                status: 'CONSUMED'
+              },
+              data: { status: 'BOOKED', consumedAt: null },
+            });
+          }
+        }
+      }
+
+      // Log the batch activity
+      await tx.activityLog.create({
+        data: {
+          studentId: staffId || validItems[0].studentId,
+          actionType: 'MESS_MANAGEMENT',
+          action: 'UPDATE',
+          actorRole: req.managementUser?.role || 'MESS_OPERATOR',
+          entity: 'MessAttendance',
+          entityId: 'BATCH',
+          description: `Batch updated attendance for ${validItems.length} students - ${mealCfg.name} on ${targetDate}`,
+        },
+      });
+    });
+
+    // Fire SSE events for each processed item asynchronously
+    Promise.resolve().then(() => {
+      validItems.forEach((item: any) => {
+        complaintEventsService.emitMessEventToStudent(item.studentId, {
+          type: 'MESS_ATTENDANCE_RECORDED',
+          studentId: item.studentId,
+          date: targetDate,
+          mealType: normalizedMeal,
+          status: item.status,
+          markedBy: staffDisplayName,
+          timestamp: markedAt.toISOString(),
+        });
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully processed batch attendance for ${validItems.length} students.`,
+      processedCount: validItems.length
+    });
+  } catch (error: any) {
+    console.error('Error in batch mess attendance:', error);
+    res.status(500).json({ success: false, message: 'Failed to process batch attendance.' });
   }
 });
 
@@ -2426,6 +2650,11 @@ async function getReconciledStudents(
     const tokenRecord = tokens.find((t) => t.studentId === s.id);
     const attRecord = attendances.find((a) => a.studentId === s.id);
 
+    const isIndentSkipped = Boolean(
+      (indentRecord && indentRecord.status === 'SKIPPED') ||
+      (tokenRecord && (tokenRecord.status === 'SKIPPED' || tokenRecord.attendanceIntent === 'SKIPPED'))
+    );
+
     const isIndentMarked = Boolean(
       (indentRecord && indentRecord.status === 'MARKED') ||
       (!indentRecord &&
@@ -2435,15 +2664,24 @@ async function getReconciledStudents(
           tokenRecord.status === 'CONSUMED'))
     );
 
+    const computedIndentStatus: 'MARKED' | 'SKIPPED' | 'NOT_MARKED' = isIndentMarked
+      ? 'MARKED'
+      : isIndentSkipped
+        ? 'SKIPPED'
+        : 'NOT_MARKED';
+
     const indentTime = indentRecord
       ? indentRecord.createdAt.toISOString()
       : tokenRecord
         ? tokenRecord.createdAt.toISOString()
         : null;
 
+    const isSlotEnded = isMealSlotEnded(targetDate, mealCfg.endHour, mealCfg.endMinute);
     const currentAttendanceStatus: 'PENDING' | 'ATE' | 'DID_NOT_EAT' = attRecord
       ? (attRecord.status as 'ATE' | 'DID_NOT_EAT')
-      : 'PENDING';
+      : isSlotEnded
+        ? 'DID_NOT_EAT'
+        : 'PENDING';
 
     const attendanceTime = attRecord ? attRecord.markedAt.toISOString() : null;
     const markedBy = attRecord?.markedBy || null;
@@ -2467,7 +2705,7 @@ async function getReconciledStudents(
       meal: mealCfg.name,
       mealType: normalizedMeal,
       indentMarked: isIndentMarked,
-      indentStatus: isIndentMarked ? 'MARKED' : 'NOT_MARKED',
+      indentStatus: computedIndentStatus,
       indentTime,
       attendanceStatus: currentAttendanceStatus,
       attendanceTime,

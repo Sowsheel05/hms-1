@@ -14487,7 +14487,8 @@ input[type="checkbox"] {
 
 /* Modals Backdrop & Dialog Foundation */
 .modal-backdrop,
-.mgmt-modal-backdrop {
+.mgmt-modal-backdrop,
+.notice-modal-backdrop {
   position: fixed !important;
   inset: 0 !important;
   top: 0 !important;
@@ -14502,20 +14503,21 @@ input[type="checkbox"] {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  z-index: 9999 !important;
+  z-index: 99999 !important;
   padding: 1.5rem !important;
   box-sizing: border-box !important;
 }
 
 .modal-dialog,
 .mgmt-modal,
-.mgmt-modal-card {
+.mgmt-modal-card,
+.notice-modal-card {
   background: #FFFFFF !important;
   border: 1px solid #CBD5E1 !important;
   border-radius: 14px !important;
   box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08) !important;
   width: 100% !important;
-  max-width: 540px !important;
+  max-width: 500px !important;
   max-height: 90vh !important;
   display: flex !important;
   flex-direction: column !important;
@@ -14524,6 +14526,27 @@ input[type="checkbox"] {
   box-sizing: border-box !important;
   color: #0F172A !important;
   animation: modalDialogFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.notice-modal-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 1.25rem 1.5rem !important;
+  border-bottom: 1px solid #E2E8F0 !important;
+  background: #FFFFFF !important;
+}
+
+.notice-modal-title {
+  margin: 0 !important;
+  font-size: 1.15rem !important;
+  font-weight: 700 !important;
+  color: #0F172A !important;
+}
+
+.notice-form-body {
+  padding: 1.25rem 1.5rem !important;
+  overflow-y: auto !important;
 }
 
 @keyframes modalDialogFadeIn {

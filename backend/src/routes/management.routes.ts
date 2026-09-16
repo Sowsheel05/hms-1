@@ -90,7 +90,8 @@ router.post('/auth/login', loginRateLimiter, async (req, res): Promise<void> => 
 
     if (!user) {
       // Dummy compare to mitigate timing attacks
-      await bcrypt.compare(password, '$2a$10$wN35rB7z.Mv1B78.9K2e6.03u9GfLgKqQYwXqWwOqX7g8mC4uGk4u');
+      const dummyHash = await bcrypt.hash(String(Date.now()) + Math.random(), 10);
+      await bcrypt.compare(password, dummyHash);
       res.status(401).json({
         success: false,
         message: 'Invalid management staff credentials.',
@@ -137,7 +138,7 @@ router.post('/auth/login', loginRateLimiter, async (req, res): Promise<void> => 
       config.jwtSecret,
       {
         expiresIn: '7d',
-        jwtid: Math.random().toString(36).substring(2) + '-' + Date.now().toString(36),
+        jwtid: crypto.randomUUID(),
       }
     );
 

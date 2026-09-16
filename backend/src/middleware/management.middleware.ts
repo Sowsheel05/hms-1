@@ -53,8 +53,6 @@ export const authenticateManagement = async (
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
-    } else if (typeof req.query.token === 'string' && req.query.token.trim().length > 0) {
-      token = req.query.token.trim();
     }
 
     if (!token) {

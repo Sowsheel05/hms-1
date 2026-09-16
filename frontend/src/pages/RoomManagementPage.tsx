@@ -92,6 +92,18 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
   // 5. Filter Modal
   const [isFilterModalOpen, setIsFilterModalOpen] = useState<boolean>(false);
 
+  // 6. Login Credentials Receipt Modal
+  const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState<boolean>(false);
+  const [credentialsModalData, setCredentialsModalData] = useState<{
+    name: string;
+    jntuNo: string;
+    email: string;
+    blockName: string;
+    roomNumber: string;
+    bedNumber?: string | null;
+    passwordHint?: string;
+  } | null>(null);
+
   // =========================================================================
   //                       ROOMS & ALLOCATIONS STATE
   // =========================================================================
@@ -349,9 +361,28 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
         bedNumber: selectedAssignBed.trim() ? selectedAssignBed.trim() : undefined,
       });
 
-      showToast(res.message || `Assigned ${assignStudentTarget.name} successfully!`);
+      const targetRoom = rooms.find((r) => r.id === selectedAssignRoomId);
+      const studentName = assignStudentTarget.name;
+      const studentJntu = assignStudentTarget.jntuNo;
+      const studentEmail = assignStudentTarget.email;
+      const blockName = targetRoom ? targetRoom.block.name : 'Hostel Block';
+      const roomNumber = targetRoom ? targetRoom.roomNumber : 'Room';
+      const bedNumber = selectedAssignBed.trim() || 'Bed-1';
+
+      showToast(res.message || `Assigned ${studentName} successfully!`);
       setIsAssignModalOpen(false);
       setAssignStudentTarget(null);
+
+      setCredentialsModalData({
+        name: studentName,
+        jntuNo: studentJntu,
+        email: studentEmail,
+        blockName,
+        roomNumber,
+        bedNumber,
+        passwordHint: 'Password@123',
+      });
+      setIsCredentialsModalOpen(true);
       fetchPendingAllocations(false);
       fetchRooms(true);
     } catch (err: any) {
@@ -532,8 +563,24 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
         bedNumber: allocateBedNumber.trim() ? allocateBedNumber.trim() : undefined,
       });
 
+      const targetRoom = rooms.find((r) => r.id === allocateRoomId);
+      const student = eligibleStudents.find((s) => s.id === allocateStudentId);
+
       showToast(res.message || 'Student allocated successfully.');
       setIsAllocateModalOpen(false);
+
+      if (student) {
+        setCredentialsModalData({
+          name: student.name,
+          jntuNo: student.jntuNo,
+          email: student.email,
+          blockName: targetRoom ? targetRoom.block.name : 'Hostel Block',
+          roomNumber: targetRoom ? targetRoom.roomNumber : 'Room',
+          bedNumber: allocateBedNumber.trim() || 'Bed-1',
+          passwordHint: 'Password@123',
+        });
+        setIsCredentialsModalOpen(true);
+      }
       fetchRooms(false);
       fetchPendingAllocations(true);
       if (activeTab === 'allocations') fetchAllocations();
@@ -2647,6 +2694,121 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* 11. Login Credentials Receipt Modal */}
+      {isCredentialsModalOpen && credentialsModalData && (
+        <div
+          className="mgmt-modal-backdrop"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(5px)',
+            WebkitBackdropFilter: 'blur(5px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '1.5rem',
+            boxSizing: 'border-box',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsCredentialsModalOpen(false);
+          }}
+        >
+          <div
+            className="notice-modal-card"
+            style={{
+              maxWidth: '480px',
+              width: '100%',
+              backgroundColor: '#FFFFFF',
+              borderRadius: '14px',
+              boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35)',
+              overflow: 'hidden',
+              position: 'relative',
+              zIndex: 100000,
+            }}
+          >
+            <div className="notice-modal-header" style={{ backgroundColor: '#151B54', color: 'white', padding: '1.15rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <ShieldCheck size={22} style={{ color: '#34D399' }} />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#FFFFFF' }}>Room Allocated & Credentials Issued</h3>
+                  <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>Account Active • Student Portal Ready</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCredentialsModalOpen(false)}
+                style={{ border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', padding: '0.2rem' }}
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
+              <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', padding: '0.85rem 1rem', borderRadius: '8px' }}>
+                <p style={{ margin: 0, fontWeight: 700, color: '#166534', fontSize: '0.925rem' }}>
+                  ✓ Room Allocation Confirmed for {credentialsModalData.name}
+                </p>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.825rem', color: '#15803D' }}>
+                  Allocated to <strong>{credentialsModalData.blockName} • Room {credentialsModalData.roomNumber} ({credentialsModalData.bedNumber || 'Bed-1'})</strong>
+                </p>
+              </div>
+
+              {/* Credentials Box */}
+              <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', padding: '1rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                <span style={{ fontSize: '0.725rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STUDENT LOGIN CREDENTIALS</span>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', padding: '0.55rem 0.75rem', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 600 }}>Login ID / Roll No:</span>
+                  <strong style={{ fontSize: '0.95rem', color: '#151B54', fontFamily: 'monospace' }}>{credentialsModalData.jntuNo}</strong>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', padding: '0.55rem 0.75rem', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 600 }}>Portal URL:</span>
+                  <span style={{ fontSize: '0.825rem', color: '#2563EB', fontWeight: 700 }}>http://localhost:5173/</span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', padding: '0.55rem 0.75rem', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 600 }}>Password:</span>
+                  <strong style={{ fontSize: '0.95rem', color: '#059669', fontFamily: 'monospace' }}>{credentialsModalData.passwordHint || 'Password@123'}</strong>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: '0.75rem', paddingTop: '0.25rem' }}>
+                <button
+                  type="button"
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', backgroundColor: '#151B54', color: 'white', fontWeight: 700, padding: '0.65rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer' }}
+                  onClick={() => {
+                    const text = `HMS Student Login Credentials:\nStudent Name: ${credentialsModalData.name}\nRoll No / Login ID: ${credentialsModalData.jntuNo}\nPassword: ${credentialsModalData.passwordHint || 'Password@123'}\nAllocated Room: ${credentialsModalData.blockName} Room ${credentialsModalData.roomNumber} (${credentialsModalData.bedNumber || 'Bed-1'})\nURL: http://localhost:5173/`;
+                    navigator.clipboard.writeText(text);
+                    showToast('Login credentials copied to clipboard!');
+                  }}
+                >
+                  <Check size={16} />
+                  <span>Copy Credentials</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-light-secondary"
+                  onClick={() => setIsCredentialsModalOpen(false)}
+                  style={{ padding: '0.65rem 1rem', fontWeight: 600, borderRadius: '8px' }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

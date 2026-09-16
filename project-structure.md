@@ -1,6 +1,11 @@
 # HMS (Hostel Management System) — Project Structure Report
 
-This document presents the complete and authoritative filesystem tree of the Hostel Management System (HMS), followed by concise architecture summaries for each layer of the application.
+> **WARNING:** This file is the authoritative source for understanding the project structure. If you are unfamiliar with this codebase, READ THIS FILE FIRST before attempting to navigate or modify any code.
+
+> **Last Updated:** 2026-09-16
+> **Total Files:** 300+ (see breakdown below)
+> **Backend Routes:** 25+ route modules
+> **Frontend Pages:** 30+ page components
 
 ---
 
@@ -10,247 +15,293 @@ This document presents the complete and authoritative filesystem tree of the Hos
 hms/
 ├── .gitignore
 ├── README.md
+├── BUGS.md                          # Bug report — all known issues with severity, file paths, and fixes
+├── package.json                     # Root monorepo scripts (dev, build, start)
+├── project-structure.md             # THIS FILE — authoritative structure documentation
+├── start-dev.mjs                    # Concurrent dev server launcher (backend + frontend)
 │
 ├── backend/
-│   ├── .env
-│   ├── .env.example
+│   ├── .env                         # Environment variables (DATABASE_URL, JWT_SECRET, PORT, etc.)
+│   ├── .env.example                 # Template environment file
 │   ├── .gitignore
 │   ├── package.json
 │   ├── package-lock.json
 │   ├── tsconfig.json
 │   │
-│   ├── check-hardening-db.cjs
-│   ├── check-postgres-health.cjs
-│   ├── export-sqlite-data.cjs
-│   ├── import-data-to-postgres.cjs
-│   ├── run-all-regressions.cjs
-│   ├── verify-step7-postgres.cjs
-│   ├── verify-step8-postgres.cjs
-│   ├── verify-step9-postgres.cjs
-│   ├── verify-step12-postgres.cjs
-│   ├── verify-step13-postgres.cjs
+│   ├── check-hardening-db.cjs       # Database hardening verification script
+│   ├── check-postgres-health.cjs    # PostgreSQL health check
+│   ├── export-sqlite-data.cjs       # Export legacy SQLite data to JSON
+│   ├── import-data-to-postgres.cjs  # Import data from SQLite to PostgreSQL
+│   ├── run-all-regressions.cjs      # Master regression test runner (15 suites, 221 tests)
+│   ├── verify-step*.cjs             # Step-by-step verification scripts (steps 7-19)
+│   ├── seed-test-leave-data.cjs     # Seed test leave data
 │   │
-│   ├── test-auth-api.cjs
-│   ├── test-dashboard-api.cjs
-│   ├── test-room-api.cjs
-│   ├── test-mess-api.cjs
-│   ├── test-outing-api.cjs
-│   ├── test-complaint-api.cjs
-│   ├── test-complaints-hardening.cjs
-│   ├── test-leaves-api.cjs
-│   ├── test-notifications-api.cjs
-│   ├── test-biometric-api.cjs
-│   ├── test-management-dashboard-api.cjs
-│   ├── test-block-management-api.cjs
-│   ├── test-room-management-api.cjs
-│   ├── test-management-mess-api.cjs
-│   ├── test-management-outing-api.cjs
+│   ├── test-*.cjs                   # Test suites (50+ test files covering all APIs)
+│   │   ├── test-auth-api.cjs
+│   │   ├── test-dashboard-api.cjs
+│   │   ├── test-room-api.cjs
+│   │   ├── test-room-allocation-step3-api.cjs
+│   │   ├── test-mess-api.cjs
+│   │   ├── test-mess-management-step4-api.cjs
+│   │   ├── test-mess-indent-attendance-reports.cjs
+│   │   ├── test-student-mess-workflow.cjs
+│   │   ├── test-student-mess-static-qr.cjs
+│   │   ├── test-outing-api.cjs
+│   │   ├── test-management-outing-api.cjs
+│   │   ├── test-management-outing-log-history.cjs
+│   │   ├── test-complaint-api.cjs
+│   │   ├── test-complaints-hardening.cjs
+│   │   ├── test-admin-complaints-maintenance-step7-api.cjs
+│   │   ├── test-leaves-api.cjs
+│   │   ├── test-management-leaves-api.cjs
+│   │   ├── test-admin-leaves-suspension-step6-api.cjs
+│   │   ├── test-notifications-api.cjs
+│   │   ├── test-management-notifications.cjs
+│   │   ├── test-admin-notifications.cjs
+│   │   ├── test-biometric-api.cjs
+│   │   ├── test-management-dashboard-api.cjs
+│   │   ├── test-management-device-api.cjs
+│   │   ├── test-block-management-api.cjs
+│   │   ├── test-room-management-api.cjs
+│   │   ├── test-management-mess-api.cjs
+│   │   ├── test-management-user-management-api.cjs
+│   │   ├── test-admin-user-management-step10-api.cjs
+│   │   ├── test-admin-portal-identity-api.cjs
+│   │   ├── test-admin-guest-billing-step8-api.cjs
+│   │   ├── test-admin-log-history-step9-api.cjs
+│   │   ├── test-fee-management-collection-api.cjs
+│   │   ├── test-fee-hardening-reconciliation.cjs
+│   │   ├── test-management-guest-billing-api.cjs
+│   │   ├── test-cross-portal-integration.cjs
+│   │   ├── test-prelogin-registration-workflow.cjs
+│   │   ├── test-student-portal-hardening.cjs
+│   │   ├── test-student-portal-e2e-hardening.cjs
+│   │   └── ...
 │   │
 │   ├── prisma/
-│   │   ├── dev.db                      # Legacy SQLite file (retained as backup)
-│   │   ├── dev.db.backup               # Legacy SQLite snapshot backup
-│   │   ├── schema.prisma               # Authoritative Prisma schema (PostgreSQL 18.6)
-│   │   ├── seed.ts                     # Database seeder script
-│   │   ├── sqlite-backup-data.json     # Migrated historical export
+│   │   ├── dev.db                   # Legacy SQLite (retained as backup)
+│   │   ├── dev.db.backup            # Legacy SQLite snapshot backup
+│   │   ├── schema.prisma            # Authoritative Prisma schema (PostgreSQL 18.6)
+│   │   ├── seed.ts                  # Database seeder script
+│   │   ├── sqlite-backup-data.json  # Migrated historical export
 │   │   └── migrations/
-│   │       ├── 20260908000000_initial_baseline/
-│   │       │   └── migration.sql
-│   │       └── 20260910000000_step12_room_management/
-│   │           └── migration.sql
+│   │       ├── 20260908000000_initial_baseline/migration.sql
+│   │       └── 20260910000000_step12_room_management/migration.sql
 │   │
-│   ├── src/
-│   │   ├── index.ts                    # Express server entry point & middleware bootstrap
-│   │   │
-│   │   ├── config/
-│   │   │   └── index.ts                # Environment variables, JWT secret, ports, CORS config
-│   │   │
-│   │   ├── middleware/
-│   │   │   ├── auth.middleware.ts       # Student JWT authentication middleware
-│   │   │   ├── management.middleware.ts # Warden/Management server-side RBAC middleware
-│   │   │   └── rate-limiter.ts          # In-memory login & mutation rate limiting
-│   │   │
-│   │   ├── routes/
-│   │   │   ├── auth.routes.ts           # Student authentication & password endpoints
-│   │   │   ├── biometric.routes.ts      # Student biometric overview & gate ingestion routes
-│   │   │   ├── block.routes.ts          # Block management CRUD routes
-│   │   │   ├── complaint.routes.ts      # Student complaints & file attachments
-│   │   │   ├── dashboard.routes.ts      # Student overview metrics & quick stats
-│   │   │   ├── leave.routes.ts          # Student leaves & suspension enforcement
-│   │   │   ├── management.routes.ts     # Warden/Admin authentication & portal router
-│   │   │   ├── mess-management.routes.ts# Management mess token administration & stats
-│   │   │   ├── mess.routes.ts           # Student meal booking & token generation
-│   │   │   ├── notification.routes.ts   # Student notification list & read status
-│   │   │   ├── outing-management.routes.ts # Management outing approvals & gate monitoring
-│   │   │   ├── outing.routes.ts         # Student outing requests & pass generation
-│   │   │   ├── room-management.routes.ts# Room creation, capacity, and student allocations
-│   │   │   └── room.routes.ts           # Student "My Room" accommodation details
-│   │   │
-│   │   └── services/
-│   │       ├── auth.service.ts          # Hashing, token generation, credential verification
-│   │       ├── biometric.service.ts     # Presence calculation & physical gate correlation
-│   │       ├── events.service.ts        # Server-Sent Events (SSE) domain event broker
-│   │       ├── management.service.ts    # Management dashboard aggregation & analytics
-│   │       ├── notification.service.ts  # Notification creation, queries, unread counts
-│   │       ├── prisma.service.ts        # PrismaClient instance with PostgreSQL connection
-│   │       └── storage.service.ts       # Local file upload disk storage provider
-│   │
-│   └── uploads/
-│       └── complaints/                  # Stored attachments for student complaints
+│   └── src/
+│       ├── index.ts                 # Express server entry point & middleware bootstrap
+│       │
+│       ├── config/
+│       │   └── index.ts             # Env vars, JWT config, ports, CORS config
+│       │
+│       ├── middleware/
+│       │   ├── auth.middleware.ts   # Student JWT authentication middleware
+│       │   ├── management.middleware.ts # Warden/Management RBAC middleware (WARDEN, CHIEF_WARDEN, ADMIN, HOSTEL_ADMIN, MAINTENANCE_STAFF)
+│       │   └── rate-limiter.ts      # In-memory login rate limiting (100 req/15min/IP)
+│       │
+│       ├── routes/
+│       │   ├── auth.routes.ts        # Student auth (register, login, logout, me)
+│       │   ├── dashboard.routes.ts   # Student dashboard metrics & SSE events
+│       │   ├── room.routes.ts        # Student "My Room" accommodation details
+│       │   ├── mess.routes.ts        # Student mess tokens, booking, QR, indent marking
+│       │   ├── mess-management.routes.ts # Management mess administration
+│       │   ├── outing.routes.ts      # Student outing requests (create, cancel, list)
+│       │   ├── complaint.routes.ts   # Student complaints, comments, attachments (multer)
+│       │   ├── complaint-management.routes.ts # Management complaint processing
+│       │   ├── leave.routes.ts       # Student leaves & admin suspension test helpers
+│       │   ├── leave-management.routes.ts # Management leave approval/rejection
+│       │   ├── notification.routes.ts # Student notifications (list, read, count)
+│       │   ├── admin-notification.routes.ts # Management broadcast notifications
+│       │   ├── biometric.routes.ts   # Student biometric overview, events, SSE
+│       │   ├── device.routes.ts      # Device management (CRUD, credentials, telemetry)
+│       │   ├── block.routes.ts       # Block management CRUD
+│       │   ├── room-management.routes.ts # Room CRUD, allocations, capacity
+│       │   ├── management.routes.ts   # Management auth, dashboard, SSE, sub-router host
+│       │   ├── management.routes.ts  # Sub-routers: blocks, rooms, room-allocations, mess, outings, leaves, suspensions, complaints, guest-billing, log-history, outing-log-history, devices, users, fee-management, fee-collection, notifications, hostel-applications
+│       │   ├── fee-management.routes.ts # Fee structure, items, academic years, scholarships
+│       │   ├── fee-collection.routes.ts # Fee payment, fines, reconciliation
+│       │   ├── guest-billing.routes.ts # Guest visits, check-ins, itemized bills
+│       │   ├── log-history.routes.ts  # Activity log, audit trail queries
+│       │   ├── outing-log-history.routes.ts # Outing historical records
+│       │   ├── user-management.routes.ts # User accounts, roles, credentials
+│       │   ├── hostel-application.routes.ts # Student hostel application submission
+│       │   └── hostel-application-management.routes.ts # Management application review
+│       │
+│       └── services/
+│           ├── auth.service.ts        # Hashing, token generation, credential verification
+│           ├── biometric.service.ts   # Presence calculation, gate correlation, event ingestion
+│           ├── events.service.ts       # SSE broker (EventEmitter), domain event dispatch
+│           ├── management.service.ts   # Dashboard aggregation, occupancy metrics
+│           ├── notification.service.ts # Notification creation, broadcast, stats
+│           ├── prisma.service.ts       # PrismaClient singleton
+│           ├── storage.service.ts      # Local file upload (JPG/PNG/WebP, magic bytes)
+│           ├── audit.service.ts        # Audit log records, metadata sanitization
+│           ├── device.service.ts       # Device CRUD, API key rotation, telemetry
+│           ├── fee-management.service.ts # Fee structure management
+│           ├── fee-collection.service.ts # Fee payment processing
+│           ├── device.service.ts       # Biometric device management
+│           └── ...
 │
-└── frontend/
-    ├── index.html                       # Single-page application HTML template
-    ├── package.json
-    ├── package-lock.json
-    ├── tsconfig.json
-    ├── tsconfig.node.json
-    ├── tsconfig.tsbuildinfo
-    ├── vite.config.ts                   # Vite bundler configuration & API proxy
-    │
-    ├── public/
-    │   └── favicon.svg                  # Application branding icon
-    │
-    └── src/
-        ├── App.tsx                      # Root layout, router switcher & portal switcher
-        ├── index.css                    # Design tokens, layouts, animations & responsive styles
-        ├── main.tsx                     # React DOM bootstrap
-        │
-        ├── components/
-        │   ├── DashboardHeader.tsx      # Student operational header with live status
-        │   ├── LoginForm.tsx            # Student authentication form
-        │   ├── ManagementHeader.tsx     # Management portal operational header
-        │   ├── ManagementSidebar.tsx    # Management navigation sidebar with 13 module slots
-        │   ├── PasswordInput.tsx        # Accessible toggleable password field
-        │   ├── PlaceholderModule.tsx    # Locked module placeholder for subsequent steps
-        │   └── Sidebar.tsx              # Student navigation sidebar
-        │
-        ├── config/
-        │   └── branding.ts              # Institutional branding configuration
-        │
-        ├── context/
-        │   ├── AuthContext.tsx          # Student authentication state & token session
-        │   └── ManagementAuthContext.tsx# Warden/Management auth state & RBAC profile
-        │
-        ├── pages/
-        │   ├── BiometricPage.tsx        # Student gate entry/exit logs & attendance
-        │   ├── BlockManagementPage.tsx  # Warden block configuration & occupancy tracking
-        │   ├── ComplaintsPage.tsx       # Student ticket submission & comment timeline
-        │   ├── DashboardPage.tsx        # Student main operational overview
-        │   ├── LeavesPage.tsx           # Student leave applications & suspension warnings
-        │   ├── LoginPage.tsx            # Student authentication screen
-        │   ├── ManagementDashboardPage.tsx # Warden operational overview & metrics
-        │   ├── ManagementLoginPage.tsx  # Warden & Admin dedicated login screen
-        │   ├── MessManagementPage.tsx   # Warden meal tokens administration & scanner
-        │   ├── MessTokensPage.tsx       # Student meal token booking & QR verification
-        │   ├── MyRoomPage.tsx           # Student room, bed, and roommate details
-        │   ├── NotificationsPage.tsx    # Student in-app notifications center
-        │   ├── OutingApprovalsPage.tsx  # Warden review, approve, and gate transit monitor
-        │   ├── OutingRequestsPage.tsx   # Student outing pass booking & digital QR pass
-        │   └── RoomManagementPage.tsx   # Warden room inventory & bed allocation
-        │
-        ├── routes/
-        │   └── ProtectedRoute.tsx       # Route guard enforcing authentication
-        │
-        └── services/
-            └── api.ts                   # Unified typed HTTP client, auth storage & SSE listener
+├── frontend/
+│   ├── index.html                    # SPA HTML template
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── tsconfig.json
+│   ├── tsconfig.node.json
+│   ├── tsconfig.tsbuildinfo
+│   ├── vite.config.ts                # Vite bundler & API proxy config
+│   │
+│   ├── public/
+│   │   └── favicon.svg              # App branding icon
+│   │
+│   └── src/
+│       ├── App.tsx                   # Root layout, student/management portal routing
+│       ├── index.css                 # Design tokens, layouts, animations, responsive styles
+│       ├── main.tsx                  # React DOM bootstrap
+│       │
+│       ├── components/
+│       │   ├── DashboardHeader.tsx  # Student operational header with live status
+│       │   ├── LoginForm.tsx         # Student authentication form
+│       │   ├── ManagementHeader.tsx  # Management portal operational header
+│       │   ├── ManagementSidebar.tsx # Management sidebar (14 modules)
+│       │   ├── Sidebar.tsx           # Student navigation sidebar (8 modules)
+│       │   ├── PasswordInput.tsx     # Accessible toggleable password field
+│       │   ├── PlaceholderModule.tsx # Locked module placeholder
+│       │   └── StaticMessQr.tsx      # Static mess QR display component
+│       │
+│       ├── config/
+│       │   └── branding.ts           # Institutional branding config (app name, colors, etc.)
+│       │
+│       ├── context/
+│       │   ├── AuthContext.tsx       # Student auth state, token, profile
+│       │   └── ManagementAuthContext.tsx # Warden/Management auth state, token, RBAC
+│       │
+│       ├── pages/
+│       │   ├── LoginPage.tsx         # Student login screen
+│       │   ├── DashboardPage.tsx     # Student operational overview
+│       │   ├── MyRoomPage.tsx        # Room, bed, roommate details
+│       │   ├── MessTokensPage.tsx    # Meal token booking & QR
+│       │   ├── OutingRequestsPage.tsx # Outing pass booking
+│       │   ├── ComplaintsPage.tsx    # Ticket submission & comment timeline
+│       │   ├── LeavesPage.tsx        # Leave applications & suspension warnings
+│       │   ├── NotificationsPage.tsx # In-app notification center
+│       │   ├── HostelApplicationPage.tsx # Hostel application status
+│       │   ├── StudentRegistrationPage.tsx # New student registration
+│       │   ├── ManagementLoginPage.tsx # Warden/Admin login
+│       │   ├── ManagementDashboardPage.tsx # Warden operational overview
+│       │   ├── BlockManagementPage.tsx # Block configuration & occupancy
+│       │   ├── RoomManagementPage.tsx # Room inventory & bed allocation
+│       │   ├── MessManagementPage.tsx # Mess token admin & scanner
+│       │   ├── OutingApprovalsPage.tsx # Warden outing review & gate monitor
+│       │   ├── ManagementLeavesPage.tsx # Management leave approval
+│       │   ├── ManagementComplaintsPage.tsx # Management complaint processing
+│       │   ├── GuestBillingManagementPage.tsx # Guest visit & billing admin
+│       │   ├── ManagementLogHistoryPage.tsx # System log & audit view
+│       │   ├── ManagementOutingLogHistoryPage.tsx # Outing log history
+│       │   ├── OutingLogHistoryPage.tsx # Student outing history
+│       │   ├── FeeManagementPage.tsx # Fee structure & configuration
+│       │   ├── FeeCollectionPage.tsx # Fee payment & reconciliation
+│       │   ├── ManagementDevicePage.tsx # Device management & turnstile registry
+│       │   ├── ManagementNotificationsPage.tsx # Management notification center
+│       │   ├── ManagementUserManagementPage.tsx # User accounts & role admin
+│       │   ├── ManagementHostelApplicationsPage.tsx # Student registration review
+│       │   └── ...
+│       │
+│       ├── routes/
+│       │   └── ProtectedRoute.tsx    # Route guard enforcing authentication
+│       │
+│       ├── services/
+│       │   ├── api.ts               # Unified typed HTTP client (student + management)
+│       │   └── student-realtime.ts  # SSE client for student events
+│       │
+│       └── styles/
+│           ├── index.css            # Global styles, design tokens
+│           ├── OutingLogHistory.css
+│           ├── FeeModules.css
+│           ├── DeviceManagement.css
+│           ├── AdminNotifications.css
+│           └── ...
+│
+└── docs/
+    ├── notifications-implementation-plan.md
+    ├── notifications-implementation.md
+    ├── mess-indent-attendance-four-way-reporting.md
+    ├── hms-final-integration-step6.md
+    ├── fee-management-implementation.md
+    ├── fee-management-implementation-plan.md
+    ├── device-management-implementation.md
+    ├── device-management-implementation-plan.md
+    ├── admin-dashboard-step1-report.md
+    ├── admin-block-management-step2-report.md
+    ├── student-mess-workflow-step3.md
+    ├── student-mess-static-qr-step7.md
+    ├── outing-log-history-implementation.md
+    ├── outing-log-history-implementation-plan.md
+    ├── student-portal-production-audit.md
+    ├── student-portal-hardening-step2.md
+    ├── student-portal-production-hardening-step5.md
+    ├── student-portal-ui-step4.md
+    └── ...
 ```
 
 ---
 
 ## 2. Architecture Summaries
 
-### 1. Frontend Architecture
-- **Framework**: React 18 with TypeScript, bundled using Vite.
-- **Routing & State**: Light client-side state machine in `App.tsx` routing between Student Portal (`/dashboard`, `/room`, `/mess`, `/outings`, `/complaints`, `/leaves`, `/biometric`, `/notifications`) and Management Portal (`/management/dashboard`, `/management/blocks`, `/management/rooms`, `/management/mess`, `/management/outings`).
-- **Contexts**:
-  - `AuthContext.tsx`: Manages student authentication, active token, and current student profile.
-  - `ManagementAuthContext.tsx`: Manages management personnel authentication, session token, and authorized management role.
-- **Styling**: Vanilla CSS in `index.css` implementing institutional design tokens (colors, typography, elevation, glassmorphism, responsive breakpoints) with zero Tailwind dependency. Fully responsive across 11 device viewports (from 320px small mobile to 1920px desktop).
+### 2.1 Frontend Architecture
+- **Framework:** React 18 with TypeScript, bundled using Vite
+- **Routing:** Manual `window.location` + `history.pushState` (see **BUGS.md M3** — migration to React Router recommended)
+- **Contexts:**
+  - `AuthContext.tsx`: Student authentication, token in localStorage (see **BUGS.md C5**)
+  - `ManagementAuthContext.tsx`: Warden/Management auth, multi-key token storage (see **BUGS.md C7**)
+- **Styling:** Vanilla CSS in `index.css` with institutional design tokens. Zero Tailwind dependency.
 
-### 2. Backend Architecture
-- **Runtime & Framework**: Node.js with TypeScript and Express.js.
-- **Modularity**: Separation of concerns into `routes/`, `middleware/`, and `services/`.
-- **RBAC & Security**:
-  - `auth.middleware.ts`: Authenticates students with Bearer tokens or query parameters, validating active sessions against PostgreSQL.
-  - `management.middleware.ts`: Authenticates management users, enforcing strict server-side RBAC (`WARDEN`, `CHIEF_WARDEN`, `ADMIN`, `HOSTEL_ADMIN`). Student tokens are rejected with HTTP 403 Forbidden.
-  - In-memory rate limiting on authentication routes and sensitive mutations.
-- **Audit Logging**: Mutations across rooms, allocations, mess tokens, outings, and complaints record timestamped entries in the authoritative `ActivityLog` table.
+### 2.2 Backend Architecture
+- **Runtime:** Node.js + Express.js + TypeScript
+- **Database:** PostgreSQL 18.6 via Prisma ORM
+- **Authentication:** JWT tokens with server-side session table for invalidation
+- **RBAC:** Two-tier — student middleware (`authenticateStudent`) + management middleware (`authenticateManagement`)
+- **Realtime:** SSE via `events.service.ts` (EventEmitter-based broker)
+- **Security:** Rate limiting on login, multer file upload validation, bcrypt password hashing
 
-### 3. Database / Prisma Structure
-- **Database Engine**: PostgreSQL 18.6 (`hostel_management` on `localhost:5432`). (Historic SQLite `dev.db` files are retained as archived data).
-- **ORM**: Prisma ORM (v5.22.0) with client generated under `backend/node_modules/@prisma/client`.
-- **Core Models**:
-  - `Student`: Resident profile, credentials, room info, active allocation, and role (`STUDENT` or management roles).
-  - `Session`: Active JWT sessions with expiration timestamps.
-  - `Block`: Residential buildings and wings (status, code, description).
-  - `Room`: Physical rooms associated with blocks, tracking floor, room type, capacity, and status.
-  - `RoomAllocation`: Relational bed allocations linking students to rooms with status (`ACTIVE`, `VACATED`, `REALLOCATED`).
-  - `OutingRequest`: Movement passes with pass types, departure/return schedules, approval fields (`approvedAt`, `approvedBy`, `rejectedAt`, `rejectedBy`), and biometric transit timestamps (`actualExitTime`, `actualReturnTime`).
-  - `MessToken`: Meal booking tokens with meal types (`BREAKFAST`, `LUNCH`, `SNACKS`, `DINNER`), consumption status, and cancellation reasons.
-  - `LeaveRequest`: Formal long-term leave requests.
-  - `Suspension`: Disciplinary restrictions preventing pass booking.
-  - `Complaint` & `Attachment`: Maintenance issue ticketing with comments and uploaded attachments.
-  - `BiometricEvent`: Physical gate turnstile events (`ENTRY`, `EXIT`, `VERIFIED`, `REJECTED`).
-  - `Notification`: In-app notification queue.
-  - `ActivityLog`: Comprehensive system audit trail.
+### 2.3 Database Schema (Prisma)
+Core models: Student, Session, Block, Room, RoomAllocation, OutingRequest, MessToken, MessIndent, LeaveRequest, Suspension, Complaint, Attachment, BiometricEvent, Notification, ActivityLog, Device, Fee, HostelApplication, GuestVisit, AuditLog.
 
-### 4. API Structure
-- **Base Route Prefix**: `/api`
-- **Student Endpoints**:
-  - `/api/auth/*`: Login, logout, credential management.
-  - `/api/student/dashboard`: Consolidated metrics and activity.
-  - `/api/student/my-room`: Accommodation details and roommates.
-  - `/api/student/mess-tokens/*`: Token booking, cancellation, and barcode verification.
-  - `/api/student/outing-requests/*`: Outing creation, history, and active pass retrieval.
-  - `/api/student/complaints/*`: Ticket submission, comment posting, and file upload.
-  - `/api/student/leaves/*`: Leave request filing and cancellation.
-  - `/api/student/biometric/*`: Access records, today's presence hours, and status.
-  - `/api/student/notifications/*`: Notification listing and mark-as-read mutations.
-- **Management Endpoints**:
-  - `/api/management/auth/*`: Warden login, session verification.
-  - `/api/management/dashboard/*`: Operational statistics, quick actions, today's metrics.
-  - `/api/management/blocks/*`: Block creation, updates, status toggles, deletion.
-  - `/api/management/rooms/*`: Room creation, updates, capacity tracking, deletion.
-  - `/api/management/room-allocations/*`: Bed assignment, student reallocation, vacating.
-  - `/api/management/mess/*`: Meal service overview, token consumption, cancellation.
-  - `/api/management/outings/*`: Outing request KPI stats, filtering, approval, rejection.
-- **Testing Endpoints**:
-  - `/api/test/biometric/events`: Simulation of physical turnstile biometric scan events.
+### 2.4 API Routes Summary
+| Prefix | Auth Required | Description |
+|--------|--------------|-------------|
+| `/api/auth/*` | Public | Registration, login, logout |
+| `/api/student/*` | Student | Dashboard, room, mess, outings, complaints, leaves, biometric, notifications |
+| `/api/management/*` | Management | Dashboard, blocks, rooms, mess, outings, leaves, complaints, fees, devices, users |
+| `/api/test/*` | Test | Biometric event simulation |
 
-### 5. Realtime / SSE Structure
-- **Broker**: `backend/src/services/events.service.ts` using Node.js `EventEmitter`.
-- **Connections**:
-  - Student stream: `GET /api/student/events-stream` (keyed by `studentId`).
-  - Management stream: `GET /api/management/events-stream` (keyed by `managerId`).
-- **Heartbeat**: 25-second keep-alive ping (`: ping\n\n`) preventing proxy and gateway timeouts.
-- **Domain Event Dispatching**:
-  - Emitted **only after** PostgreSQL transactions commit.
-  - Dispatches domain events for complaints, leaves, notifications, biometric scans, blocks, rooms, allocations, mess tokens, and outing requests (`OUTING_APPROVED`, `OUTING_REJECTED`, `OUTING_EXIT_CONFIRMED`, `OUTING_RETURN_CONFIRMED`).
-  - Automatically synchronizes UI without client polling.
+---
 
-### 6. Testing Structure
-- **Runner**: Node.js test scripts executing via native `fetch` and Node `assert`.
-- **Master Regression Suite**: `backend/run-all-regressions.cjs` orchestrates all 15 test suites:
-  1. `test-auth-api.cjs` (10 tests)
-  2. `test-dashboard-api.cjs` (3 tests)
-  3. `test-room-api.cjs` (4 tests)
-  4. `test-mess-api.cjs` (6 tests)
-  5. `test-outing-api.cjs` (12 tests)
-  6. `test-complaint-api.cjs` (13 tests)
-  7. `test-complaints-hardening.cjs` (17 tests)
-  8. `test-leaves-api.cjs` (20 tests)
-  9. `test-notifications-api.cjs` (20 tests)
-  10. `test-biometric-api.cjs` (24 tests)
-  11. `test-management-dashboard-api.cjs` (18 tests)
-  12. `test-block-management-api.cjs` (15 tests)
-  13. `test-room-management-api.cjs` (20 tests)
-  14. `test-management-mess-api.cjs` (22 tests)
-  15. `test-management-outing-api.cjs` (17 tests)
-  - **Total Coverage**: 221 automated tests, 100% passing against PostgreSQL 18.6.
-- **Database Verification Scripts**: `verify-step7-postgres.cjs`, `verify-step8-postgres.cjs`, `verify-step9-postgres.cjs`, `verify-step12-postgres.cjs`, `verify-step13-postgres.cjs`.
+## 3. Bug Report
 
-### 7. Deployment / Docker Structure
-- **Docker Status**: No `Dockerfile`, `docker-compose.yml`, or container configuration files currently exist in the repository.
-- **Runtime Environment**:
-  - Backend runs as a Node.js process (`npm run dev` / `ts-node` or `dist/index.js`) listening on port `5001`.
-  - Frontend runs via Vite development server or static bundle (`dist/`) served by Express/Nginx listening on port `5173`.
-  - Database runs as a native or system PostgreSQL instance on `localhost:5432`.
+> **See `BUGS.md` for the complete, prioritized list of all known bugs (22 total).**
+
+Quick reference:
+- **7 CRITICAL** — Hardcoded secrets, CORS misconfig, token leakage, predictable hashes, XSS storage risks
+- **7 HIGH** — Missing routes, unauthenticated admin endpoints, non-crypto randomness, data inconsistency
+- **8 MEDIUM** — Code duplication, permissive rate limiting, fragile routing, session management issues
+
+---
+
+## 4. Testing
+
+- **Runner:** Node.js native `fetch` + `assert` (no external test framework)
+- **Master Suite:** `backend/run-all-regressions.cjs` — orchestrates 15 test suites (221 tests)
+- **Coverage:** 100% passing against PostgreSQL 18.6
+- **Regression:** Run `npm run build` first, then `node backend/run-all-regressions.cjs`
+
+---
+
+## 5. Development Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start both backend (port 5001) and frontend (port 5173) |
+| `npm run dev:backend` | Backend only |
+| `npm run dev:frontend` | Frontend only |
+| `npm run build` | Build both for production |

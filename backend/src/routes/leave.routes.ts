@@ -658,7 +658,7 @@ router.post('/leaves/:id/cancel', authenticateStudent, async (req: Authenticated
  * Used strictly for testing status transitions (APPROVED, REJECTED) and suspensions
  * without building management UI or violating security boundaries.
  */
-router.post('/leaves/test/admin-transition', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.post('/leaves/test/admin-transition', authenticateManagement, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { leaveId, targetStatus, remarks, approverName } = req.body;
 
@@ -721,7 +721,7 @@ router.post('/leaves/test/admin-transition', async (req: AuthenticatedRequest, r
 /**
  * Controlled Administrative Test Helper for Suspension
  */
-router.post('/leaves/test/admin-suspension', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.post('/leaves/test/admin-suspension', authenticateManagement, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { studentId, action, reason, startDate, endDate, suspensionId } = req.body;
 
