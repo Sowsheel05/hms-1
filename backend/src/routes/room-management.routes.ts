@@ -690,24 +690,22 @@ function decodeAcademicInfo(jntuNo: string) {
  */
 roomAllocationRouter.get('/pending', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
   try {
-    const { search, block, roomType, biometricStatus } = req.query;
+    const { search, block, roomType, biometricStatus, branch } = req.query;
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const limit = Math.max(1, Math.min(50, parseInt(req.query.limit as string, 10) || 10));
     const skip = (page - 1) * limit;
 
-    // Total un-filtered pending count from PostgreSQL
+    // Total un-filtered pending count from PostgreSQL (includes public student registrations)
     const totalPendingCount = await prisma.student.count({
       where: {
         role: 'STUDENT',
         allocationStatus: 'PENDING',
-        isActive: true,
       },
     });
 
     const whereClause: any = {
       role: 'STUDENT',
       allocationStatus: 'PENDING',
-      isActive: true,
     };
 
     if (typeof search === 'string' && search.trim()) {
@@ -716,15 +714,57 @@ roomAllocationRouter.get('/pending', async (req: AuthenticatedManagementRequest,
         { name: { contains: term, mode: 'insensitive' } },
         { jntuNo: { contains: term, mode: 'insensitive' } },
         { email: { contains: term, mode: 'insensitive' } },
+        {
+          hostelApplications: {
+            some: {
+              OR: [
+                { applicationNumber: { contains: term, mode: 'insensitive' } },
+                { branch: { contains: term, mode: 'insensitive' } },
+                { guardianName: { contains: term, mode: 'insensitive' } },
+                { phone: { contains: term, mode: 'insensitive' } },
+              ],
+            },
+          },
+        },
       ];
     }
 
     if (typeof block === 'string' && block.trim() && block.trim().toUpperCase() !== 'ALL') {
-      whereClause.blockName = { contains: block.trim(), mode: 'insensitive' };
+      const bTerm = block.trim();
+      whereClause.OR = [
+        ...(whereClause.OR || []),
+        { blockName: { contains: bTerm, mode: 'insensitive' } },
+        {
+          hostelApplications: {
+            some: {
+              preferredBlock: { contains: bTerm, mode: 'insensitive' },
+            },
+          },
+        },
+      ];
     }
 
     if (typeof roomType === 'string' && roomType.trim() && roomType.trim().toUpperCase() !== 'ALL') {
-      whereClause.roomType = { contains: roomType.trim(), mode: 'insensitive' };
+      const rtTerm = roomType.trim();
+      whereClause.OR = [
+        ...(whereClause.OR || []),
+        { roomType: { contains: rtTerm, mode: 'insensitive' } },
+        {
+          hostelApplications: {
+            some: {
+              preferredRoomType: { contains: rtTerm, mode: 'insensitive' },
+            },
+          },
+        },
+      ];
+    }
+
+    if (typeof branch === 'string' && branch.trim() && branch.trim().toUpperCase() !== 'ALL') {
+      whereClause.hostelApplications = {
+        some: {
+          branch: { contains: branch.trim(), mode: 'insensitive' },
+        },
+      };
     }
 
     const [filteredCount, students] = await Promise.all([
@@ -732,6 +772,10 @@ roomAllocationRouter.get('/pending', async (req: AuthenticatedManagementRequest,
       prisma.student.findMany({
         where: whereClause,
         include: {
+          hostelApplications: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
           biometricEvents: {
             orderBy: { eventTimestamp: 'desc' },
             take: 5,
@@ -748,9 +792,11 @@ roomAllocationRouter.get('/pending', async (req: AuthenticatedManagementRequest,
       }),
     ]);
 
-    // Map to rich pending allocation format
+    // Map to rich pending allocation format with full registration details
     const formattedPending = students.map((student) => {
       const academic = decodeAcademicInfo(student.jntuNo);
+      const app = student.hostelApplications[0];
+
       const hasVerifiedBiometric = student.biometricEvents.some(
         (b) => b.verificationStatus === 'VERIFIED'
       );
@@ -760,23 +806,45 @@ roomAllocationRouter.get('/pending', async (req: AuthenticatedManagementRequest,
         ? 'ENROLLED'
         : 'PENDING';
 
-      const phone = student.outings[0]?.emergencyContact || '+91 98765 43210';
+      const phone = app?.phone || student.outings[0]?.emergencyContact || '+91 98765 43210';
 
       return {
         id: student.id,
         studentId: student.id,
+        applicationId: app?.id || student.id,
+        applicationNumber: app?.applicationNumber || null,
         name: student.name,
         jntuNo: student.jntuNo,
         email: student.email,
         phone,
+        dob: app?.dob || '',
+        gender: app?.gender || 'Male',
+        isActive: student.isActive,
+        allocationStatus: student.allocationStatus,
         createdAt: student.createdAt,
         updatedAt: student.updatedAt,
-        courseInfo: academic,
+        courseInfo: {
+          degree: 'B.Tech',
+          department: app?.branch || academic.department,
+          year: app?.yearOfStudy || academic.year,
+          section: app?.section || 'A',
+          semester: app?.semester || academic.semester,
+        },
+        guardianInfo: {
+          guardianName: app?.guardianName || 'Not Specified',
+          guardianRelation: app?.guardianRelation || 'Father',
+          guardianPhone: app?.guardianPhone || 'Not Specified',
+          emergencyContact: app?.emergencyContact || 'Not Specified',
+          address: app?.address || 'Not Specified',
+        },
         preferences: {
-          roomPreference: student.roomType || 'Non-AC Room (2 Sharing)',
+          roomPreference: app?.preferredRoomType || student.roomType || 'Non-AC Room (2 Sharing)',
           sharingPreference: `${student.roomCapacity || 2} Sharing`,
-          blockPreference: student.blockName || 'Boys-Block-D',
-          floorPreference: student.floorName || 'First Floor',
+          blockPreference: app?.preferredBlock || student.blockName || 'Boys Hostel Block A',
+          floorPreference: app?.preferredFloor ? `Floor ${app.preferredFloor}` : (student.floorName || 'Floor 1'),
+          stayDuration: app?.stayDuration || 'Full Academic Year',
+          foodPreference: app?.foodPreference || 'VEG',
+          medicalConditions: app?.medicalConditions || 'None',
         },
         documents: {
           biometricStatus: bioStatus,
@@ -856,6 +924,19 @@ roomAllocationRouter.post('/reject', async (req: AuthenticatedManagementRequest,
           floorName: null,
           roomNumber: null,
           bedNumber: null,
+        },
+      });
+
+      await tx.hostelApplication.updateMany({
+        where: {
+          studentId: sId,
+          status: { in: ['PENDING', 'UNDER_REVIEW'] },
+        },
+        data: {
+          status: 'REJECTED',
+          rejectionReason,
+          reviewedBy: req.managementUser?.name || 'Hostel Administrator',
+          reviewedAt: new Date(),
         },
       });
 
@@ -964,6 +1045,19 @@ roomAllocationRouter.post('/:studentId/reject', async (req: AuthenticatedManagem
           floorName: null,
           roomNumber: null,
           bedNumber: null,
+        },
+      });
+
+      await tx.hostelApplication.updateMany({
+        where: {
+          studentId: sId,
+          status: { in: ['PENDING', 'UNDER_REVIEW'] },
+        },
+        data: {
+          status: 'REJECTED',
+          rejectionReason,
+          reviewedBy: req.managementUser?.name || 'Hostel Administrator',
+          reviewedAt: new Date(),
         },
       });
 
@@ -1201,7 +1295,10 @@ roomAllocationRouter.post('/', async (req: AuthenticatedManagementRequest, res: 
         throw new Error(`STUDENT_NOT_FOUND: Student with ID '${sId}' does not exist.`);
       }
 
-      if (!student.isActive) {
+      // A pending registration student is inactive until allocated
+      const isPendingRegistration = student.allocationStatus === 'PENDING' && !student.isActive;
+
+      if (!student.isActive && !isPendingRegistration) {
         throw new Error('STUDENT_INACTIVE: This student account is deactivated.');
       }
 
@@ -1317,10 +1414,11 @@ roomAllocationRouter.post('/', async (req: AuthenticatedManagementRequest, res: 
         },
       });
 
-      // 7. Update Student denormalized fields for backwards compatibility
+      // 7. Activate Student and update residential details
       await tx.student.update({
         where: { id: sId },
         data: {
+          isActive: true, // Activated! Student can now log in to Student Portal
           allocationStatus: 'ALLOCATED',
           blockName: room.block.name,
           roomNumber: room.roomNumber,
@@ -1332,11 +1430,29 @@ roomAllocationRouter.post('/', async (req: AuthenticatedManagementRequest, res: 
         },
       });
 
+      // 7b. Update any associated HostelApplication to APPROVED and record allocation details
+      await tx.hostelApplication.updateMany({
+        where: {
+          studentId: sId,
+          status: { in: ['PENDING', 'UNDER_REVIEW'] },
+        },
+        data: {
+          status: 'APPROVED',
+          allocatedRoomId: room.id,
+          allocatedBedNumber: assignedBed,
+          reviewedBy: req.managementUser?.name || 'Hostel Administrator',
+          reviewedAt: new Date(),
+        },
+      });
+
       // 8. Create ActivityLog
       await tx.activityLog.create({
         data: {
           studentId: req.managementUser!.id,
           actionType: 'ROOM_MANAGEMENT',
+          action: 'ALLOCATE',
+          entity: 'RoomAllocation',
+          entityId: allocation.id,
           description: `Allocated student ${student.name} (${student.jntuNo}) to ${room.block.name} Room ${room.roomNumber} (${assignedBed})`,
         },
       });
@@ -1345,10 +1461,12 @@ roomAllocationRouter.post('/', async (req: AuthenticatedManagementRequest, res: 
       await tx.notification.create({
         data: {
           studentId: sId,
-          title: 'Room Allocation Confirmed',
-          message: `You have been officially allocated ${assignedBed} in ${room.block.name}, Room ${room.roomNumber}.`,
+          title: 'Student Registration Approved & Room Allocated!',
+          message: `Your student registration has been approved. Your hostel allocation is: Hostel: ${room.block.name}, Room: ${room.roomNumber}, Bed: ${assignedBed}. You may now log in to the Student Portal using your credentials.`,
           type: 'SUCCESS',
           category: 'ROOM',
+          priority: 'HIGH',
+          source: 'ADMIN_PORTAL',
         },
       });
 

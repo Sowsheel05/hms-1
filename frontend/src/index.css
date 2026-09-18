@@ -3835,13 +3835,13 @@ a {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.55);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(5px);
   z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: 1.25rem;
+  overflow-y: auto;
   animation: fadeIn 200ms ease-out;
 }
 
@@ -3850,12 +3850,14 @@ a {
   border-radius: var(--radius-xl);
   width: 100%;
   max-width: 600px;
-  max-height: 90vh;
-  overflow-y: auto;
+  max-height: min(90vh, 760px);
   box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
   display: flex;
   flex-direction: column;
   animation: scaleUp 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  position: relative;
+  margin: auto;
 }
 
 .modal-container.details-modal {
@@ -3873,23 +3875,62 @@ a {
 }
 
 .modal-header {
-  padding: 1.5rem 1.75rem;
+  padding: 1.25rem 1.75rem;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
+  background: #FFFFFF;
+  z-index: 10;
 }
 
-.modal-title-group {
+.outing-modal-title-group,
+.modal-container .modal-title-group {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 0.85rem !important;
+}
+
+.modal-title-icon-badge {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #EEF2FF;
+  color: #151B54;
+  flex-shrink: 0;
+  border: 1px solid #E0E7FF;
+}
+
+.modal-title-icon-badge.info-badge {
+  background: #F0F9FF;
+  color: #0369A1;
+  border-color: #BAE6FD;
+}
+
+.modal-title-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
 .modal-title {
-  font-size: 1.35rem;
+  font-size: 1.25rem;
   font-weight: 800;
   color: var(--primary-navy);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.modal-subtitle {
+  font-size: 0.8rem;
+  color: #64748B;
+  margin: 0;
+  line-height: 1.25;
 }
 
 .modal-close-btn {
@@ -3897,12 +3938,13 @@ a {
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 0.35rem;
-  border-radius: 6px;
+  padding: 0.45rem;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .modal-close-btn:hover {
@@ -3911,16 +3953,56 @@ a {
 }
 
 .modal-form {
-  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+.modal-form-body {
+  padding: 1.5rem 1.75rem;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+/* Custom sleek scrollbar for modal scrollable content */
+.modal-form-body::-webkit-scrollbar,
+.details-body::-webkit-scrollbar,
+.modal-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-form-body::-webkit-scrollbar-track,
+.details-body::-webkit-scrollbar-track,
+.modal-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-form-body::-webkit-scrollbar-thumb,
+.details-body::-webkit-scrollbar-thumb,
+.modal-container::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+
+.modal-form-body::-webkit-scrollbar-thumb:hover,
+.details-body::-webkit-scrollbar-thumb:hover,
+.modal-container::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }
 
 .modal-form-alert {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  align-items: flex-start;
+  gap: 0.65rem;
   background: #FEF2F2;
   border: 1px solid #FECACA;
   border-radius: var(--radius-sm);
@@ -3928,6 +4010,12 @@ a {
   color: #991B1B;
   font-size: 0.85rem;
   font-weight: 600;
+  line-height: 1.4;
+}
+
+.modal-form-alert svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .form-field-group {
@@ -3944,6 +4032,7 @@ a {
 
 .form-field-label .required {
   color: #EF4444;
+  margin-left: 2px;
 }
 
 .form-input,
@@ -3958,6 +4047,24 @@ a {
   color: var(--text-main);
   transition: all var(--transition-fast);
   outline: none;
+  box-sizing: border-box;
+}
+
+.form-input[type="datetime-local"] {
+  min-height: 42px;
+  color-scheme: light;
+}
+
+.form-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  padding: 3px;
+  opacity: 0.75;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.form-input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 .form-input:focus,
@@ -3974,20 +4081,29 @@ a {
 
 .form-grid-2col {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
 
+@media (max-width: 580px) {
+  .form-grid-2col {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+}
+
 .modal-actions-footer {
-  padding: 1.25rem 1.75rem;
+  padding: 1.15rem 1.75rem;
   border-top: 1px solid var(--border-color);
   background: #F8FAFC;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 0.75rem;
+  flex-shrink: 0;
   border-bottom-left-radius: var(--radius-xl);
   border-bottom-right-radius: var(--radius-xl);
+  z-index: 10;
 }
 
 .btn-modal-cancel {
@@ -4032,10 +4148,14 @@ a {
 
 /* Request Details Body */
 .details-body {
-  padding: 1.75rem;
+  padding: 1.5rem 1.75rem;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  overscroll-behavior: contain;
 }
 
 .details-status-bar {
@@ -5878,16 +5998,8 @@ select.field-input {
 }
 
 /* ==========================================================================
-   MODAL CONTAINER (shared between create & details modals)
+   MODAL CONTAINER - defined in shared modal section
    ========================================================================== */
-
-.modal-container {
-  background: #FFFFFF;
-  border-radius: var(--radius-xl);
-  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
-  animation: scaleUp 220ms cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: hidden;
-}
 
 
 /* ==========================================================================
@@ -12339,6 +12451,79 @@ input[type="checkbox"] {
   gap: 0.75rem;
 }
 
+/* Parent Guardian Details Card */
+.parent-guardian-card {
+  background: linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%);
+  border: 1px solid #BAE6FD;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.parent-guardian-card .detail-section-title {
+  color: #0369A1;
+  border-bottom-color: #BAE6FD;
+  margin-bottom: 0.75rem;
+}
+
+.parent-phone-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.85rem;
+  background: #0284C7;
+  color: #FFFFFF !important;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);
+  transition: all 0.2s ease;
+  width: fit-content;
+  margin-top: 4px;
+}
+
+.parent-phone-badge:hover {
+  background: #0369A1;
+  transform: translateY(-1px);
+  color: #FFFFFF !important;
+}
+
+.parent-info-highlight {
+  font-weight: 700;
+  color: #0C4A6E;
+  font-size: 0.9rem;
+}
+
+.manage-full-btn {
+  background: #1E3A8A !important;
+  color: #FFFFFF !important;
+  font-weight: 600;
+  padding: 0.45rem 0.9rem;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.manage-full-btn:hover {
+  background: #172554 !important;
+  box-shadow: 0 2px 6px rgba(30, 58, 138, 0.3);
+}
+
+.pending-action-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: #B45309;
+  background: #FEF3C7;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #FDE68A;
+}
+
 .transit-status-box {
   background: #F8FAFC;
   border: 1px solid #E2E8F0;
@@ -14593,7 +14778,10 @@ input[type="checkbox"] {
   letter-spacing: -0.01em !important;
 }
 
-.modal-title-group {
+.complaint-detail-modal .modal-title-group,
+.assign-modal .modal-title-group,
+.resolve-modal .modal-title-group,
+.close-confirm-modal .modal-title-group {
   display: flex !important;
   flex-direction: column !important;
   gap: 0.35rem !important;
@@ -22064,5 +22252,767 @@ input[type="checkbox"] {
 
 .mess-report-table tr:hover td {
   background-color: #F8FAFC;
+}
+
+/* ==========================================================================
+   MESS ATTENDANCE MARKING - FILTER DROPDOWN & ATTRACTIVE STUDENT CARDS
+   ========================================================================== */
+
+/* Filter Controls Toolbar */
+.mess-filter-controls-bar {
+  padding: 0.85rem 1.25rem;
+  background: #FFFFFF;
+  border-bottom: 1px solid #E2E8F0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.filter-controls-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.filter-dropdown-container {
+  position: relative;
+}
+
+.btn-filter-dropdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  background: #FFFFFF;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 9px;
+  color: #1E293B;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 0.15s ease-in-out;
+}
+
+.btn-filter-dropdown:hover {
+  border-color: #94A3B8;
+  background: #F8FAFC;
+}
+
+.btn-filter-dropdown.active {
+  border-color: #151B54;
+  background: #EEF2FF;
+  color: #151B54;
+}
+
+.btn-filter-dropdown .filter-icon {
+  color: #151B54;
+}
+
+.btn-filter-dropdown .filter-label {
+  color: #64748B;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.btn-filter-dropdown .filter-selected-name {
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.btn-filter-dropdown .filter-count-badge {
+  background: #151B54;
+  color: #FFFFFF;
+  font-size: 0.725rem;
+  font-weight: 750;
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  line-height: 1;
+}
+
+.btn-filter-dropdown .filter-chevron {
+  color: #64748B;
+  transition: transform 0.2s ease;
+}
+
+.btn-filter-dropdown .filter-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* Dropdown Menu */
+.filter-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  min-width: 270px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.15), 0 4px 10px -2px rgba(15, 23, 42, 0.06);
+  padding: 0.4rem;
+  animation: scaleUp 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.filter-dropdown-header {
+  padding: 0.5rem 0.75rem 0.35rem;
+  font-size: 0.725rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94A3B8;
+}
+
+.filter-dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #334155;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  text-align: left;
+}
+
+.filter-dropdown-item:hover {
+  background: #F1F5F9;
+  color: #0F172A;
+}
+
+.filter-dropdown-item.selected {
+  background: #EEF2FF;
+  color: #151B54;
+  font-weight: 700;
+}
+
+.filter-item-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.filter-item-count {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748B;
+  background: #F1F5F9;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+}
+
+.filter-item-count.selected {
+  background: #151B54;
+  color: #FFFFFF;
+}
+
+/* Reset / Clear Filter Button */
+.btn-clear-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem;
+  background: #F8FAFC;
+  border: 1px dashed #CBD5E1;
+  border-radius: 8px;
+  color: #64748B;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-clear-filter:hover {
+  background: #F1F5F9;
+  border-color: #94A3B8;
+  color: #0F172A;
+}
+
+.filter-results-meta {
+  font-size: 0.825rem;
+  color: #64748B;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.filter-results-meta strong {
+  color: #0F172A;
+  font-weight: 700;
+}
+
+/* View Mode Toggle */
+.mess-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: #F1F5F9;
+  padding: 3px;
+  border-radius: 8px;
+  gap: 2px;
+  border: 1px solid #E2E8F0;
+}
+
+.mess-view-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #64748B;
+  font-size: 0.775rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mess-view-btn:hover {
+  color: #0F172A;
+}
+
+.mess-view-btn.active {
+  background: #FFFFFF;
+  color: #151B54;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* ==========================================================================
+   MESS ATTENDANCE ROSTER TABLE (LIST VIEW) - ZERO HARSH RED
+   ========================================================================== */
+
+.mess-roster-container {
+  padding: 1.25rem;
+}
+
+.mess-roster-table-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.mess-roster-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.mess-roster-table th {
+  background: #F8FAFC;
+  padding: 0.85rem 1.15rem;
+  font-size: 0.75rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.mess-roster-table td {
+  padding: 0.9rem 1.15rem;
+  font-size: 0.875rem;
+  color: #1E293B;
+  border-bottom: 1px solid #F1F5F9;
+  vertical-align: middle;
+}
+
+.mess-roster-table tr:hover td {
+  background-color: #F8FAFC;
+}
+
+.mess-roster-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Roster Student Cell */
+.roster-student-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.roster-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #EEF2FF;
+  color: #151B54;
+  font-weight: 800;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #C7D2FE;
+  flex-shrink: 0;
+}
+
+.roster-avatar.ate {
+  background: #ECFDF5;
+  color: #047857;
+  border-color: #A7F3D0;
+}
+
+.roster-student-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.roster-student-name {
+  font-weight: 750;
+  color: #0F172A;
+  font-size: 0.925rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roster-student-roll {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.725rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+/* Room Column */
+.roster-room-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #334155;
+  font-weight: 600;
+}
+
+.roster-room-pill svg {
+  color: #64748B;
+}
+
+/* Status Badges - CALM & PROFESSIONAL, ZERO HARSH RED */
+.roster-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.25rem 0.65rem;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.roster-badge.indent-kept {
+  background: #ECFDF5;
+  color: #065F46;
+  border: 1px solid #A7F3D0;
+}
+
+.roster-badge.indent-skipped {
+  background: #FAF5FF;
+  color: #6B21A8;
+  border: 1px solid #E9D5FF;
+}
+
+.roster-badge.indent-none {
+  background: #F8FAFC;
+  color: #64748B;
+  border: 1px solid #E2E8F0;
+}
+
+.roster-badge.att-ate {
+  background: #D1FAE5;
+  color: #047857;
+  border: 1px solid #6EE7B7;
+}
+
+/* CALM ABSENT BADGE - Neutral Slate, NO loud red */
+.roster-badge.att-absent {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+}
+
+.roster-badge.att-pending {
+  background: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+}
+
+/* Action Segmented Toggle */
+.roster-action-group {
+  display: inline-flex;
+  align-items: center;
+  background: #F8FAFC;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.roster-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: none;
+  font-size: 0.775rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: transparent;
+  color: #64748B;
+}
+
+.roster-btn:hover {
+  background: #EDF2F7;
+  color: #1E293B;
+}
+
+.roster-btn.active-ate {
+  background: #10B981;
+  color: #FFFFFF;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(16, 185, 129, 0.25);
+}
+
+/* CALM ABSENT ACTIVE BUTTON - Clean Slate, NO loud red */
+.roster-btn.active-absent {
+  background: #475569;
+  color: #FFFFFF;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(71, 85, 105, 0.2);
+}
+
+.roster-detail-link {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 6px;
+  color: #94A3B8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.roster-detail-link:hover {
+  background: #EEF2FF;
+  color: #151B54;
+}
+
+/* ==========================================================================
+   ELEGANT CARD LAYOUT - ZERO HARSH RED
+   ========================================================================== */
+
+.mess-students-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.15rem;
+  padding: 1.25rem;
+}
+
+.mess-student-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  padding: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.85rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.mess-student-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px -4px rgba(15, 23, 42, 0.08);
+  border-color: #CBD5E1;
+}
+
+/* When ate: subtle clean green border */
+.mess-student-card.state-ate {
+  border-color: #A7F3D0;
+}
+
+/* Clickable Body */
+.student-card-click-area {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Header: Avatar + Name + Roll + External Link */
+.student-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.student-card-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  overflow: hidden;
+  flex: 1;
+}
+
+.student-card-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.05rem;
+  flex-shrink: 0;
+  background: #EEF2FF;
+  color: #151B54;
+  border: 1px solid #C7D2FE;
+}
+
+.mess-student-card.state-ate .student-card-avatar {
+  background: #ECFDF5;
+  color: #047857;
+  border-color: #A7F3D0;
+}
+
+.student-card-meta-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.student-card-name {
+  font-size: 0.95rem;
+  font-weight: 750;
+  color: #0F172A;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+.student-card-roll {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.725rem;
+  font-weight: 700;
+  color: #475569;
+  background: #F1F5F9;
+  border: 1px solid #E2E8F0;
+  padding: 0.1rem 0.45rem;
+  border-radius: 5px;
+  width: fit-content;
+  letter-spacing: 0.02em;
+}
+
+.student-card-ext-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94A3B8;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.student-card-ext-btn:hover {
+  background: #F1F5F9;
+  color: #151B54;
+}
+
+/* Room & Block Info Pill */
+.student-card-room-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #F8FAFC;
+  padding: 0.4rem 0.65rem;
+  border-radius: 7px;
+  border: 1px solid #F1F5F9;
+  font-size: 0.75rem;
+}
+
+.room-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+.room-bar-right {
+  font-weight: 700;
+  color: #1E293B;
+}
+
+/* Status Chips Row */
+.student-card-chips-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.chip-indent {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.725rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.chip-indent.kept {
+  background: #ECFDF5;
+  color: #065F46;
+  border: 1px solid #A7F3D0;
+}
+
+.chip-indent.skipped {
+  background: #FAF5FF;
+  color: #6B21A8;
+  border: 1px solid #E9D5FF;
+}
+
+.chip-indent.none {
+  background: #F8FAFC;
+  color: #64748B;
+  border: 1px solid #E2E8F0;
+}
+
+.chip-attendance {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.725rem;
+  font-weight: 800;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.chip-attendance.ate {
+  background: #D1FAE5;
+  color: #047857;
+  border: 1px solid #6EE7B7;
+}
+
+/* CALM ABSENT CHIP - NO LOUD RED */
+.chip-attendance.absent {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+}
+
+.chip-attendance.pending {
+  background: #FEF3C7;
+  color: #B45309;
+  border: 1px solid #FDE68A;
+}
+
+/* Action Buttons */
+.student-card-actions {
+  border-top: 1px solid #F1F5F9;
+  padding-top: 0.65rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.btn-card-action {
+  flex: 1;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  border: 1.5px solid transparent;
+}
+
+/* Mark Ate button states */
+.btn-card-action.btn-ate-inactive {
+  background: #FFFFFF;
+  border-color: #86EFAC;
+  color: #047857;
+}
+
+.btn-card-action.btn-ate-inactive:hover {
+  background: #ECFDF5;
+  border-color: #10B981;
+  color: #065F46;
+}
+
+.btn-card-action.btn-ate-active {
+  background: #10B981;
+  border-color: #10B981;
+  color: #FFFFFF;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.25);
+}
+
+.btn-card-action.btn-ate-active:hover {
+  background: #059669;
+  border-color: #059669;
+}
+
+/* CALM ABSENT BUTTON STATES - NO LOUD RED */
+.btn-card-action.btn-absent-inactive {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+  color: #64748B;
+}
+
+.btn-card-action.btn-absent-inactive:hover {
+  background: #F1F5F9;
+  border-color: #CBD5E1;
+  color: #1E293B;
+}
+
+.btn-card-action.btn-absent-active {
+  background: #475569;
+  border-color: #475569;
+  color: #FFFFFF;
+  box-shadow: 0 2px 4px rgba(71, 85, 105, 0.2);
+}
+
+.btn-card-action.btn-absent-active:hover {
+  background: #334155;
+  border-color: #334155;
 }
 

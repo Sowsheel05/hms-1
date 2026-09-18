@@ -998,27 +998,27 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   <div className="pending-card-actions">
                     <button
                       type="button"
+                      onClick={() => handleOpenViewModal(item)}
+                      className="btn-card-action btn-card-view"
+                      title={`Review submitted registration details for ${item.name}`}
+                    >
+                      Review
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleOpenAssignModal(item)}
                       className="btn-card-action btn-card-assign"
-                      title={`Assign room to ${item.name}`}
+                      title={`Accept and allocate room to ${item.name}`}
                     >
-                      Assign
+                      Accept & Allocate
                     </button>
                     <button
                       type="button"
                       onClick={() => handleOpenRejectModal(item)}
                       className="btn-card-action btn-card-reject"
-                      title={`Reject allocation for ${item.name}`}
+                      title={`Reject registration for ${item.name}`}
                     >
                       Reject
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenViewModal(item)}
-                      className="btn-card-action btn-card-view"
-                      title={`View detailed application for ${item.name}`}
-                    >
-                      View
                     </button>
                   </div>
                 </article>
@@ -1403,10 +1403,10 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
               </div>
               <div>
                 <h3 className="notice-modal-title" style={{ margin: 0 }}>
-                  Assign Room
+                  Accept & Allocate Student
                 </h3>
                 <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
-                  {assignStudentTarget.name} ({assignStudentTarget.jntuNo})
+                  Student: <strong>{assignStudentTarget.name}</strong> | Roll No: <strong>{assignStudentTarget.jntuNo}</strong>
                 </span>
               </div>
               <button
@@ -1447,7 +1447,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   }}
                 >
                   <span style={{ fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                    STUDENT PREFERENCES:
+                    SUBMITTED REGISTRATION PREFERENCES:
                   </span>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', color: '#1E293B' }}>
                     <span>
@@ -1459,6 +1459,16 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                     <span>
                       Floor: <strong>{assignStudentTarget.preferences.floorPreference}</strong>
                     </span>
+                    {assignStudentTarget.preferences.stayDuration && (
+                      <span>
+                        Stay: <strong>{assignStudentTarget.preferences.stayDuration}</strong>
+                      </span>
+                    )}
+                    {assignStudentTarget.preferences.foodPreference && (
+                      <span>
+                        Mess: <strong>{assignStudentTarget.preferences.foodPreference}</strong>
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1602,7 +1612,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   className="btn-navy-primary"
                   disabled={isAssigning || !selectedAssignRoomId}
                 >
-                  {isAssigning ? 'Allocating...' : 'Confirm Allocation'}
+                  {isAssigning ? 'Accepting & Allocating...' : 'Accept & Allocate'}
                 </button>
               </div>
             </form>
@@ -1718,7 +1728,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
           <div
             className="mgmt-notice-modal"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '600px', width: '92%' }}
+            style={{ maxWidth: '780px', width: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
           >
             <div className="notice-modal-header">
               <div className="notice-icon-circle" style={{ backgroundColor: '#EEF2FF', color: '#151B54' }}>
@@ -1726,10 +1736,10 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
               </div>
               <div>
                 <h3 className="notice-modal-title" style={{ margin: 0 }}>
-                  Resident Application Details
+                  Review Student Registration
                 </h3>
                 <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
-                  {viewStudentTarget.name} ({viewStudentTarget.jntuNo})
+                  {viewStudentTarget.name} ({viewStudentTarget.jntuNo}) {viewStudentTarget.applicationNumber ? `• App: ${viewStudentTarget.applicationNumber}` : ''}
                 </span>
               </div>
               <button
@@ -1742,12 +1752,13 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
               </button>
             </div>
 
-            <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', overflowY: 'auto', padding: '1.25rem' }}>
               {/* Profile Bar */}
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'space-between',
                   gap: '1rem',
                   padding: '1rem',
                   backgroundColor: '#F8FAFC',
@@ -1755,84 +1766,186 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   border: '1px solid #E2E8F0',
                 }}
               >
-                <div className="student-avatar-badge" style={{ width: '56px', height: '56px', fontSize: '1.3rem' }}>
-                  {viewStudentTarget.name
-                    .split(' ')
-                    .filter(Boolean)
-                    .map((n) => n[0])
-                    .slice(0, 2)
-                    .join('')
-                    .toUpperCase()}
-                </div>
-                <div>
-                  <h4 style={{ margin: '0 0 2px', fontSize: '1.15rem', color: '#0F172A' }}>
-                    {viewStudentTarget.name}
-                  </h4>
-                  <div style={{ fontSize: '0.85rem', color: '#475569', fontFamily: 'monospace' }}>
-                    JNTU ID: {viewStudentTarget.jntuNo}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div className="student-avatar-badge" style={{ width: '54px', height: '54px', fontSize: '1.25rem' }}>
+                    {viewStudentTarget.name
+                      .split(' ')
+                      .filter(Boolean)
+                      .map((n) => n[0])
+                      .slice(0, 2)
+                      .join('')
+                      .toUpperCase()}
                   </div>
-                  <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: '4px' }}>
-                    Submitted on: {new Date(viewStudentTarget.createdAt).toLocaleString()}
+                  <div>
+                    <h4 style={{ margin: '0 0 2px', fontSize: '1.15rem', color: '#0F172A', fontWeight: 700 }}>
+                      {viewStudentTarget.name}
+                    </h4>
+                    <div style={{ fontSize: '0.85rem', color: '#334155', fontFamily: 'monospace', fontWeight: 600 }}>
+                      Roll No / ID: {viewStudentTarget.jntuNo}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '2px' }}>
+                      Registered: {new Date(viewStudentTarget.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'right' }}>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      padding: '4px 10px',
+                      borderRadius: '9999px',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      backgroundColor: '#FEF3C7',
+                      color: '#92400E',
+                      border: '1px solid #FDE68A',
+                    }}
+                  >
+                    REGISTRATION PENDING
+                  </span>
+                  {viewStudentTarget.applicationNumber && (
+                    <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
+                      Ref: {viewStudentTarget.applicationNumber}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* SECTION 1: PERSONAL DETAILS */}
+              <div style={{ border: '1px solid #E2E8F0', borderRadius: '10px', overflow: 'hidden' }}>
+                <div style={{ backgroundColor: '#F1F5F9', padding: '0.6rem 1rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1E293B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    1. Personal Details
+                  </span>
+                </div>
+                <div style={{ padding: '0.85rem 1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Full Name</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.name}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Date of Birth</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.dob || 'Not provided'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Gender</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.gender || 'Not specified'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Phone Number</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.phone}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Email Address</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.email}</strong>
                   </div>
                 </div>
               </div>
 
-              {/* Grid breakdown */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-                {/* Academic */}
-                <div style={{ padding: '0.85rem', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #F1F5F9' }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
-                    Academic Enrollment
+              {/* SECTION 2: ACADEMIC DETAILS */}
+              <div style={{ border: '1px solid #E2E8F0', borderRadius: '10px', overflow: 'hidden' }}>
+                <div style={{ backgroundColor: '#F1F5F9', padding: '0.6rem 1rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1E293B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    2. Academic Details
                   </span>
-                  <div style={{ marginTop: '0.35rem', fontSize: '0.875rem', color: '#1E293B', fontWeight: 600 }}>
-                    {viewStudentTarget.courseInfo.degree} - {viewStudentTarget.courseInfo.department}
+                </div>
+                <div style={{ padding: '0.85rem 1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Student ID / JNTU Roll No</span>
+                    <strong style={{ color: '#0F172A', fontFamily: 'monospace' }}>{viewStudentTarget.jntuNo}</strong>
                   </div>
-                  <div style={{ fontSize: '0.825rem', color: '#475569', marginTop: '2px' }}>
-                    {viewStudentTarget.courseInfo.year} • {viewStudentTarget.courseInfo.semester}
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Department / Branch</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.courseInfo.department}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Degree Program</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.courseInfo.degree}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Year of Study</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.courseInfo.year}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Section</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.courseInfo.section || 'A'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Semester</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.courseInfo.semester}</strong>
                   </div>
                 </div>
+              </div>
 
-                {/* Contact */}
-                <div style={{ padding: '0.85rem', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #F1F5F9' }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
-                    Contact Information
+              {/* SECTION 3: PARENT / GUARDIAN DETAILS */}
+              <div style={{ border: '1px solid #E2E8F0', borderRadius: '10px', overflow: 'hidden' }}>
+                <div style={{ backgroundColor: '#F1F5F9', padding: '0.6rem 1rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1E293B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    3. Parent / Guardian Details
                   </span>
-                  <div style={{ marginTop: '0.35rem', fontSize: '0.85rem', color: '#1E293B' }}>
-                    Phone: <strong>{viewStudentTarget.phone}</strong>
+                </div>
+                <div style={{ padding: '0.85rem 1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Parent / Guardian Name</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.guardianInfo?.guardianName || 'N/A'}</strong>
                   </div>
-                  <div style={{ fontSize: '0.85rem', color: '#1E293B', marginTop: '2px' }}>
-                    Email: <strong>{viewStudentTarget.email}</strong>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Relationship</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.guardianInfo?.guardianRelation || 'Parent'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Parent Phone</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.guardianInfo?.guardianPhone || 'N/A'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Emergency Contact</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.guardianInfo?.emergencyContact || 'N/A'}</strong>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Permanent Address</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.guardianInfo?.address || 'N/A'}</strong>
                   </div>
                 </div>
+              </div>
 
-                {/* Preferences */}
-                <div style={{ padding: '0.85rem', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #F1F5F9' }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
-                    Accommodations Requested
+              {/* SECTION 4: HOSTEL PREFERENCES & DECLARATION */}
+              <div style={{ border: '1px solid #E2E8F0', borderRadius: '10px', overflow: 'hidden' }}>
+                <div style={{ backgroundColor: '#F1F5F9', padding: '0.6rem 1rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1E293B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    4. Hostel Preferences & Health
                   </span>
-                  <div style={{ marginTop: '0.35rem', fontSize: '0.875rem', color: '#151B54', fontWeight: 600 }}>
-                    {viewStudentTarget.preferences.roomPreference}
-                  </div>
-                  <div style={{ fontSize: '0.825rem', color: '#475569', marginTop: '2px' }}>
-                    Block: {viewStudentTarget.preferences.blockPreference} | Floor:{' '}
-                    {viewStudentTarget.preferences.floorPreference}
-                  </div>
                 </div>
-
-                {/* Verification */}
-                <div style={{ padding: '0.85rem', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #F1F5F9' }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
-                    Identity Verification
-                  </span>
-                  <div style={{ marginTop: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.82rem', color: '#475569' }}>Biometrics:</span>
+                <div style={{ padding: '0.85rem 1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Preferred Hostel / Block</span>
+                    <strong style={{ color: '#151B54' }}>{viewStudentTarget.preferences.blockPreference}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Preferred Room Type</span>
+                    <strong style={{ color: '#151B54' }}>{viewStudentTarget.preferences.roomPreference}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Floor Preference</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.preferences.floorPreference}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Stay Duration</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.preferences.stayDuration || 'Academic Year (10 Months)'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Food / Mess Preference</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.preferences.foodPreference || 'Vegetarian'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Medical / Dietary Notes</span>
+                    <strong style={{ color: '#0F172A' }}>{viewStudentTarget.preferences.medicalConditions || 'None reported'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Biometric Status</span>
                     <span className={`status-badge ${viewStudentTarget.documents.biometricStatus === 'VERIFIED' ? 'badge-verified' : 'badge-pending'}`}>
                       {viewStudentTarget.documents.biometricStatus}
                     </span>
-                  </div>
-                  <div style={{ marginTop: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.82rem', color: '#475569' }}>Photos:</span>
-                    <span className="status-badge badge-submitted">{viewStudentTarget.documents.photos}</span>
                   </div>
                 </div>
               </div>
@@ -1840,7 +1953,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
 
             <div
               className="notice-modal-footer"
-              style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem' }}
+              style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem', borderTop: '1px solid #E2E8F0' }}
             >
               <button
                 type="button"
@@ -1867,7 +1980,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   handleOpenAssignModal(viewStudentTarget);
                 }}
               >
-                Assign Room
+                Accept & Allocate
               </button>
             </div>
           </div>

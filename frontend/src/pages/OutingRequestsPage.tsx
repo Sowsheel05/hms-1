@@ -603,11 +603,18 @@ export const OutingRequestsPage: React.FC = () => {
         >
           <div className="modal-container">
             <div className="modal-header">
-              <div className="modal-title-group">
-                <Footprints size={20} className="text-primary-navy" />
-                <h2 id="create-modal-title" className="modal-title">
-                  New Outing Request
-                </h2>
+              <div className="outing-modal-title-group">
+                <div className="modal-title-icon-badge">
+                  <Footprints size={20} />
+                </div>
+                <div className="modal-title-text-group">
+                  <h2 id="create-modal-title" className="modal-title">
+                    New Outing Request
+                  </h2>
+                  <p className="modal-subtitle">
+                    Submit permission for hostel exit and return
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
@@ -620,126 +627,128 @@ export const OutingRequestsPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateSubmit} className="modal-form">
-              {formError && (
-                <div className="modal-form-alert" role="alert">
-                  <AlertCircle size={16} />
-                  <span>{formError}</span>
-                </div>
-              )}
+              <div className="modal-form-body">
+                {formError && (
+                  <div className="modal-form-alert" role="alert">
+                    <AlertCircle size={16} />
+                    <span>{formError}</span>
+                  </div>
+                )}
 
-              {/* Pass Type */}
-              <div className="form-field-group">
-                <label htmlFor="outing-pass-type" className="form-field-label">
-                  Pass Type <span className="required">*</span>
-                </label>
-                <select
-                  id="outing-pass-type"
-                  className="form-select"
-                  value={passType}
-                  onChange={(e) => setPassType(e.target.value as any)}
-                  required
-                >
-                  <option value="LOCAL_OUTING">Local Outing (City/Shopping/Personal)</option>
-                  <option value="EMERGENCY">Emergency (Medical/Urgent)</option>
-                  <option value="NIGHT_OUT">Night Out (Approved Home/Guardian Stay)</option>
-                </select>
-              </div>
-
-              {/* Destination */}
-              <div className="form-field-group">
-                <label htmlFor="outing-destination" className="form-field-label">
-                  Destination <span className="required">*</span>
-                </label>
-                <input
-                  type="text"
-                  id="outing-destination"
-                  className="form-input"
-                  placeholder="e.g. City Central Library, Gandhi Road"
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                  maxLength={120}
-                  required
-                />
-              </div>
-
-              {/* Date/Time Grid */}
-              <div className="form-grid-2col">
+                {/* Pass Type */}
                 <div className="form-field-group">
-                  <label htmlFor="outing-out-date" className="form-field-label">
-                    Expected Exit Date & Time <span className="required">*</span>
+                  <label htmlFor="outing-pass-type" className="form-field-label">
+                    Pass Type <span className="required">*</span>
+                  </label>
+                  <select
+                    id="outing-pass-type"
+                    className="form-select"
+                    value={passType}
+                    onChange={(e) => setPassType(e.target.value as any)}
+                    required
+                  >
+                    <option value="LOCAL_OUTING">Local Outing (City/Shopping/Personal)</option>
+                    <option value="EMERGENCY">Emergency (Medical/Urgent)</option>
+                    <option value="NIGHT_OUT">Night Out (Approved Home/Guardian Stay)</option>
+                  </select>
+                </div>
+
+                {/* Destination */}
+                <div className="form-field-group">
+                  <label htmlFor="outing-destination" className="form-field-label">
+                    Destination <span className="required">*</span>
                   </label>
                   <input
-                    type="datetime-local"
-                    id="outing-out-date"
+                    type="text"
+                    id="outing-destination"
                     className="form-input"
-                    value={outDate}
-                    onChange={(e) => setOutDate(e.target.value)}
+                    placeholder="e.g. City Central Library, Gandhi Road"
+                    value={destination}
+                    onChange={(e) => setDestination(e.target.value)}
+                    maxLength={120}
                     required
                   />
                 </div>
 
+                {/* Date/Time Grid */}
+                <div className="form-grid-2col">
+                  <div className="form-field-group">
+                    <label htmlFor="outing-out-date" className="form-field-label">
+                      Expected Exit Date & Time <span className="required">*</span>
+                    </label>
+                    <input
+                      type="datetime-local"
+                      id="outing-out-date"
+                      className="form-input"
+                      value={outDate}
+                      onChange={(e) => setOutDate(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-field-group">
+                    <label htmlFor="outing-return-date" className="form-field-label">
+                      Expected Return Date & Time <span className="required">*</span>
+                    </label>
+                    <input
+                      type="datetime-local"
+                      id="outing-return-date"
+                      className="form-input"
+                      value={returnDate}
+                      onChange={(e) => setReturnDate(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Purpose */}
                 <div className="form-field-group">
-                  <label htmlFor="outing-return-date" className="form-field-label">
-                    Expected Return Date & Time <span className="required">*</span>
+                  <label htmlFor="outing-purpose" className="form-field-label">
+                    Purpose / Reason <span className="required">*</span>
                   </label>
-                  <input
-                    type="datetime-local"
-                    id="outing-return-date"
-                    className="form-input"
-                    value={returnDate}
-                    onChange={(e) => setReturnDate(e.target.value)}
+                  <textarea
+                    id="outing-purpose"
+                    className="form-textarea"
+                    rows={3}
+                    placeholder="Provide a clear description of your outing (min 5 characters)..."
+                    value={purpose}
+                    onChange={(e) => setPurpose(e.target.value)}
+                    maxLength={300}
                     required
                   />
                 </div>
-              </div>
 
-              {/* Purpose */}
-              <div className="form-field-group">
-                <label htmlFor="outing-purpose" className="form-field-label">
-                  Purpose / Reason <span className="required">*</span>
-                </label>
-                <textarea
-                  id="outing-purpose"
-                  className="form-textarea"
-                  rows={3}
-                  placeholder="Provide a clear description of your outing (min 5 characters)..."
-                  value={purpose}
-                  onChange={(e) => setPurpose(e.target.value)}
-                  maxLength={300}
-                  required
-                />
-              </div>
+                {/* Emergency Contact */}
+                <div className="form-field-group">
+                  <label htmlFor="outing-contact" className="form-field-label">
+                    Emergency Contact Number (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    id="outing-contact"
+                    className="form-input"
+                    placeholder="Parent / Guardian contact number"
+                    value={emergencyContact}
+                    onChange={(e) => setEmergencyContact(e.target.value)}
+                    maxLength={20}
+                  />
+                </div>
 
-              {/* Emergency Contact */}
-              <div className="form-field-group">
-                <label htmlFor="outing-contact" className="form-field-label">
-                  Emergency Contact Number (Optional)
-                </label>
-                <input
-                  type="tel"
-                  id="outing-contact"
-                  className="form-input"
-                  placeholder="Parent / Guardian contact number"
-                  value={emergencyContact}
-                  onChange={(e) => setEmergencyContact(e.target.value)}
-                  maxLength={20}
-                />
-              </div>
-
-              {/* Remarks */}
-              <div className="form-field-group">
-                <label htmlFor="outing-remarks" className="form-field-label">
-                  Additional Remarks (Optional)
-                </label>
-                <input
-                  type="text"
-                  id="outing-remarks"
-                  className="form-input"
-                  placeholder="Any additional notes for hostel warden"
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  maxLength={200}
-                />
+                {/* Remarks */}
+                <div className="form-field-group">
+                  <label htmlFor="outing-remarks" className="form-field-label">
+                    Additional Remarks (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    id="outing-remarks"
+                    className="form-input"
+                    placeholder="Any additional notes for hostel warden"
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    maxLength={200}
+                  />
+                </div>
               </div>
 
               <div className="modal-actions-footer">
@@ -781,11 +790,18 @@ export const OutingRequestsPage: React.FC = () => {
         >
           <div className="modal-container details-modal">
             <div className="modal-header">
-              <div className="modal-title-group">
-                <Info size={20} className="text-primary-navy" />
-                <h2 id="details-modal-title" className="modal-title">
-                  Outing Request Details
-                </h2>
+              <div className="outing-modal-title-group">
+                <div className="modal-title-icon-badge info-badge">
+                  <Info size={20} />
+                </div>
+                <div className="modal-title-text-group">
+                  <h2 id="details-modal-title" className="modal-title">
+                    Outing Request Details
+                  </h2>
+                  <p className="modal-subtitle">
+                    Authorization status and recorded gate logs
+                  </p>
+                </div>
               </div>
               <button
                 type="button"

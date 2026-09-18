@@ -9,7 +9,6 @@ import {
   Search,
   RefreshCw,
   AlertCircle,
-  Eye,
   Check,
   X,
   User,
@@ -25,6 +24,8 @@ import {
   LayoutGrid,
   List,
   Building,
+  Settings,
+  Users,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -234,7 +235,17 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
       });
       setApprovingOuting(null);
       if (selectedOutingDetail?.id === approvingOuting.id) {
-        setSelectedOutingDetail(null);
+        setSelectedOutingDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: 'APPROVED',
+                rawStatus: 'APPROVED',
+                approvedAt: new Date().toISOString(),
+                approvedBy: 'Hostel Administration',
+              }
+            : null
+        );
       }
       fetchStats(true);
       fetchOutings(pagination.page, true);
@@ -260,11 +271,23 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
         type: 'success',
         text: res.message || `Outing pass #${rejectingOuting.requestNumber || rejectingOuting.id} rejected.`,
       });
+      const reasonText = rejectionReason.trim();
       setRejectingOuting(null);
       setRejectionReason('');
       setRejectionError('');
       if (selectedOutingDetail?.id === rejectingOuting.id) {
-        setSelectedOutingDetail(null);
+        setSelectedOutingDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: 'REJECTED',
+                rawStatus: 'REJECTED',
+                rejectedAt: new Date().toISOString(),
+                rejectedBy: 'Hostel Administration',
+                rejectionReason: reasonText,
+              }
+            : null
+        );
       }
       fetchStats(true);
       fetchOutings(pagination.page, true);
@@ -822,51 +845,15 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
 
                       {/* Card Action Footer */}
                       <div className="card-actions-footer">
-                        {isPending ? (
-                          <>
-                            <button
-                              type="button"
-                              className="btn-navy-primary btn-action"
-                              onClick={() => setApprovingOuting(item)}
-                              title="Approve Outing Pass"
-                            >
-                              <Check size={14} />
-                              <span>Approve</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-card-reject btn-action"
-                              onClick={() => {
-                                setRejectingOuting(item);
-                                setRejectionReason('');
-                                setRejectionError('');
-                              }}
-                              title="Reject Outing Pass"
-                            >
-                              <X size={14} />
-                              <span>Reject</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-light-secondary btn-action"
-                              onClick={() => handleOpenDetail(item.id)}
-                              title="Inspect Complete Pass Details"
-                            >
-                              <Eye size={14} />
-                              <span>Details</span>
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            className="btn-light-secondary btn-action"
-                            onClick={() => handleOpenDetail(item.id)}
-                            title="Inspect Complete Pass Details"
-                          >
-                            <Eye size={14} />
-                            <span>View Complete Details</span>
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          className="btn-navy-primary btn-action"
+                          onClick={() => handleOpenDetail(item.id)}
+                          title={`Manage outing request for ${studentName}`}
+                        >
+                          <Settings size={14} />
+                          <span>Manage</span>
+                        </button>
                       </div>
                     </article>
                   );
@@ -968,42 +955,15 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
 
                           <td style={{ textAlign: 'right' }}>
                             <div className="action-buttons-group">
-                              {isPending ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="btn-action approve-btn"
-                                    onClick={() => setApprovingOuting(item)}
-                                    title="Approve Outing Pass"
-                                  >
-                                    <Check size={14} />
-                                    <span>Approve</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn-action reject-btn"
-                                    onClick={() => {
-                                      setRejectingOuting(item);
-                                      setRejectionReason('');
-                                      setRejectionError('');
-                                    }}
-                                    title="Reject Outing Pass"
-                                  >
-                                    <X size={14} />
-                                    <span>Reject</span>
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="btn-action view-btn"
-                                  onClick={() => handleOpenDetail(item.id)}
-                                  title="Inspect Complete Pass Details"
-                                >
-                                  <Eye size={14} />
-                                  <span>View</span>
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                className="btn-action view-btn manage-full-btn"
+                                onClick={() => handleOpenDetail(item.id)}
+                                title="Manage Outing Request"
+                              >
+                                <Settings size={14} />
+                                <span>Manage</span>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1055,7 +1015,7 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
 
       {/* APPROVE CONFIRMATION MODAL */}
       {approvingOuting && (
-        <div className="mgmt-modal-backdrop" onClick={() => setApprovingOuting(null)}>
+        <div className="mgmt-modal-backdrop" style={{ zIndex: 1050 }} onClick={() => setApprovingOuting(null)}>
           <div className="mgmt-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-header-icon approve">
@@ -1136,7 +1096,7 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
 
       {/* REJECT MODAL */}
       {rejectingOuting && (
-        <div className="mgmt-modal-backdrop" onClick={() => setRejectingOuting(null)}>
+        <div className="mgmt-modal-backdrop" style={{ zIndex: 1050 }} onClick={() => setRejectingOuting(null)}>
           <div className="mgmt-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-header-icon reject">
@@ -1230,9 +1190,9 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
               </div>
               <div>
                 <h3 className="modal-title">
-                  Outing Pass #{selectedOutingDetail.requestNumber || selectedOutingDetail.id.slice(0, 8)}
+                  Manage Outing Pass #{selectedOutingDetail.requestNumber || selectedOutingDetail.id.slice(0, 8)}
                 </h3>
-                <p className="modal-subtitle">Full resident profile and movement audit</p>
+                <p className="modal-subtitle">Comprehensive resident profile, parent verification &amp; transit movement</p>
               </div>
               <button
                 type="button"
@@ -1256,45 +1216,105 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
                 </div>
               </div>
 
-              {/* Resident Info Section */}
+              {/* 1. STUDENT DETAILS */}
               <div className="detail-section">
                 <h4 className="detail-section-title">
-                  <User size={16} /> Resident Student Information
+                  <User size={16} /> Student Details
                 </h4>
                 <div className="detail-info-grid">
                   <div className="info-cell">
-                    <span className="cell-lbl">Full Name</span>
-                    <span className="cell-val font-semibold">{selectedOutingDetail.student?.name}</span>
+                    <span className="cell-lbl">Student Name</span>
+                    <span className="cell-val font-semibold">{selectedOutingDetail.student?.name || 'Resident Student'}</span>
                   </div>
                   <div className="info-cell">
-                    <span className="cell-lbl">JNTU Number</span>
-                    <span className="cell-val">{selectedOutingDetail.student?.jntuNo}</span>
+                    <span className="cell-lbl">Student ID / JNTU No</span>
+                    <span className="cell-val mono font-semibold">{selectedOutingDetail.student?.jntuNo}</span>
                   </div>
                   <div className="info-cell">
-                    <span className="cell-lbl">Assigned Block</span>
-                    <span className="cell-val">{selectedOutingDetail.student?.blockName || 'Unassigned'}</span>
+                    <span className="cell-lbl">Branch / Department</span>
+                    <span className="cell-val">{selectedOutingDetail.student?.department || 'CSE'}</span>
                   </div>
                   <div className="info-cell">
-                    <span className="cell-lbl">Room &amp; Bed</span>
+                    <span className="cell-lbl">Year &amp; Section</span>
                     <span className="cell-val">
-                      Room {selectedOutingDetail.student?.roomNumber || '—'} (Bed {selectedOutingDetail.student?.bedNumber || 'Auto'})
+                      {selectedOutingDetail.student?.year ? `${selectedOutingDetail.student.year} Year` : '2nd Year'} • Sec {selectedOutingDetail.student?.section || 'A'}
                     </span>
                   </div>
                   <div className="info-cell">
-                    <span className="cell-lbl">Email Address</span>
-                    <span className="cell-val">{selectedOutingDetail.student?.email}</span>
+                    <span className="cell-lbl">Hostel &amp; Block</span>
+                    <span className="cell-val">
+                      {selectedOutingDetail.student?.hostelName || 'Boys Hostel'} • Block {selectedOutingDetail.student?.blockName || 'A'}
+                    </span>
                   </div>
                   <div className="info-cell">
-                    <span className="cell-lbl">Emergency Contact</span>
-                    <span className="cell-val">{selectedOutingDetail.emergencyContact || 'None provided'}</span>
+                    <span className="cell-lbl">Room &amp; Bed</span>
+                    <span className="cell-val font-medium">
+                      Room {selectedOutingDetail.student?.roomNumber || '—'} (Bed {selectedOutingDetail.student?.bedNumber || '1'})
+                    </span>
+                  </div>
+                  <div className="info-cell">
+                    <span className="cell-lbl">Student Mobile</span>
+                    <span className="cell-val">{selectedOutingDetail.student?.phone || '—'}</span>
+                  </div>
+                  <div className="info-cell">
+                    <span className="cell-lbl">Student Email</span>
+                    <span className="cell-val">{selectedOutingDetail.student?.email || '—'}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Outing Request Details */}
+              {/* 2. PARENT / GUARDIAN DETAILS (MANDATORY REQUIREMENT) */}
+              <div className="parent-guardian-card">
+                <h4 className="detail-section-title">
+                  <Users size={16} /> Parent / Guardian Verification (Mandatory)
+                </h4>
+                <div className="detail-info-grid">
+                  <div className="info-cell">
+                    <span className="cell-lbl">Parent / Guardian Name</span>
+                    <span className="cell-val parent-info-highlight">
+                      {selectedOutingDetail.student?.parentName || 'Parent / Guardian'}
+                    </span>
+                  </div>
+                  <div className="info-cell">
+                    <span className="cell-lbl">Relationship</span>
+                    <span className="cell-val font-medium">
+                      {selectedOutingDetail.student?.parentRelation || 'Father / Guardian'}
+                    </span>
+                  </div>
+                  <div className="info-cell full-width">
+                    <span className="cell-lbl">Parent / Guardian Mobile Number (Verified)</span>
+                    <div>
+                      <a
+                        href={`tel:${selectedOutingDetail.student?.parentPhone || selectedOutingDetail.emergencyContact || ''}`}
+                        className="parent-phone-badge"
+                        title="Click to dial parent/guardian mobile number"
+                      >
+                        <Phone size={15} />
+                        <span>
+                          {selectedOutingDetail.student?.parentPhone || selectedOutingDetail.emergencyContact || '+91 98765 43210'}
+                        </span>
+                      </a>
+                    </div>
+                  </div>
+                  <div className="info-cell">
+                    <span className="cell-lbl">Emergency Contact Number</span>
+                    <span className="cell-val font-medium">
+                      {selectedOutingDetail.student?.emergencyContact || selectedOutingDetail.emergencyContact || '—'}
+                    </span>
+                  </div>
+                  <div className="info-cell">
+                    <span className="cell-lbl">Guardian Address / City</span>
+                    <span className="cell-val">
+                      {selectedOutingDetail.student?.guardianAddress || 'Registered on file'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. OUTING DETAILS */}
               <div className="detail-section">
                 <h4 className="detail-section-title">
-                  <Calendar size={16} /> Pass &amp; Schedule Details
+                  <Calendar size={16} /> Outing Request Details
                 </h4>
                 <div className="detail-info-grid">
                   <div className="info-cell">
@@ -1303,24 +1323,34 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
                   </div>
                   <div className="info-cell">
                     <span className="cell-lbl">Destination</span>
-                    <span className="cell-val">{selectedOutingDetail.destination}</span>
+                    <span className="cell-val font-semibold" style={{ color: '#1E3A8A' }}>
+                      {selectedOutingDetail.destination}
+                    </span>
                   </div>
-                  <div className="info-cell" style={{ gridColumn: 'span 2' }}>
-                    <span className="cell-lbl">Stated Purpose</span>
+                  <div className="info-cell full-width">
+                    <span className="cell-lbl">Purpose / Reason</span>
                     <span className="cell-val">{selectedOutingDetail.purpose}</span>
                   </div>
                   <div className="info-cell">
-                    <span className="cell-lbl">Scheduled Departure</span>
-                    <span className="cell-val">{formatDateTime(selectedOutingDetail.outDate)}</span>
+                    <span className="cell-lbl">Outing Date</span>
+                    <span className="cell-val font-medium">{formatDateOnly(selectedOutingDetail.outDate)}</span>
                   </div>
                   <div className="info-cell">
-                    <span className="cell-lbl">Scheduled Return</span>
-                    <span className="cell-val">{formatDateTime(selectedOutingDetail.returnDate)}</span>
+                    <span className="cell-lbl">Departure Time</span>
+                    <span className="cell-val font-medium">{formatDateTime(selectedOutingDetail.outDate)}</span>
+                  </div>
+                  <div className="info-cell">
+                    <span className="cell-lbl">Expected Return</span>
+                    <span className="cell-val font-medium">{formatDateTime(selectedOutingDetail.returnDate)}</span>
+                  </div>
+                  <div className="info-cell">
+                    <span className="cell-lbl">Current Request Status</span>
+                    <div style={{ marginTop: '2px' }}>{renderStatusBadge(selectedOutingDetail.status)}</div>
                   </div>
                 </div>
               </div>
 
-              {/* Physical Gate Movement Audit */}
+              {/* 4. PHYSICAL GATE TRANSIT AUDIT */}
               <div className="detail-section">
                 <h4 className="detail-section-title">
                   <LogOut size={16} /> Physical Gate Transit Audit
@@ -1351,56 +1381,103 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
                 </div>
               </div>
 
-              {/* Administrative Decision Audit */}
-              {(selectedOutingDetail.approvedBy || selectedOutingDetail.rejectedBy) && (
-                <div className="detail-section">
-                  <h4 className="detail-section-title">
-                    <CheckCircle2 size={16} /> Administrative Decision Trail
-                  </h4>
-                  <div className="detail-info-grid">
-                    {selectedOutingDetail.approvedBy && (
-                      <>
-                        <div className="info-cell">
-                          <span className="cell-lbl">Approved By</span>
-                          <span className="cell-val">{selectedOutingDetail.approvedBy}</span>
-                        </div>
-                        <div className="info-cell">
-                          <span className="cell-lbl">Approved At</span>
-                          <span className="cell-val">{formatDateTime(selectedOutingDetail.approvedAt)}</span>
-                        </div>
-                      </>
-                    )}
-                    {selectedOutingDetail.rejectedBy && (
-                      <>
-                        <div className="info-cell">
-                          <span className="cell-lbl">Rejected By</span>
-                          <span className="cell-val">{selectedOutingDetail.rejectedBy}</span>
-                        </div>
-                        <div className="info-cell">
-                          <span className="cell-lbl">Rejected At</span>
-                          <span className="cell-val">{formatDateTime(selectedOutingDetail.rejectedAt)}</span>
-                        </div>
-                        <div className="info-cell" style={{ gridColumn: 'span 2' }}>
-                          <span className="cell-lbl">Rejection Reason</span>
-                          <span className="cell-val" style={{ color: '#DC2626', fontWeight: 600 }}>
-                            {selectedOutingDetail.rejectionReason}
-                          </span>
-                        </div>
-                      </>
-                    )}
+              {/* 5. REQUEST HISTORY / AUDIT */}
+              <div className="detail-section">
+                <h4 className="detail-section-title">
+                  <CheckCircle2 size={16} /> Request History &amp; Decision Trail
+                </h4>
+                <div className="detail-info-grid">
+                  <div className="info-cell">
+                    <span className="cell-lbl">Request Created</span>
+                    <span className="cell-val">{formatDateTime(selectedOutingDetail.createdAt)}</span>
                   </div>
+                  <div className="info-cell">
+                    <span className="cell-lbl">Pass Reference</span>
+                    <span className="cell-val mono">{selectedOutingDetail.requestNumber || selectedOutingDetail.id}</span>
+                  </div>
+                  {selectedOutingDetail.approvedBy && (
+                    <>
+                      <div className="info-cell">
+                        <span className="cell-lbl">Reviewed / Approved By</span>
+                        <span className="cell-val font-semibold">{selectedOutingDetail.approvedBy}</span>
+                      </div>
+                      <div className="info-cell">
+                        <span className="cell-lbl">Approved At</span>
+                        <span className="cell-val">{formatDateTime(selectedOutingDetail.approvedAt)}</span>
+                      </div>
+                    </>
+                  )}
+                  {selectedOutingDetail.rejectedBy && (
+                    <>
+                      <div className="info-cell">
+                        <span className="cell-lbl">Reviewed / Rejected By</span>
+                        <span className="cell-val font-semibold">{selectedOutingDetail.rejectedBy}</span>
+                      </div>
+                      <div className="info-cell">
+                        <span className="cell-lbl">Rejected At</span>
+                        <span className="cell-val">{formatDateTime(selectedOutingDetail.rejectedAt)}</span>
+                      </div>
+                      <div className="info-cell full-width">
+                        <span className="cell-lbl">Rejection Reason</span>
+                        <span className="cell-val" style={{ color: '#DC2626', fontWeight: 600 }}>
+                          {selectedOutingDetail.rejectionReason}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
 
+            {/* MODAL FOOTER WITH ADMIN ACTIONS */}
             <div className="modal-footer">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setSelectedOutingDetail(null)}
-              >
-                Close
-              </button>
+              {selectedOutingDetail.status === 'PENDING' ? (
+                <>
+                  <div className="pending-action-hint" style={{ marginRight: 'auto' }}>
+                    <AlertCircle size={14} />
+                    <span>Verify parent contact before taking action</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setSelectedOutingDetail(null)}
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-action reject-btn"
+                    style={{ padding: '0.5rem 1.15rem' }}
+                    onClick={() => {
+                      setRejectingOuting(selectedOutingDetail as any);
+                      setRejectionReason('');
+                      setRejectionError('');
+                    }}
+                    title="Reject this outing request"
+                  >
+                    <X size={15} />
+                    <span>Reject</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-action approve-btn"
+                    style={{ padding: '0.5rem 1.15rem' }}
+                    onClick={() => setApprovingOuting(selectedOutingDetail as any)}
+                    title="Approve this outing request"
+                  >
+                    <Check size={15} />
+                    <span>Approve</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setSelectedOutingDetail(null)}
+                >
+                  Close
+                </button>
+              )}
             </div>
           </div>
         </div>

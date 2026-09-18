@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   UtensilsCrossed,
   Search,
@@ -23,6 +23,13 @@ import {
   Check,
   Slash,
   ExternalLink,
+  ChevronDown,
+  Building2,
+  XCircle,
+  Ban,
+  Minus,
+  LayoutList,
+  LayoutGrid,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -405,6 +412,25 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
   const [markingPage, setMarkingPage] = useState<number>(1);
   const [markingData, setMarkingData] = useState<AttendanceMarkingResponse | null>(null);
   const [isMarkingLoading, setIsMarkingLoading] = useState<boolean>(false);
+
+  // Filter Dropdown & View Mode State
+  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState<boolean>(false);
+  const [markingViewMode, setMarkingViewMode] = useState<'list' | 'grid'>('list');
+  const filterDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
+        setIsFilterDropdownOpen(false);
+      }
+    };
+    if (isFilterDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isFilterDropdownOpen]);
 
   // Auto-Save Engine State
   const [pendingSaves, setPendingSaves] = useState<{ studentId: string; status: 'ATE' | 'DID_NOT_EAT' | 'PENDING' }[]>([]);
@@ -1137,68 +1163,206 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
             </div>
           )}
 
-          {/* Quick Segment Filter Pills */}
-          <div style={{ padding: '0.75rem 1.25rem 0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.775rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: '0.25rem' }}>FILTER VIEW:</span>
-            <button
-              type="button"
-              className="btn-light-secondary btn-sm"
-              style={markingIndentFilter === 'ALL' && markingAttStatusFilter === 'ALL' ? { backgroundColor: '#151B54', color: 'white', fontWeight: 700 } : {}}
-              onClick={() => { setMarkingIndentFilter('ALL'); setMarkingAttStatusFilter('ALL'); setMarkingPage(1); }}
-            >
-              All ({markingData?.summary?.totalStudents || 0})
-            </button>
-            <button
-              type="button"
-              className="btn-light-secondary btn-sm"
-              style={markingIndentFilter === 'MARKED' && markingAttStatusFilter === 'ALL' ? { backgroundColor: '#151B54', color: 'white', fontWeight: 700 } : {}}
-              onClick={() => { setMarkingIndentFilter('MARKED'); setMarkingAttStatusFilter('ALL'); setMarkingPage(1); }}
-            >
-              Who Kept Indent ({markingData?.summary?.indentMarkedCount || 0})
-            </button>
-            <button
-              type="button"
-              className="btn-light-secondary btn-sm"
-              style={markingIndentFilter === 'SKIPPED' && markingAttStatusFilter === 'ALL' ? { backgroundColor: '#7E22CE', color: 'white', fontWeight: 700 } : {}}
-              onClick={() => { setMarkingIndentFilter('SKIPPED'); setMarkingAttStatusFilter('ALL'); setMarkingPage(1); }}
-            >
-              🚫 Skipped / Not Coming ({markingData?.summary?.indentSkippedCount || 0})
-            </button>
-            <button
-              type="button"
-              className="btn-light-secondary btn-sm"
-              style={markingIndentFilter === 'NOT_MARKED' && markingAttStatusFilter === 'ALL' ? { backgroundColor: '#151B54', color: 'white', fontWeight: 700 } : {}}
-              onClick={() => { setMarkingIndentFilter('NOT_MARKED'); setMarkingAttStatusFilter('ALL'); setMarkingPage(1); }}
-            >
-              No Indent ({markingData?.summary?.noIndentCount || 0})
-            </button>
-            <button
-              type="button"
-              className="btn-light-secondary btn-sm"
-              style={markingAttStatusFilter === 'ATE' ? { backgroundColor: '#059669', color: 'white', fontWeight: 700 } : {}}
-              onClick={() => { setMarkingAttStatusFilter('ATE'); setMarkingIndentFilter('ALL'); setMarkingPage(1); }}
-            >
-              ✓ Ate ({markingData?.summary?.ateCount || 0})
-            </button>
-            <button
-              type="button"
-              className="btn-light-secondary btn-sm"
-              style={markingAttStatusFilter === 'DID_NOT_EAT' ? { backgroundColor: '#DC2626', color: 'white', fontWeight: 700 } : {}}
-              onClick={() => { setMarkingAttStatusFilter('DID_NOT_EAT'); setMarkingIndentFilter('ALL'); setMarkingPage(1); }}
-            >
-              ✗ Absent ({markingData?.summary?.didNotEatCount || 0})
-            </button>
-            <button
-              type="button"
-              className="btn-light-secondary btn-sm"
-              style={markingAttStatusFilter === 'PENDING' ? { backgroundColor: '#D97706', color: 'white', fontWeight: 700 } : {}}
-              onClick={() => { setMarkingAttStatusFilter('PENDING'); setMarkingIndentFilter('ALL'); setMarkingPage(1); }}
-            >
-              ○ Pending ({markingData?.summary?.pendingCount || 0})
-            </button>
-          </div>
+          {/* Filter Bar with Dropdown & Meta */}
+          {(() => {
+            const currentFilterKey =
+              markingAttStatusFilter !== 'ALL'
+                ? markingAttStatusFilter
+                : markingIndentFilter !== 'ALL'
+                ? markingIndentFilter
+                : 'ALL';
 
-          {/* Student Cards Grid */}
+            const filterOptions = [
+              {
+                key: 'ALL',
+                label: 'All Students',
+                count: markingData?.summary?.totalStudents || 0,
+                icon: Users,
+                iconColor: '#151B54',
+                onSelect: () => {
+                  setMarkingIndentFilter('ALL');
+                  setMarkingAttStatusFilter('ALL');
+                  setMarkingPage(1);
+                },
+              },
+              {
+                key: 'MARKED',
+                label: 'Who Kept Indent',
+                count: markingData?.summary?.indentMarkedCount || 0,
+                icon: Check,
+                iconColor: '#059669',
+                onSelect: () => {
+                  setMarkingIndentFilter('MARKED');
+                  setMarkingAttStatusFilter('ALL');
+                  setMarkingPage(1);
+                },
+              },
+              {
+                key: 'SKIPPED',
+                label: 'Skipped / Not Coming',
+                count: markingData?.summary?.indentSkippedCount || 0,
+                icon: Ban,
+                iconColor: '#7C3AED',
+                onSelect: () => {
+                  setMarkingIndentFilter('SKIPPED');
+                  setMarkingAttStatusFilter('ALL');
+                  setMarkingPage(1);
+                },
+              },
+              {
+                key: 'NOT_MARKED',
+                label: 'No Indent',
+                count: markingData?.summary?.noIndentCount || 0,
+                icon: Minus,
+                iconColor: '#64748B',
+                onSelect: () => {
+                  setMarkingIndentFilter('NOT_MARKED');
+                  setMarkingAttStatusFilter('ALL');
+                  setMarkingPage(1);
+                },
+              },
+              {
+                key: 'ATE',
+                label: 'Ate (Consumed)',
+                count: markingData?.summary?.ateCount || 0,
+                icon: CheckCircle2,
+                iconColor: '#10B981',
+                onSelect: () => {
+                  setMarkingAttStatusFilter('ATE');
+                  setMarkingIndentFilter('ALL');
+                  setMarkingPage(1);
+                },
+              },
+              {
+                key: 'DID_NOT_EAT',
+                label: 'Absent (Did Not Eat)',
+                count: markingData?.summary?.didNotEatCount || 0,
+                icon: XCircle,
+                iconColor: '#EF4444',
+                onSelect: () => {
+                  setMarkingAttStatusFilter('DID_NOT_EAT');
+                  setMarkingIndentFilter('ALL');
+                  setMarkingPage(1);
+                },
+              },
+              {
+                key: 'PENDING',
+                label: 'Pending / Unmarked',
+                count: markingData?.summary?.pendingCount || 0,
+                icon: Clock,
+                iconColor: '#F59E0B',
+                onSelect: () => {
+                  setMarkingAttStatusFilter('PENDING');
+                  setMarkingIndentFilter('ALL');
+                  setMarkingPage(1);
+                },
+              },
+            ];
+
+            const activeOpt = filterOptions.find((opt) => opt.key === currentFilterKey) || filterOptions[0];
+
+            return (
+              <div className="mess-filter-controls-bar">
+                <div className="filter-controls-left">
+                  {/* Filter Dropdown */}
+                  <div className="filter-dropdown-container" ref={filterDropdownRef}>
+                    <button
+                      type="button"
+                      className={`btn-filter-dropdown ${currentFilterKey !== 'ALL' ? 'active' : ''}`}
+                      onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+                      aria-label="Filter view options"
+                      aria-expanded={isFilterDropdownOpen}
+                    >
+                      <Filter size={15} className="filter-icon" />
+                      <span className="filter-label">Filter:</span>
+                      <span className="filter-selected-name">{activeOpt.label}</span>
+                      <span className="filter-count-badge">{activeOpt.count}</span>
+                      <ChevronDown size={14} className={`filter-chevron ${isFilterDropdownOpen ? 'open' : ''}`} />
+                    </button>
+
+                    {isFilterDropdownOpen && (
+                      <div className="filter-dropdown-menu">
+                        <div className="filter-dropdown-header">Filter by Status</div>
+                        {filterOptions.map((opt) => {
+                          const IconComp = opt.icon;
+                          const isSelected = currentFilterKey === opt.key;
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              className={`filter-dropdown-item ${isSelected ? 'selected' : ''}`}
+                              onClick={() => {
+                                opt.onSelect();
+                                setIsFilterDropdownOpen(false);
+                              }}
+                            >
+                              <div className="filter-item-left">
+                                <IconComp size={15} style={{ color: opt.iconColor }} />
+                                <span>{opt.label}</span>
+                              </div>
+                              <span className={`filter-item-count ${isSelected ? 'selected' : ''}`}>
+                                {opt.count}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Reset Filter button if filter active */}
+                  {currentFilterKey !== 'ALL' && (
+                    <button
+                      type="button"
+                      className="btn-clear-filter"
+                      onClick={() => {
+                        setMarkingIndentFilter('ALL');
+                        setMarkingAttStatusFilter('ALL');
+                        setMarkingPage(1);
+                      }}
+                      title="Reset to all students"
+                    >
+                      <X size={13} />
+                      <span>Clear Filter</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Right Meta Info & View Switcher */}
+                <div className="filter-results-meta">
+                  <span>
+                    Showing <strong>{markingData?.students?.length || 0}</strong> of{' '}
+                    <strong>{markingData?.summary?.totalStudents || 0}</strong> students
+                  </span>
+
+                  <div className="mess-view-toggle">
+                    <button
+                      type="button"
+                      className={`mess-view-btn ${markingViewMode === 'list' ? 'active' : ''}`}
+                      onClick={() => setMarkingViewMode('list')}
+                      title="List / Table view"
+                      aria-label="List view"
+                    >
+                      <LayoutList size={14} />
+                      <span>List</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`mess-view-btn ${markingViewMode === 'grid' ? 'active' : ''}`}
+                      onClick={() => setMarkingViewMode('grid')}
+                      title="Card grid view"
+                      aria-label="Card grid view"
+                    >
+                      <LayoutGrid size={14} />
+                      <span>Cards</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Students List or Cards */}
           {isMarkingLoading ? (
             <div className="allocation-loading-state" style={{ padding: '3rem 1rem' }}>
               <RotateCw size={32} className="spin-anim" style={{ color: '#151B54', margin: '0 auto 0.75rem' }} />
@@ -1210,62 +1374,164 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
               <h3 className="empty-state-title" style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0F172A' }}>No matching students found</h3>
               <p className="empty-state-desc" style={{ color: '#64748B' }}>Try clearing your search query or selecting a different filter.</p>
             </div>
+          ) : markingViewMode === 'list' ? (
+            /* LIST / ROSTER TABLE VIEW */
+            <div className="mess-roster-container">
+              <div className="mess-roster-table-card">
+                <table className="mess-roster-table">
+                  <thead>
+                    <tr>
+                      <th>Student</th>
+                      <th>Hostel & Room</th>
+                      <th>Indent Status</th>
+                      <th>Meal Status</th>
+                      <th>Attendance Action</th>
+                      <th style={{ textAlign: 'center', width: '70px' }}>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {markingData.students.map((student) => {
+                      const isAte = student.attendanceStatus === 'ATE';
+                      const isDne = student.attendanceStatus === 'DID_NOT_EAT';
+                      const isIndented = student.indentMarked || student.indentStatus === 'MARKED';
+                      const isSkipped = student.indentStatus === 'SKIPPED';
+                      const initial = student.studentName ? student.studentName.charAt(0).toUpperCase() : 'S';
+
+                      return (
+                        <tr key={student.studentId}>
+                          <td>
+                            <div
+                              className="roster-student-cell"
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => handleOpenCorrection(student)}
+                              title="Click to view details"
+                            >
+                              <div className={`roster-avatar ${isAte ? 'ate' : ''}`}>
+                                {initial}
+                              </div>
+                              <div className="roster-student-info">
+                                <span className="roster-student-name">
+                                  {student.studentName}
+                                </span>
+                                <span className="roster-student-roll">
+                                  {student.rollNo}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="roster-room-pill">
+                              <Building2 size={14} />
+                              <span>{student.blockName || student.block || 'Block N/A'} · Rm {student.roomNumber || student.room || 'N/A'}</span>
+                            </div>
+                          </td>
+                          <td>
+                            {isIndented ? (
+                              <span className="roster-badge indent-kept">
+                                <Check size={12} /> Indent Kept
+                              </span>
+                            ) : isSkipped ? (
+                              <span className="roster-badge indent-skipped">
+                                <Ban size={12} /> Skipped
+                              </span>
+                            ) : (
+                              <span className="roster-badge indent-none">
+                                <Minus size={12} /> No Indent
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {isAte ? (
+                              <span className="roster-badge att-ate">
+                                <CheckCircle2 size={13} /> ATE (CONSUMED)
+                              </span>
+                            ) : isDne ? (
+                              <span className="roster-badge att-absent">
+                                <Slash size={12} /> ABSENT
+                              </span>
+                            ) : (
+                              <span className="roster-badge att-pending">
+                                <Clock size={12} /> UNMARKED
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <div className="roster-action-group">
+                              <button
+                                type="button"
+                                className={`roster-btn ${isAte ? 'active-ate' : ''}`}
+                                onClick={() => handleStudentStatusUpdate(student, 'ATE')}
+                                title="Mark student as Ate (Consumed)"
+                              >
+                                <Check size={13} />
+                                <span>{isAte ? 'Ate' : 'Mark Ate'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={`roster-btn ${isDne ? 'active-absent' : ''}`}
+                                onClick={() => handleStudentStatusUpdate(student, 'DID_NOT_EAT')}
+                                title="Mark student as Absent (Did Not Eat)"
+                              >
+                                <Slash size={12} />
+                                <span>{isDne ? 'Absent' : 'Absent'}</span>
+                              </button>
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              className="roster-detail-link"
+                              onClick={() => handleOpenCorrection(student)}
+                              title="Open Student Details Popup"
+                              aria-label="Open Student Details Popup"
+                            >
+                              <ExternalLink size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem', padding: '1.25rem' }}>
+            /* CARDS VIEW - CLEAN, NO HARSH RED */
+            <div className="mess-students-grid">
               {markingData.students.map((student) => {
                 const isAte = student.attendanceStatus === 'ATE';
                 const isDne = student.attendanceStatus === 'DID_NOT_EAT';
-                const isIndented = student.indentMarked;
+                const isIndented = student.indentMarked || student.indentStatus === 'MARKED';
+                const isSkipped = student.indentStatus === 'SKIPPED';
                 const initial = student.studentName ? student.studentName.charAt(0).toUpperCase() : 'S';
+
+                const cardStateClass = isAte ? 'state-ate' : isDne ? 'state-absent' : 'state-pending';
 
                 return (
                   <div
                     key={student.studentId}
-                    style={{
-                      border: '1px solid',
-                      borderColor: isAte ? '#A7F3D0' : isDne ? '#FECACA' : '#E2E8F0',
-                      backgroundColor: isAte ? '#F0FDF4' : isDne ? '#FEF2F2' : '#FFFFFF',
-                      borderTop: `4px solid ${isAte ? '#10B981' : isDne ? '#EF4444' : isIndented ? '#F59E0B' : '#94A3B8'}`,
-                      borderRadius: '12px',
-                      padding: '1rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      gap: '0.75rem',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
-                      transition: 'all 0.15s ease-in-out',
-                    }}
+                    className={`mess-student-card ${cardStateClass}`}
                   >
-                    {/* Card Body: Click to open popup */}
+                    {/* Card Clickable Area: Opens detailed popup */}
                     <div
+                      className="student-card-click-area"
                       onClick={() => handleOpenCorrection(student)}
-                      style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}
-                      title="Click for detailed popup view"
+                      title="Click for detailed student mess record"
                     >
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                          <div style={{
-                            width: '40px',
-                            height: '40px',
-                            borderRadius: '50%',
-                            backgroundColor: isAte ? '#D1FAE5' : isDne ? '#FEE2E2' : '#EEF2FF',
-                            color: isAte ? '#047857' : isDne ? '#B91C1C' : '#151B54',
-                            fontWeight: 800,
-                            fontSize: '1.05rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            border: `2px solid ${isAte ? '#10B981' : isDne ? '#EF4444' : '#C7D2FE'}`,
-                            flexShrink: 0
-                          }}>
+                      {/* Header: Avatar, Name, Roll No, External link */}
+                      <div className="student-card-header">
+                        <div className="student-card-identity">
+                          <div className="student-card-avatar">
                             {initial}
                           </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div className="student-card-meta-wrap">
+                            <span
+                              className="student-card-name"
+                              title={student.studentName}
+                            >
                               {student.studentName}
                             </span>
-                            <span style={{ fontSize: '0.775rem', fontWeight: 700, color: '#151B54', backgroundColor: '#EEF2FF', padding: '0.1rem 0.45rem', borderRadius: '4px', width: 'fit-content', marginTop: '0.15rem' }}>
+                            <span className="student-card-roll">
                               {student.rollNo}
                             </span>
                           </div>
@@ -1273,93 +1539,81 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
 
                         <button
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); handleOpenCorrection(student); }}
-                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '0.2rem', color: '#64748B' }}
-                          title="Open Details Popup"
+                          className="student-card-ext-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenCorrection(student);
+                          }}
+                          title="Open Student Details Popup"
+                          aria-label="Open Student Details Popup"
                         >
                           <ExternalLink size={15} />
                         </button>
                       </div>
 
-                      {/* Hostel & Room Info */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', backgroundColor: '#F8FAFC', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
-                        <span style={{ color: '#475569', fontWeight: 600 }}>{student.blockName || student.block}</span>
-                        <span style={{ fontWeight: 700, color: '#334155' }}>Rm {student.roomNumber || student.room}</span>
+                      {/* Room & Hostel Bar */}
+                      <div className="student-card-room-bar">
+                        <div className="room-bar-left">
+                          <Building2 size={13} />
+                          <span>{student.blockName || student.block || 'Block N/A'}</span>
+                        </div>
+                        <div className="room-bar-right">
+                          Rm {student.roomNumber || student.room || 'N/A'}
+                        </div>
                       </div>
 
-                      {/* Indent Status Pill */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{
-                          fontSize: '0.725rem',
-                          fontWeight: 700,
-                          padding: '0.15rem 0.5rem',
-                          borderRadius: '4px',
-                          backgroundColor: isIndented ? '#DCFCE7' : '#F1F5F9',
-                          color: isIndented ? '#15803D' : '#64748B'
-                        }}>
-                          {isIndented ? '✓ INDENT KEPT' : '✗ NO INDENT'}
-                        </span>
-                        
-                        <span style={{ fontSize: '0.725rem', fontWeight: 700, color: isAte ? '#059669' : isDne ? '#DC2626' : '#D97706' }}>
-                          {isAte ? '✓ ALLOWED' : isDne ? '✗ ABSENT' : '○ PENDING'}
-                        </span>
+                      {/* Status Badges Row */}
+                      <div className="student-card-chips-row">
+                        {isIndented ? (
+                          <span className="chip-indent kept">
+                            <Check size={11} /> Indent Kept
+                          </span>
+                        ) : isSkipped ? (
+                          <span className="chip-indent skipped">
+                            <Ban size={11} /> Skipped
+                          </span>
+                        ) : (
+                          <span className="chip-indent none">
+                            <Minus size={11} /> No Indent
+                          </span>
+                        )}
+
+                        {isAte ? (
+                          <span className="chip-attendance ate">
+                            <CheckCircle2 size={12} /> ATE
+                          </span>
+                        ) : isDne ? (
+                          <span className="chip-attendance absent">
+                            <Slash size={11} /> ABSENT
+                          </span>
+                        ) : (
+                          <span className="chip-attendance pending">
+                            <Clock size={11} /> UNMARKED
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    {/* Quick Direct 1-Tap Attendance Buttons */}
-                    <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: '0.6rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    {/* Quick Attendance Buttons */}
+                    <div className="student-card-actions">
                       <button
                         type="button"
+                        className={`btn-card-action ${isAte ? 'btn-ate-active' : 'btn-ate-inactive'}`}
                         onClick={() => handleStudentStatusUpdate(student, 'ATE')}
-                        style={{
-                          flex: 1,
-                          padding: '0.45rem 0.5rem',
-                          borderRadius: '6px',
-                          border: '1px solid',
-                          borderColor: isAte ? '#10B981' : '#CBD5E1',
-                          backgroundColor: isAte ? '#10B981' : '#FFFFFF',
-                          color: isAte ? '#FFFFFF' : '#059669',
-                          fontSize: '0.8rem',
-                          fontWeight: 700,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.25rem',
-                          cursor: 'pointer',
-                          boxShadow: isAte ? '0 2px 4px rgba(16,185,129,0.2)' : 'none',
-                          transition: 'all 0.15s ease'
-                        }}
                         title="Mark student as Ate (Consumed)"
                       >
                         <Check size={14} />
-                        <span>{isAte ? 'ATE' : 'Mark Ate'}</span>
+                        <span>{isAte ? 'Ate' : 'Mark Ate'}</span>
                       </button>
 
                       <button
                         type="button"
+                        className={`btn-card-action ${isDne ? 'btn-absent-active' : 'btn-absent-inactive'}`}
                         onClick={() => handleStudentStatusUpdate(student, 'DID_NOT_EAT')}
-                        style={{
-                          flex: 1,
-                          padding: '0.45rem 0.5rem',
-                          borderRadius: '6px',
-                          border: '1px solid',
-                          borderColor: isDne ? '#EF4444' : '#CBD5E1',
-                          backgroundColor: isDne ? '#EF4444' : '#FFFFFF',
-                          color: isDne ? '#FFFFFF' : '#DC2626',
-                          fontSize: '0.8rem',
-                          fontWeight: 700,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.25rem',
-                          cursor: 'pointer',
-                          boxShadow: isDne ? '0 2px 4px rgba(239,68,68,0.2)' : 'none',
-                          transition: 'all 0.15s ease'
-                        }}
                         title="Mark student as Absent (Did Not Eat)"
                       >
                         <Slash size={13} />
-                        <span>{isDne ? 'ABSENT' : 'Absent'}</span>
+                        <span>{isDne ? 'Absent' : 'Absent'}</span>
                       </button>
                     </div>
                   </div>

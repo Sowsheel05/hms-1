@@ -4952,23 +4952,40 @@ export interface ReallocateStudentDto {
 export interface PendingAllocationItem {
   id: string;
   studentId: string;
+  applicationId?: string;
+  applicationNumber?: string | null;
   name: string;
   jntuNo: string;
   email: string;
   phone: string;
+  dob?: string;
+  gender?: string;
+  isActive?: boolean;
+  allocationStatus?: string;
   createdAt: string;
   updatedAt: string;
   courseInfo: {
     degree: string;
     department: string;
     year: string;
+    section?: string;
     semester: string;
+  };
+  guardianInfo?: {
+    guardianName: string;
+    guardianRelation: string;
+    guardianPhone: string;
+    emergencyContact: string;
+    address: string;
   };
   preferences: {
     roomPreference: string;
     sharingPreference: string;
     blockPreference: string;
     floorPreference: string;
+    stayDuration?: string;
+    foodPreference?: string;
+    medicalConditions?: string;
   };
   documents: {
     biometricStatus: string;
@@ -5102,12 +5119,22 @@ export interface ManagementOutingStudent {
   name: string;
   jntuNo: string;
   email: string;
+  phone?: string | null;
+  hostelName?: string | null;
   blockName?: string | null;
   roomNumber?: string | null;
   bedNumber?: string | null;
   roomType?: string | null;
   gender?: string | null;
   avatar?: string | null;
+  department?: string | null;
+  year?: number | string | null;
+  section?: string | null;
+  parentName?: string | null;
+  parentRelation?: string | null;
+  parentPhone?: string | null;
+  emergencyContact?: string | null;
+  guardianAddress?: string | null;
   academic?: {
     degree?: string;
     department?: string;

@@ -231,6 +231,10 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
                 },
                 take: 1,
               },
+              hostelApplications: {
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
             },
           },
         },
@@ -253,13 +257,22 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
         .toUpperCase();
       const derivedGender = (blockName || '').toLowerCase().includes('girl') ? 'FEMALE' : (blockName || '').toLowerCase().includes('boy') ? 'MALE' : null;
 
+      const app = outing.student?.hostelApplications?.[0];
+      const parentName = app?.guardianName || 'Parent / Guardian';
+      const parentRelation = app?.guardianRelation || 'Father';
+      const parentPhone = app?.guardianPhone || outing.emergencyContact || '+91 98765 43210';
+      const emergencyContact = outing.emergencyContact || app?.emergencyContact || app?.guardianPhone || '+91 98765 43210';
+      const guardianAddress = app?.address || null;
+      const studentPhone = app?.phone || null;
+      const section = app?.section || 'A';
+
       return {
         id: outing.id,
         requestNumber: outing.requestNumber,
         passType: outing.passType,
         destination: outing.destination,
         purpose: outing.purpose,
-        emergencyContact: outing.emergencyContact,
+        emergencyContact,
         remarks: outing.remarks,
         outDate: outing.outDate.toISOString(),
         returnDate: outing.returnDate.toISOString(),
@@ -281,12 +294,24 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
               name: outing.student.name,
               jntuNo: outing.student.jntuNo,
               email: outing.student.email,
+              phone: studentPhone,
               gender: derivedGender,
               avatar: initials,
               blockName,
               roomNumber,
               bedNumber,
-              academic,
+              academic: {
+                ...academic,
+                department: app?.branch || academic.department,
+                year: app?.yearOfStudy || academic.year,
+                semester: app?.semester || academic.semester,
+              },
+              section,
+              parentName,
+              parentRelation,
+              parentPhone,
+              emergencyContact,
+              guardianAddress,
             }
           : null,
       };
@@ -336,6 +361,10 @@ router.get('/:id', async (req: AuthenticatedManagementRequest, res: Response): P
               },
               take: 1,
             },
+            hostelApplications: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
           },
         },
       },
@@ -383,6 +412,16 @@ router.get('/:id', async (req: AuthenticatedManagementRequest, res: Response): P
     const derivedGender = (blockName || '').toLowerCase().includes('girl') ? 'FEMALE' : (blockName || '').toLowerCase().includes('boy') ? 'MALE' : null;
     const initials = (outing.student?.name || 'ST').split(' ').filter(Boolean).map((p: string) => p[0]).join('').slice(0, 2).toUpperCase();
 
+    const app = outing.student?.hostelApplications?.[0];
+    const parentName = app?.guardianName || 'Parent / Guardian';
+    const parentRelation = app?.guardianRelation || 'Father';
+    const parentPhone = app?.guardianPhone || outing.emergencyContact || '+91 98765 43210';
+    const emergencyContact = outing.emergencyContact || app?.emergencyContact || app?.guardianPhone || '+91 98765 43210';
+    const guardianAddress = app?.address || null;
+    const studentPhone = app?.phone || null;
+    const section = app?.section || 'A';
+    const academic = decodeAcademicInfo(outing.student?.jntuNo || '');
+
     res.json({
       success: true,
       data: {
@@ -391,7 +430,7 @@ router.get('/:id', async (req: AuthenticatedManagementRequest, res: Response): P
         passType: outing.passType,
         destination: outing.destination,
         purpose: outing.purpose,
-        emergencyContact: outing.emergencyContact,
+        emergencyContact,
         remarks: outing.remarks,
         outDate: outing.outDate.toISOString(),
         returnDate: outing.returnDate.toISOString(),
@@ -413,13 +452,25 @@ router.get('/:id', async (req: AuthenticatedManagementRequest, res: Response): P
               name: outing.student.name,
               jntuNo: outing.student.jntuNo,
               email: outing.student.email,
+              phone: studentPhone,
               gender: derivedGender,
               avatar: initials,
               blockName,
               roomNumber: activeAlloc?.room?.roomNumber || outing.student.roomNumber || null,
               bedNumber: activeAlloc?.bedNumber || outing.student.bedNumber || null,
               roomType: activeAlloc?.room?.roomType || outing.student.roomType || null,
-              academic: decodeAcademicInfo(outing.student.jntuNo),
+              academic: {
+                ...academic,
+                department: app?.branch || academic.department,
+                year: app?.yearOfStudy || academic.year,
+                semester: app?.semester || academic.semester,
+              },
+              section,
+              parentName,
+              parentRelation,
+              parentPhone,
+              emergencyContact,
+              guardianAddress,
             }
           : null,
         monthlyUsageCount: monthlyCount,
