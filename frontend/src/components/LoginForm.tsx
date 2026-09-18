@@ -49,6 +49,27 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
     return Object.keys(errors).length === 0;
   };
 
+  const handleQuickLogin = async (targetJntuNo: string) => {
+    setJntuNo(targetJntuNo);
+    setPassword('Password@123');
+    setFieldErrors({});
+    setGeneralError(null);
+    setIsSubmitting(true);
+
+    try {
+      const result = await login(targetJntuNo, 'Password@123');
+      if (result.success) {
+        if (onSuccess) onSuccess();
+      } else {
+        setGeneralError(result.message || 'Invalid JNTU No. or password.');
+      }
+    } catch {
+      setGeneralError('Unable to sign in right now. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setGeneralError(null);
@@ -84,6 +105,54 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
           <span>{generalError}</span>
         </div>
       )}
+
+      {/* 1-Click Test Student Sign In */}
+      <div style={{ padding: '0.75rem', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0', marginBottom: '1rem' }}>
+        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>1-Click Test Student Sign In</span>
+          <span style={{ fontSize: '0.65rem', color: '#16A34A', fontWeight: 600, backgroundColor: '#DCFCE7', padding: '2px 6px', borderRadius: '4px' }}>Instant</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={() => handleQuickLogin('25331A05H7')}
+            style={{
+              padding: '6px 8px',
+              borderRadius: '6px',
+              border: '1px solid #BFDBFE',
+              backgroundColor: '#EFF6FF',
+              color: '#1D4ED8',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'center',
+            }}
+            title="MANI MANASVI GAVARA (25331A05H7) - Allocated Student"
+          >
+            ⚡ MANASVI (25331A05H7)
+          </button>
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={() => handleQuickLogin('25331A05H8')}
+            style={{
+              padding: '6px 8px',
+              borderRadius: '6px',
+              border: '1px solid #E9D5FF',
+              backgroundColor: '#FAF5FF',
+              color: '#6B21A8',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'center',
+            }}
+            title="NAKKULLA RITHIKA (25331A05H8) - Roommate Student"
+          >
+            ⚡ RITHIKA (25331A05H8)
+          </button>
+        </div>
+      </div>
 
       {/* JNTU No. Field */}
       <div className="form-group">

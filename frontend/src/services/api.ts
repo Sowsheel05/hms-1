@@ -547,6 +547,7 @@ export const apiService = {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ jntuNo, password }),
       });
 
@@ -575,14 +576,15 @@ export const apiService = {
   async logout(): Promise<void> {
     const token = authStorage.getToken();
     try {
-      if (token) {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-      }
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {},
+        credentials: 'include',
+      });
     } catch (e) {
       console.warn('Server logout error (proceeding with local clear):', e);
     } finally {
@@ -1633,37 +1635,30 @@ export interface ManagementLoginResponse {
 
 const MANAGEMENT_TOKEN_STORAGE_KEY = 'hms_management_auth_token';
 
-let _inMemoryManagementToken: string | null = null;
-
 export const managementAuthStorage = {
   getToken(): string | null {
     const token = localStorage.getItem(MANAGEMENT_TOKEN_STORAGE_KEY);
-    if (token) {
-      _inMemoryManagementToken = token;
-      return token;
-    }
-    return null;
+    return token;
   },
-    setToken(token: string): void {
-      _inMemoryManagementToken = token;
-      try {
-        localStorage.setItem(MANAGEMENT_TOKEN_STORAGE_KEY, token);
-      } catch (e) {
-        console.error('Failed to persist management auth token', e);
-      }
-    },
-    clearToken(): void {
-      _inMemoryManagementToken = null;
-      try {
-        localStorage.removeItem(MANAGEMENT_TOKEN_STORAGE_KEY);
-      } catch (e) {
-        console.error('Failed to remove management auth token', e);
-      }
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('management_auth_logout'));
-      }
-    },
+  setToken(token: string): void {
+    try {
+      localStorage.setItem(MANAGEMENT_TOKEN_STORAGE_KEY, token);
+    } catch (e) {
+      console.error('Failed to persist management auth token', e);
+    }
+  },
+  clearToken(): void {
+    try {
+      localStorage.removeItem(MANAGEMENT_TOKEN_STORAGE_KEY);
+    } catch (e) {
+      console.error('Failed to remove management auth token', e);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('management_auth_logout'));
+    }
+  },
 };
+
 
 export const managementApiService = {
   async login(identifier: string, password: string): Promise<ManagementLoginResponse> {
@@ -1673,6 +1668,7 @@ export const managementApiService = {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ username: identifier, password }),
       });
 
@@ -1698,14 +1694,15 @@ export const managementApiService = {
   async logout(): Promise<void> {
     const token = managementAuthStorage.getToken();
     try {
-      if (token) {
-        await fetch('/api/management/auth/logout', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-      }
+      await fetch('/api/management/auth/logout', {
+        method: 'POST',
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {},
+        credentials: 'include',
+      });
     } catch (e) {
       console.warn('Management logout error:', e);
     } finally {
@@ -1782,13 +1779,34 @@ export const managementApiService = {
       }
     };
 
-    const connect = () => {
+    const connect = async () => {
       if (isClosed) return;
       try {
         const token = managementAuthStorage.getToken();
         if (!token) return;
 
-        eventSource = new EventSource(`/api/management/events-stream?token=${encodeURIComponent(token)}`);
+        let streamUrl = '/api/management/events-stream';
+
+        // Obtain short-lived single-use ticket
+        try {
+          const res = await fetch('/api/management/events-stream/ticket', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            credentials: 'include',
+          });
+          const data = await res.json();
+          if (data.success && data.ticket) {
+            streamUrl = `/api/management/events-stream?ticket=${encodeURIComponent(data.ticket)}`;
+          }
+        } catch (ticketErr) {
+          console.warn('Failed to obtain SSE ticket, connecting via fallback session:', ticketErr);
+        }
+
+        if (isClosed) return;
+        eventSource = new EventSource(streamUrl);
 
         eventSource.onopen = () => {
           onConnectionChange?.(true);

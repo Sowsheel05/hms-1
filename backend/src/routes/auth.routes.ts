@@ -82,6 +82,13 @@ router.post('/login', loginRateLimiter, async (req, res): Promise<void> => {
     const { jntuNo, password } = req.body;
     const result = await AuthService.login(jntuNo, password);
 
+    res.cookie('hms_student_auth_token', result.token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+
     res.status(200).json({
       success: true,
       message: 'Login successful',
@@ -111,11 +118,19 @@ router.post('/login', loginRateLimiter, async (req, res): Promise<void> => {
  */
 router.post('/logout', async (req, res): Promise<void> => {
   try {
+    let token: string | undefined;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
+      token = authHeader.split(' ')[1];
+    } else if ((req as any).cookies?.hms_student_auth_token) {
+      token = (req as any).cookies.hms_student_auth_token;
+    }
+
+    if (token) {
       await AuthService.logout(token);
     }
+
+    res.clearCookie('hms_student_auth_token', { path: '/' });
 
     res.status(200).json({
       success: true,

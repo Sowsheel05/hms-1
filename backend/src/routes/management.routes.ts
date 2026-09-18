@@ -176,6 +176,13 @@ router.post('/auth/login', loginRateLimiter, async (req, res): Promise<void> => 
             ? 'BOYS'
             : 'ALL';
 
+    res.cookie('hms_management_auth_token', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+
     res.status(200).json({
       success: true,
       message: 'Management authentication successful.',
@@ -287,14 +294,69 @@ router.get(
   }
 );
 
+// Short-lived single-use SSE ticket cache (ticketId -> { user: ManagementUser, expiresAt: number })
+const sseTicketCache = new Map<string, { user: any; expiresAt: number }>();
+
+// Periodic cleanup of expired SSE tickets every 60s
+setInterval(() => {
+  const now = Date.now();
+  for (const [ticket, data] of sseTicketCache.entries()) {
+    if (data.expiresAt < now) {
+      sseTicketCache.delete(ticket);
+    }
+  }
+}, 60000);
+
+/**
+ * POST /api/management/events-stream/ticket
+ * Issue a short-lived (30s) single-use ticket for establishing SSE connection without exposing JWT token in URL
+ */
+router.post(
+  '/events-stream/ticket',
+  authenticateManagement,
+  (req: AuthenticatedManagementRequest, res: Response): void => {
+    if (!req.managementUser) {
+      res.status(401).json({ success: false, message: 'Authentication required.' });
+      return;
+    }
+
+    const ticket = crypto.randomUUID();
+    sseTicketCache.set(ticket, {
+      user: req.managementUser,
+      expiresAt: Date.now() + 30000, // 30 seconds expiration
+    });
+
+    res.status(200).json({ success: true, ticket });
+  }
+);
+
 /**
  * GET /api/management/events-stream
- * Real-time SSE Stream for Management Dashboards
+ * Real-time SSE Stream for Management Dashboards (supports short-lived ticket or header auth)
  */
 router.get(
   '/events-stream',
-  authenticateManagement,
-  (req: AuthenticatedManagementRequest, res: Response): void => {
+  async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+    const ticketParam = req.query.ticket;
+    if (typeof ticketParam === 'string' && ticketParam.trim().length > 0) {
+      const ticketData = sseTicketCache.get(ticketParam.trim());
+      if (ticketData && ticketData.expiresAt > Date.now()) {
+        sseTicketCache.delete(ticketParam.trim()); // Single-use consumption
+        req.managementUser = ticketData.user;
+      } else {
+        if (ticketData) sseTicketCache.delete(ticketParam.trim());
+        res.status(401).json({ success: false, message: 'Invalid or expired SSE connection ticket.' });
+        return;
+      }
+    } else {
+      // Fallback to standard management middleware verification
+      await new Promise<void>((resolve) => {
+        authenticateManagement(req, res, () => {
+          resolve();
+        });
+      });
+    }
+
     if (!req.managementUser) {
       res.status(401).json({ success: false, message: 'Authentication required.' });
       return;

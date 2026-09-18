@@ -1,0 +1,311 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Student Relation Stub for Standalone Fee Management Module
+model Student {
+  id               String               @id @default(uuid())
+  jntuNo           String               @unique
+  name             String
+  email            String               @unique
+  role             String               @default("STUDENT")
+  allocationStatus String               @default("NOT_ALLOCATED")
+  blockName        String?
+  floorName        String?
+  roomNumber       String?
+  bedNumber        String?
+  roomType         String?
+  isActive         Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  scholarships     StudentScholarship[]
+  detentions       Detention[]
+  feeItems         FeeItem[]
+  feePayments      FeePayment[]
+  feeReceipts      FeeReceipt[]
+  feeRefunds       FeeRefund[]
+
+  @@index([role])
+  @@index([isActive])
+}
+
+model AcademicYear {
+  id           String               @id @default(uuid())
+  code         String               @unique // e.g. "2026-2027"
+  name         String               // e.g. "Academic Year 2026-2027"
+  startDate    DateTime
+  endDate      DateTime
+  isCurrent    Boolean              @default(false)
+  status       String               @default("ACTIVE") // ACTIVE, UPCOMING, PAST
+  createdBy    String?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  structures   FeeStructure[]
+  feeItems     FeeItem[]
+  payments     FeePayment[]
+  receipts     FeeReceipt[]
+  scholarships StudentScholarship[]
+  detentions   Detention[]
+
+  @@index([status])
+  @@index([isCurrent])
+}
+
+model FeeStructure {
+  id             String       @id @default(uuid())
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  module         String       // HOSTEL, COLLEGE
+  category       String       @default("REGULAR") // REGULAR, MANAGEMENT, CONVENOR, INTERNATIONAL, GENERAL
+  feeKind        String       // College: ADMISSION, SPECIAL, TUITION, PENDING_DUES_REJOIN; Hostel: MESS_FEE, ROOM_RENT, AMENITIES, MAINTENANCE, CAUTION_DEPOSIT
+  name           String
+  amount         Decimal      @db.Decimal(12, 2)
+  applicability  String?      // JSON: { "yearOfStudy": "All", "block": "All", "category": "All" }
+  status         String       @default("ACTIVE") // ACTIVE, INACTIVE
+  effectiveFrom  DateTime?
+  effectiveTo    DateTime?
+  createdBy      String?
+  updatedBy      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  feeItems       FeeItem[]
+
+  @@index([academicYearId])
+  @@index([module])
+  @@index([feeKind])
+  @@index([status])
+}
+
+model BankAccount {
+  id                String       @id @default(uuid())
+  name              String
+  accountIdentifier String       @unique // e.g. "TUITION-001", "HOSTEL-001"
+  bankName          String
+  accountNumber     String
+  ifsc              String
+  kind              String       // DEPOSIT, MESS, TUITION, SPECIAL, HOSTEL, GENERAL
+  module            String       @default("BOTH") // HOSTEL, COLLEGE, BOTH
+  displayLabel      String
+  status            String       @default("ACTIVE") // ACTIVE, INACTIVE
+  createdBy         String?
+  updatedBy         String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  payments          FeePayment[]
+
+  @@index([status])
+  @@index([accountIdentifier])
+}
+
+model ScholarshipType {
+  id           String               @id @default(uuid())
+  code         String               @unique // e.g. "JVD", "MERIT"
+  name         String
+  provider     String               @default("GOVERNMENT") // GOVERNMENT, INSTITUTION, PRIVATE
+  maxAmount    Decimal?             @db.Decimal(12, 2)
+  description  String?
+  status       String               @default("ACTIVE") // ACTIVE, INACTIVE
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  scholarships StudentScholarship[]
+
+  @@index([status])
+}
+
+model StudentScholarship {
+  id                String          @id @default(uuid())
+  studentId         String
+  student           Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  scholarshipTypeId String
+  scholarshipType   ScholarshipType @relation(fields: [scholarshipTypeId], references: [id], onDelete: Restrict)
+  academicYearId    String
+  academicYear      AcademicYear    @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  sanctionedAmount  Decimal         @db.Decimal(12, 2)
+  appliedAmount     Decimal         @default(0.00) @db.Decimal(12, 2)
+  remainingAmount   Decimal         @db.Decimal(12, 2)
+  referenceNumber   String?
+  remarks           String?
+  status            String          @default("ASSIGNED") // ASSIGNED, APPROVED, APPLIED, REJECTED, CLOSED
+  approvedBy        String?
+  approvedAt        DateTime?
+  appliedAt         DateTime?
+  createdBy         String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([studentId])
+  @@index([scholarshipTypeId])
+  @@index([academicYearId])
+  @@index([status])
+}
+
+model Detention {
+  id                  String       @id @default(uuid())
+  studentId           String
+  student             Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYearId      String
+  academicYear        AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  currentYearOfStudy  String       // e.g. "3rd Year"
+  detainedYearOfStudy String       // e.g. "3rd Year" or "2nd Year"
+  reason              String
+  status              String       @default("ACTIVE") // ACTIVE, REVOKED, COMPLETED
+  detainedBy          String?
+  detainedAt          DateTime     @default(now())
+  revokedBy           String?
+  revokedAt           DateTime?
+  remarks             String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([studentId])
+  @@index([academicYearId])
+  @@index([status])
+}
+
+model InstitutionSettings {
+  id                 String   @id @default("GLOBAL")
+  institutionMode    String   @default("BOTH") // HOSTEL_ONLY, COLLEGE_ONLY, BOTH
+  institutionName    String   @default("Harsha Institution of Technology & Sciences")
+  institutionCode    String   @default("HITS-01")
+  enableScholarships Boolean  @default(true)
+  enableDetentions   Boolean  @default(true)
+  enableBulkUploads  Boolean  @default(true)
+  updatedBy          String?
+  updatedAt          DateTime @updatedAt
+}
+
+model FeeItem {
+  id               String              @id @default(uuid())
+  studentId        String
+  student          Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYearId   String
+  academicYear     AcademicYear        @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  feeStructureId   String?
+  feeStructure     FeeStructure?       @relation(fields: [feeStructureId], references: [id], onDelete: SetNull)
+  feeType          String              // e.g. "Tuition Fee", "Mess Fee", "Special Fee"
+  module           String              // HOSTEL, COLLEGE
+  totalFee         Decimal             @db.Decimal(12, 2)
+  paidAmount       Decimal             @default(0.00) @db.Decimal(12, 2)
+  concessionAmount Decimal             @default(0.00) @db.Decimal(12, 2)
+  dueAmount        Decimal             @db.Decimal(12, 2)
+  excessPaid       Decimal             @default(0.00) @db.Decimal(12, 2)
+  refundedAmount   Decimal             @default(0.00) @db.Decimal(12, 2)
+  status           String              @default("UNPAID") // UNPAID, PARTIAL, PAID, OVERPAID
+  isExtraFee       Boolean             @default(false)
+  extraFeeDetails  String?             // JSON calculation inputs
+  createdBy        String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  allocations      PaymentAllocation[]
+  refunds          FeeRefund[]
+
+  @@index([studentId])
+  @@index([academicYearId])
+  @@index([module])
+  @@index([status])
+  @@index([feeType])
+}
+
+model FeePayment {
+  id                   String              @id @default(uuid())
+  studentId            String
+  student              Student             @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  academicYearId       String
+  academicYear         AcademicYear        @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  bankAccountId        String
+  bankAccount          BankAccount         @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  amount               Decimal             @db.Decimal(12, 2)
+  paymentMethod        String              // UPI, CHEQUE, SBI_COLLECT
+  transactionReference String              // Unique reference per payment
+  methodDetails        String?             // JSON details: upiApp, chequeNumber, bankName, receivedBy, verifiedBy
+  status               String              @default("COMPLETED") // COMPLETED, VOID, REFUNDED
+  receiptNumber        String              @unique
+  recordedBy           String
+  recordedById         String
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  allocations          PaymentAllocation[]
+  receipt              FeeReceipt?
+  refunds              FeeRefund[]
+
+  @@index([studentId])
+  @@index([academicYearId])
+  @@index([bankAccountId])
+  @@index([paymentMethod])
+  @@index([transactionReference])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PaymentAllocation {
+  id        String     @id @default(uuid())
+  paymentId String
+  payment   FeePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  feeItemId String
+  feeItem   FeeItem    @relation(fields: [feeItemId], references: [id], onDelete: Restrict)
+  amount    Decimal    @db.Decimal(12, 2)
+  createdAt DateTime   @default(now())
+
+  @@index([paymentId])
+  @@index([feeItemId])
+}
+
+model FeeReceipt {
+  id             String       @id @default(uuid())
+  receiptNumber  String       @unique
+  paymentId      String       @unique
+  payment        FeePayment   @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  studentId      String
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  totalAmount    Decimal      @db.Decimal(12, 2)
+  receiptData    String       // JSON snapshot of receipt details
+  createdAt      DateTime     @default(now())
+
+  @@index([receiptNumber])
+  @@index([studentId])
+  @@index([academicYearId])
+}
+
+model FeeRefund {
+  id            String      @id @default(uuid())
+  feeItemId     String
+  feeItem       FeeItem     @relation(fields: [feeItemId], references: [id], onDelete: Restrict)
+  paymentId     String?
+  payment       FeePayment? @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  studentId     String
+  student       Student     @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  amount        Decimal     @db.Decimal(12, 2)
+  reason        String
+  status        String      @default("COMPLETED") // REQUESTED, APPROVED, COMPLETED, REJECTED
+  processedBy   String
+  processedById String
+  createdAt     DateTime    @default(now())
+
+  @@index([feeItemId])
+  @@index([paymentId])
+  @@index([studentId])
+  @@index([status])
+}
+
+model FeeImportBatch {
+  id          String   @id @default(uuid())
+  batchType   String   // DUES_IMPORT, FEE_ADJUSTMENT, CREATE_FEE_ITEMS, REMOVE_FEE
+  fileName    String
+  totalRows   Int
+  successRows Int
+  failedRows  Int
+  status      String   // COMPLETED, FAILED, PARTIAL
+  errorReport String?  // JSON serialized errors
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+
+  @@index([batchType])
+  @@index([createdAt])
+}

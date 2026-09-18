@@ -24,16 +24,22 @@ export const authenticateStudent = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    let token: string | undefined;
+
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    } else if ((req as any).cookies?.hms_student_auth_token) {
+      token = (req as any).cookies.hms_student_auth_token;
+    }
+
+    if (!token) {
       res.status(401).json({
         success: false,
         message: 'Authentication required. No session token provided.',
       });
       return;
     }
-
-    const token = authHeader.split(' ')[1];
 
     // Check if session exists in DB and is not expired
     const session = await prisma.session.findUnique({

@@ -53,6 +53,27 @@ export const ManagementLoginPage: React.FC<ManagementLoginPageProps> = ({
     return Object.keys(errors).length === 0;
   };
 
+  const handleQuickLogin = async (testId: string) => {
+    setIdentifier(testId);
+    setPassword('Password@123');
+    setFieldErrors({});
+    setGeneralError(null);
+    setIsSubmitting(true);
+
+    try {
+      const result = await login(testId, 'Password@123');
+      if (result.success) {
+        onLoginSuccess();
+      } else {
+        setGeneralError(result.message || 'Invalid credentials or unauthorized role.');
+      }
+    } catch {
+      setGeneralError('Unable to sign in right now. Please verify server connection.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setGeneralError(null);
@@ -232,85 +253,120 @@ export const ManagementLoginPage: React.FC<ManagementLoginPageProps> = ({
             </button>
           </form>
 
-          {/* Quick Demo Credentials for Website-Specific Testing */}
-          <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Shield size={12} style={{ color: '#2563EB' }} />
-              <span>Select Test Role Credentials</span>
+          {/* Quick Demo Credentials for Website-Specific Testing (1-Click Auto Login) */}
+          <div style={{ marginTop: '1.25rem', padding: '0.875rem', backgroundColor: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Shield size={14} style={{ color: '#2563EB' }} />
+                <span>1-Click Test Role Quick Sign In</span>
+              </div>
+              <span style={{ fontSize: '0.65rem', color: '#16A34A', fontWeight: 600, backgroundColor: '#DCFCE7', padding: '2px 6px', borderRadius: '4px' }}>Instant Login</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
               <button
                 type="button"
-                onClick={() => {
-                  setIdentifier('CW_BOYS');
-                  setPassword('Password@123');
-                  setFieldErrors({});
-                  setGeneralError(null);
-                }}
+                disabled={isSubmitting}
+                onClick={() => handleQuickLogin('ADMIN01')}
                 style={{
-                  padding: '6px 4px',
+                  padding: '8px 4px',
                   borderRadius: '6px',
-                  border: '1px solid #BFDBFE',
-                  backgroundColor: identifier === 'CW_BOYS' ? '#EFF6FF' : '#FFFFFF',
+                  border: '1px solid #94A3B8',
+                  backgroundColor: '#1E293B',
+                  color: '#FFFFFF',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.15s ease',
+                }}
+                title="System Administrator: Full campus oversight (1-Click Login)"
+              >
+                ⚡ Admin
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => handleQuickLogin('CW_BOYS')}
+                style={{
+                  padding: '8px 4px',
+                  borderRadius: '6px',
+                  border: '1px solid #93C5FD',
+                  backgroundColor: '#EFF6FF',
                   color: '#1D4ED8',
                   fontSize: '0.75rem',
                   fontWeight: 600,
                   cursor: 'pointer',
                   textAlign: 'center',
+                  transition: 'all 0.15s ease',
                 }}
-                title="Chief Warden (Boys Hostel): Blocks A, B, C, D"
+                title="Chief Warden (Boys Hostel): Blocks A, B, C, D (1-Click Login)"
               >
-                CW Boys
+                ⚡ CW Boys
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setIdentifier('CW_GIRLS');
-                  setPassword('Password@123');
-                  setFieldErrors({});
-                  setGeneralError(null);
-                }}
+                disabled={isSubmitting}
+                onClick={() => handleQuickLogin('CW_GIRLS')}
                 style={{
-                  padding: '6px 4px',
+                  padding: '8px 4px',
                   borderRadius: '6px',
-                  border: '1px solid #E9D5FF',
-                  backgroundColor: identifier === 'CW_GIRLS' ? '#FAF5FF' : '#FFFFFF',
-                  color: '#6B21A8',
+                  border: '1px solid #F0ABFC',
+                  backgroundColor: '#FDF4FF',
+                  color: '#86198F',
                   fontSize: '0.75rem',
                   fontWeight: 600,
                   cursor: 'pointer',
                   textAlign: 'center',
+                  transition: 'all 0.15s ease',
                 }}
-                title="Chief Warden (Girls Hostel): Blocks A, B"
+                title="Chief Warden (Girls Hostel): Blocks A, B (1-Click Login)"
               >
-                CW Girls
+                ⚡ CW Girls
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setIdentifier('ADMIN01');
-                  setPassword('Password@123');
-                  setFieldErrors({});
-                  setGeneralError(null);
-                }}
+                disabled={isSubmitting}
+                onClick={() => handleQuickLogin('WARDEN01')}
                 style={{
-                  padding: '6px 4px',
+                  padding: '8px 4px',
+                  borderRadius: '6px',
+                  border: '1px solid #FDBA74',
+                  backgroundColor: '#FFF7ED',
+                  color: '#C2410C',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Hostel Warden: Block operations (1-Click Login)"
+              >
+                ⚡ Warden
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => handleQuickLogin('MAINT01')}
+                style={{
+                  padding: '8px 4px',
                   borderRadius: '6px',
                   border: '1px solid #CBD5E1',
-                  backgroundColor: identifier === 'ADMIN01' ? '#F1F5F9' : '#FFFFFF',
-                  color: '#334155',
+                  backgroundColor: '#F8FAFC',
+                  color: '#475569',
                   fontSize: '0.75rem',
                   fontWeight: 600,
                   cursor: 'pointer',
                   textAlign: 'center',
+                  gridColumn: 'span 2',
+                  transition: 'all 0.15s ease',
                 }}
-                title="System Administrator: Full campus oversight"
+                title="Maintenance Technician: Service requests (1-Click Login)"
               >
-                Admin
+                ⚡ Maintenance Staff
               </button>
             </div>
-            <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '6px', textAlign: 'center' }}>
-              Password: <code style={{ backgroundColor: '#E2E8F0', padding: '1px 4px', borderRadius: '4px', color: '#1E293B' }}>Password@123</code>
+            <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '8px', textAlign: 'center' }}>
+              Click any role above to automatically sign in with test credentials.
             </div>
           </div>
 

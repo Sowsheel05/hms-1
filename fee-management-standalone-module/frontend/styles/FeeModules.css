@@ -1,0 +1,738 @@
+/* =========================================================================
+   HMS Fee Management & Fee Collection Professional Stylesheet
+   Preserving HMS Design System: Navy primary, crisp white workspace,
+   rounded modern cards, interactive tabs, printable receipts & mobile cards.
+   ========================================================================= */
+
+:root {
+  --fee-navy-900: #0f172a;
+  --fee-navy-800: #1e293b;
+  --fee-navy-700: #334155;
+  --fee-navy-600: #475569;
+  --fee-blue-600: #2563eb;
+  --fee-blue-700: #1d4ed8;
+  --fee-blue-50: #eff6ff;
+  --fee-slate-50: #f8fafc;
+  --fee-slate-100: #f1f5f9;
+  --fee-slate-200: #e2e8f0;
+  --fee-slate-300: #cbd5e1;
+  --fee-emerald-50: #ecfdf5;
+  --fee-emerald-600: #059669;
+  --fee-emerald-700: #047857;
+  --fee-amber-50: #fffbeb;
+  --fee-amber-600: #d97706;
+  --fee-amber-700: #b45309;
+  --fee-rose-50: #fff1f2;
+  --fee-rose-600: #e11d48;
+  --fee-rose-700: #be123c;
+  --fee-purple-50: #faf5ff;
+  --fee-purple-600: #9333ea;
+  --fee-radius-sm: 6px;
+  --fee-radius-md: 10px;
+  --fee-radius-lg: 16px;
+  --fee-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --fee-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --fee-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+
+/* Base Container */
+.fee-module-container {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 1.5rem;
+  background-color: var(--fee-slate-50);
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+@media (max-width: 768px) {
+  .fee-module-container {
+    padding: 1rem 0.75rem;
+  }
+}
+
+/* Header & Banner */
+.fee-header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.fee-header-title-group h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--fee-navy-900);
+  margin: 0 0 0.25rem 0;
+  letter-spacing: -0.02em;
+}
+
+.fee-header-subtitle {
+  font-size: 0.875rem;
+  color: var(--fee-navy-600);
+  margin: 0;
+}
+
+.fee-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* Navigation Card / Banner */
+.fee-nav-banner-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  color: #ffffff;
+  border-radius: var(--fee-radius-md);
+  margin-bottom: 1.5rem;
+  box-shadow: var(--fee-shadow-md);
+}
+
+.fee-nav-banner-text {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.fee-nav-banner-text p {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.fee-nav-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #3b82f6;
+  color: #ffffff;
+  border: none;
+  border-radius: var(--fee-radius-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.fee-nav-banner-btn:hover {
+  background-color: #2563eb;
+  transform: translateY(-1px);
+}
+
+/* KPI Cards Grid */
+.fee-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .fee-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+}
+
+.fee-kpi-card {
+  background: #ffffff;
+  border: 1px solid var(--fee-slate-200);
+  border-radius: var(--fee-radius-md);
+  padding: 1rem 1.125rem;
+  box-shadow: var(--fee-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fee-kpi-card:hover {
+  box-shadow: var(--fee-shadow-md);
+  transform: translateY(-2px);
+}
+
+.fee-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.fee-kpi-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fee-navy-600);
+}
+
+.fee-kpi-icon-wrapper {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--fee-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fee-kpi-value {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--fee-navy-900);
+  line-height: 1.2;
+}
+
+/* Tabs */
+.fee-tabs-container {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--fee-slate-200);
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.fee-tabs-container::-webkit-scrollbar {
+  display: none;
+}
+
+.fee-tab-button {
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fee-navy-600);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.fee-tab-button:hover {
+  color: var(--fee-navy-900);
+}
+
+.fee-tab-button.active {
+  color: var(--fee-blue-600);
+  border-bottom-color: var(--fee-blue-600);
+}
+
+/* Filter & Action Toolbars */
+.fee-toolbar-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  background: #ffffff;
+  padding: 0.875rem 1rem;
+  border-radius: var(--fee-radius-md);
+  border: 1px solid var(--fee-slate-200);
+  box-shadow: var(--fee-shadow-sm);
+}
+
+.fee-search-input-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+}
+
+.fee-search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--fee-navy-600);
+  pointer-events: none;
+}
+
+.fee-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem 0.5rem 2.25rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--fee-slate-300);
+  border-radius: var(--fee-radius-sm);
+  background: #ffffff;
+  color: var(--fee-navy-900);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.fee-search-input:focus {
+  border-color: var(--fee-blue-600);
+}
+
+.fee-select-filter {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--fee-slate-300);
+  border-radius: var(--fee-radius-sm);
+  background: #ffffff;
+  color: var(--fee-navy-900);
+  outline: none;
+  cursor: pointer;
+}
+
+.fee-select-filter:focus {
+  border-color: var(--fee-blue-600);
+}
+
+.fee-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--fee-navy-800);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--fee-radius-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.fee-btn-primary:hover {
+  background-color: var(--fee-navy-900);
+}
+
+.fee-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  background-color: #ffffff;
+  color: var(--fee-navy-800);
+  border: 1px solid var(--fee-slate-300);
+  border-radius: var(--fee-radius-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.fee-btn-secondary:hover {
+  background-color: var(--fee-slate-100);
+}
+
+.fee-btn-outline-blue {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background-color: transparent;
+  color: var(--fee-blue-600);
+  border: 1px solid var(--fee-blue-600);
+  border-radius: var(--fee-radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.fee-btn-outline-blue:hover {
+  background-color: var(--fee-blue-50);
+}
+
+.fee-btn-outline-emerald {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background-color: transparent;
+  color: var(--fee-emerald-600);
+  border: 1px solid var(--fee-emerald-600);
+  border-radius: var(--fee-radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fee-btn-outline-emerald:hover {
+  background-color: var(--fee-emerald-50);
+}
+
+/* Tables */
+.fee-table-card {
+  background: #ffffff;
+  border-radius: var(--fee-radius-md);
+  border: 1px solid var(--fee-slate-200);
+  box-shadow: var(--fee-shadow-sm);
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+
+.fee-table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.fee-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.875rem;
+}
+
+.fee-data-table thead {
+  background-color: var(--fee-slate-100);
+  border-bottom: 1px solid var(--fee-slate-200);
+}
+
+.fee-data-table th {
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fee-navy-700);
+  white-space: nowrap;
+}
+
+.fee-data-table td {
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--fee-slate-200);
+  color: var(--fee-navy-800);
+  vertical-align: middle;
+}
+
+.fee-data-table tbody tr:hover {
+  background-color: var(--fee-slate-50);
+}
+
+/* Status Badges */
+.fee-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.badge-paid {
+  background-color: var(--fee-emerald-50);
+  color: var(--fee-emerald-700);
+  border: 1px solid #a7f3d0;
+}
+
+.badge-unpaid {
+  background-color: var(--fee-rose-50);
+  color: var(--fee-rose-700);
+  border: 1px solid #fecdd3;
+}
+
+.badge-partial {
+  background-color: var(--fee-amber-50);
+  color: var(--fee-amber-700);
+  border: 1px solid #fde68a;
+}
+
+.badge-overpaid {
+  background-color: var(--fee-purple-50);
+  color: var(--fee-purple-600);
+  border: 1px solid #e9d5ff;
+}
+
+.badge-active {
+  background-color: var(--fee-emerald-50);
+  color: var(--fee-emerald-700);
+  border: 1px solid #a7f3d0;
+}
+
+.badge-inactive {
+  background-color: var(--fee-slate-100);
+  color: var(--fee-navy-600);
+  border: 1px solid var(--fee-slate-300);
+}
+
+/* Bank Account Grid Cards */
+.fee-bank-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.fee-bank-card {
+  background: #ffffff;
+  border: 1px solid var(--fee-slate-200);
+  border-radius: var(--fee-radius-md);
+  padding: 1.125rem;
+  box-shadow: var(--fee-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.fee-bank-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.fee-bank-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--fee-navy-900);
+  margin: 0;
+}
+
+.fee-bank-code {
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: var(--fee-slate-100);
+  color: var(--fee-navy-700);
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--fee-radius-sm);
+}
+
+.fee-bank-details {
+  font-size: 0.8125rem;
+  color: var(--fee-navy-600);
+  line-height: 1.5;
+}
+
+/* Modals */
+.fee-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.fee-modal-dialog {
+  background: #ffffff;
+  border-radius: var(--fee-radius-lg);
+  box-shadow: var(--fee-shadow-lg);
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: feeModalIn 0.2s ease-out;
+}
+
+@keyframes feeModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.fee-modal-header {
+  padding: 1.125rem 1.5rem;
+  border-bottom: 1px solid var(--fee-slate-200);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fee-modal-header h3 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--fee-navy-900);
+  margin: 0;
+}
+
+.fee-modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--fee-navy-600);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: var(--fee-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fee-modal-close-btn:hover {
+  background-color: var(--fee-slate-100);
+  color: var(--fee-navy-900);
+}
+
+.fee-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  max-height: calc(90vh - 130px);
+}
+
+.fee-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--fee-slate-200);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  background-color: var(--fee-slate-50);
+}
+
+/* Form Controls */
+.fee-form-group {
+  margin-bottom: 1rem;
+}
+
+.fee-form-group label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fee-navy-800);
+  margin-bottom: 0.375rem;
+}
+
+.fee-form-input,
+.fee-form-select,
+.fee-form-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5625rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--fee-slate-300);
+  border-radius: var(--fee-radius-sm);
+  background-color: #ffffff;
+  color: var(--fee-navy-900);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.fee-form-input:focus,
+.fee-form-select:focus,
+.fee-form-textarea:focus {
+  border-color: var(--fee-blue-600);
+}
+
+.fee-form-row {
+  display: flex;
+  gap: 1rem;
+}
+
+@media (max-width: 540px) {
+  .fee-form-row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+/* Receipt Print Styling */
+.fee-receipt-paper {
+  background: #ffffff;
+  border: 1px solid var(--fee-slate-300);
+  border-radius: var(--fee-radius-md);
+  padding: 2rem;
+  max-width: 500px;
+  margin: 0 auto;
+  box-shadow: var(--fee-shadow-md);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: #0f172a;
+}
+
+.fee-receipt-header {
+  text-align: center;
+  border-bottom: 2px dashed var(--fee-slate-300);
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.fee-receipt-logo-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--fee-navy-900);
+  margin: 0 0 0.25rem 0;
+}
+
+.fee-receipt-sub {
+  font-size: 0.8125rem;
+  color: var(--fee-navy-600);
+  margin: 0;
+}
+
+.fee-receipt-number-badge {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background-color: var(--fee-slate-100);
+  font-size: 0.875rem;
+  font-weight: 700;
+  border-radius: var(--fee-radius-sm);
+  letter-spacing: 0.05em;
+}
+
+.fee-receipt-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  padding: 0.375rem 0;
+}
+
+.fee-receipt-row.bold {
+  font-weight: 700;
+  font-size: 1rem;
+  border-top: 1px solid var(--fee-slate-300);
+  border-bottom: 1px solid var(--fee-slate-300);
+  padding: 0.5rem 0;
+  margin: 0.75rem 0;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .fee-receipt-paper,
+  .fee-receipt-paper * {
+    visibility: visible;
+  }
+  .fee-receipt-paper {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border: none;
+    box-shadow: none;
+  }
+  .fee-modal-footer,
+  .fee-modal-header,
+  .mobile-close-btn {
+    display: none !important;
+  }
+}

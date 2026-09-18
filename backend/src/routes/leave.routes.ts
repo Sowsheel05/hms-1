@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { authenticateStudent, AuthenticatedRequest } from '../middleware/auth.middleware';
+import { authenticateManagement } from '../middleware/management.middleware';
 import { prisma } from '../services/prisma.service';
 import { complaintEventsService, LeaveDomainEvent } from '../services/events.service';
 import { notificationService } from '../services/notification.service';

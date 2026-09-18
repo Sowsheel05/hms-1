@@ -190,12 +190,17 @@ class ComplaintEventsService extends EventEmitter {
     connections.add(res);
 
     // Initial handshake
-    res.write(`event: connected\ndata: ${JSON.stringify({ connected: true, timestamp: new Date().toISOString() })}\n\n`);
-
-    // Clean up when client disconnects
-    res.on('close', () => {
+    try {
+      res.write(`event: connected\ndata: ${JSON.stringify({ connected: true, timestamp: new Date().toISOString() })}\n\n`);
+    } catch (err) {
       this.removeClient(studentId, res);
-    });
+      return;
+    }
+
+    const cleanup = () => this.removeClient(studentId, res);
+    res.on('close', cleanup);
+    res.on('end', cleanup);
+    res.on('error', cleanup);
   }
 
   /**
@@ -223,11 +228,17 @@ class ComplaintEventsService extends EventEmitter {
     connections.add(res);
 
     // Initial handshake
-    res.write(`event: connected\ndata: ${JSON.stringify({ connected: true, role: 'MANAGEMENT', timestamp: new Date().toISOString() })}\n\n`);
-
-    res.on('close', () => {
+    try {
+      res.write(`event: connected\ndata: ${JSON.stringify({ connected: true, role: 'MANAGEMENT', timestamp: new Date().toISOString() })}\n\n`);
+    } catch (err) {
       this.removeManagementClient(managerId, res);
-    });
+      return;
+    }
+
+    const cleanup = () => this.removeManagementClient(managerId, res);
+    res.on('close', cleanup);
+    res.on('end', cleanup);
+    res.on('error', cleanup);
   }
 
   /**
@@ -525,22 +536,37 @@ class ComplaintEventsService extends EventEmitter {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = setInterval(() => {
       // Ping student connections
-      for (const [, connections] of this.studentConnections.entries()) {
-        for (const res of connections) {
+      for (const [studentId, connections] of Array.from(this.studentConnections.entries())) {
+        for (const res of Array.from(connections)) {
+          if (res.destroyed || res.writableEnded) {
+            this.removeClient(studentId, res);
+            continue;
+          }
           try {
-            res.write(': ping\n\n');
+            const ok = res.write(': ping\n\n');
+            if (!ok) {
+              this.removeClient(studentId, res);
+            }
           } catch {
-            // connection dropped
+            this.removeClient(studentId, res);
           }
         }
       }
+
       // Ping management connections
-      for (const [, connections] of this.managementConnections.entries()) {
-        for (const res of connections) {
+      for (const [managerId, connections] of Array.from(this.managementConnections.entries())) {
+        for (const res of Array.from(connections)) {
+          if (res.destroyed || res.writableEnded) {
+            this.removeManagementClient(managerId, res);
+            continue;
+          }
           try {
-            res.write(': ping\n\n');
+            const ok = res.write(': ping\n\n');
+            if (!ok) {
+              this.removeManagementClient(managerId, res);
+            }
           } catch {
-            // connection dropped
+            this.removeManagementClient(managerId, res);
           }
         }
       }

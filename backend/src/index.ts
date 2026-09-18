@@ -31,6 +31,22 @@ app.use(
 
 app.use(express.json({ limit: '1mb' }));
 
+// Simple cookie parser middleware for httpOnly auth cookies
+app.use((req, _res, next) => {
+  const cookieHeader = req.headers.cookie;
+  const cookies: Record<string, string> = {};
+  if (cookieHeader) {
+    cookieHeader.split(';').forEach((cookie) => {
+      const parts = cookie.split('=');
+      if (parts.length >= 2) {
+        cookies[parts[0].trim()] = decodeURIComponent(parts.slice(1).join('=').trim());
+      }
+    });
+  }
+  (req as any).cookies = cookies;
+  next();
+});
+
 // Safe request logger
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
