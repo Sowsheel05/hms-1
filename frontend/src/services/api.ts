@@ -1633,37 +1633,30 @@ export interface ManagementLoginResponse {
 
 const MANAGEMENT_TOKEN_STORAGE_KEY = 'hms_management_auth_token';
 
-let _inMemoryManagementToken: string | null = null;
-
 export const managementAuthStorage = {
   getToken(): string | null {
     const token = localStorage.getItem(MANAGEMENT_TOKEN_STORAGE_KEY);
-    if (token) {
-      _inMemoryManagementToken = token;
-      return token;
-    }
-    return null;
+    return token;
   },
-    setToken(token: string): void {
-      _inMemoryManagementToken = token;
-      try {
-        localStorage.setItem(MANAGEMENT_TOKEN_STORAGE_KEY, token);
-      } catch (e) {
-        console.error('Failed to persist management auth token', e);
-      }
-    },
-    clearToken(): void {
-      _inMemoryManagementToken = null;
-      try {
-        localStorage.removeItem(MANAGEMENT_TOKEN_STORAGE_KEY);
-      } catch (e) {
-        console.error('Failed to remove management auth token', e);
-      }
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('management_auth_logout'));
-      }
-    },
+  setToken(token: string): void {
+    try {
+      localStorage.setItem(MANAGEMENT_TOKEN_STORAGE_KEY, token);
+    } catch (e) {
+      console.error('Failed to persist management auth token', e);
+    }
+  },
+  clearToken(): void {
+    try {
+      localStorage.removeItem(MANAGEMENT_TOKEN_STORAGE_KEY);
+    } catch (e) {
+      console.error('Failed to remove management auth token', e);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('management_auth_logout'));
+    }
+  },
 };
+
 
 export const managementApiService = {
   async login(identifier: string, password: string): Promise<ManagementLoginResponse> {

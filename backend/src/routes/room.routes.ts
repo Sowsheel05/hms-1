@@ -71,9 +71,13 @@ router.get('/my-room', authenticateStudent, async (req: AuthenticatedRequest, re
           orderBy: { bedNumber: 'asc' },
         });
 
+        const block = await prisma.block.findFirst({
+          where: { name: student.blockName },
+          select: { id: true },
+        });
         const roomData = await prisma.room.findFirst({
           where: {
-            blockName: student.blockName,
+            blockId: block?.id || '',
             roomNumber: student.roomNumber,
           },
           select: { capacity: true },
