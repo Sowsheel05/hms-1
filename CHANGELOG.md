@@ -12,21 +12,21 @@ All notable changes to the Hostel Management System (HMS) application are docume
 
 ---
 
-## 🚀 Release History
+## 🚀 Version History & Release Notes
 
 ### [v1.1.0] - 2026-09-21 (Current Active Version)
 
 #### 🐞 Critical Fixes & Performance Enhancements
-- **Resolved Infinite Request Loop**: Eliminated non-stop `/api/management/events-stream` and `/api/management/dashboard` backend requests caused by cyclic React re-render loops.
+- **Resolved Infinite Backend Request Loop**: Fixed continuous `/api/management/events-stream` and `/api/management/dashboard` API request flooding caused by un-memoized React inline callback props.
 - **Parent-Child Callback Optimization**: Memoized handlers (`onRefreshStateChange`, `registerRefreshHandler`, `onModuleNotice`) in `App.tsx` (`AuthenticatedManagementApp`) using `React.useCallback`.
-- **SSE Stream Stabilization**: Refactored SSE subscriptions across all management pages (`ManagementDashboardPage`, `MessManagementPage`, `RoomManagementPage`, `ManagementLeavesPage`, `ManagementComplaintsPage`, `ManagementUserManagementPage`, `ManagementLogHistoryPage`, `ManagementOutingLogHistoryPage`, `ManagementNotificationsPage`, `OutingApprovalsPage`, `FeeCollectionPage`, `FeeManagementPage`) using `useRef` to maintain persistent SSE connections without tearing down and reconnecting during filter changes or tab switches.
-- **Fixed Unauthenticated / Invalid SSE Endpoints**: Replaced raw `EventSource` calls missing auth token query parameters or targeting invalid endpoints with `managementApiService.subscribeToEvents(...)`.
-- **Unified Login Integration**: Integrated `UnifiedLoginPage.tsx` supporting multi-role authentication (Student, Warden, Chief Warden, Admin, Management).
-- **College Multi-Tenancy**: Added institutional scoping endpoints (`college.routes.ts`, `college.service.ts`) and dynamic branding support.
+- **SSE Stream Stabilization**: Refactored SSE subscriptions across all 12 management pages using `useRef` to maintain persistent, single-handshake SSE streams without reconnecting on filter/tab changes.
+- **Fixed Unauthenticated / Invalid SSE Endpoints**: Replaced raw `EventSource` instantiations in `FeeCollectionPage`, `FeeManagementPage`, `OutingApprovalsPage`, `ManagementNotificationsPage`, and `ManagementOutingLogHistoryPage` with authenticated `managementApiService.subscribeToEvents(...)`.
+- **Unified Login Integration**: Multi-role support (`UnifiedLoginPage.tsx`) for Student, Warden, Chief Warden, Accountant, and Admin portals.
+- **Pre-Login Admission Workflow**: Enhanced pre-login student registration and hostel allocation with criteria evaluation and room booking.
 
 ---
 
-### [v1.0.0] - 2026-09-01 (Initial Base Release)
+### [v1.0.0] - 2026-09-15 (Admin Portal 10-Step Consolidation)
 
 #### 🏢 Admin & Management Portal Modules
 1. **Admin Dashboard (Step 1)**: Operational overview, attention metrics, quick action modules, and real-time biometric event feeds.
@@ -39,25 +39,42 @@ All notable changes to the Hostel Management System (HMS) application are docume
 8. **Guest Visits & Billing Management (Step 8)**: Guest check-in/checkout, host student mapping, itemized billing, and payment processing.
 9. **Log History & System Audit (Step 9)**: Comprehensive administrative audit logs, gate movement transit history, and security traceability.
 10. **User Management & Role Administration (Step 10)**: User account creation, role assignment (Warden, Chief Warden, Accountant, Admin), credential resets, and account disabling/enabling.
-11. **Fee Management & Fee Collection (Step 11)**: Fee structure definition, bank account setup, student fee collection, payment receipts, and fine adjustments.
 
-#### 🎓 Student Portal Features
-- **Hostel Application & Status**: Student registration, admission criteria check, and hostel room booking.
-- **Mess Tokens & QR Code**: Digital mess token booking, static/dynamic QR code generation, and meal history inspection.
-- **Outing Passes & Gate Transit**: Outing request submission, approval tracking, and QR pass generation.
-- **Complaints & Maintenance**: Maintenance issue reporting, repair status timeline, and feedback rating.
-- **Leaves & Notices**: Leave application filing and institutional announcements / notifications center.
+---
 
-#### 🛠️ Core Technology Stack
-- **Frontend**: React 19, TypeScript, Lucide React icons, Vite build system.
-- **Backend**: Express.js, TypeScript, Prisma ORM, PostgreSQL database, JWT authentication, Bcrypt password hashing.
-- **Realtime Infrastructure**: Server-Sent Events (SSE) for instant cross-portal updates.
+### [v0.8.0] - 2026-08-28 (Fee Management & Collection)
+
+#### 💰 Fee System Engine
+- **Fee Configuration**: Fee structures, institutional bank accounts, academic years, scholarships, and detentions.
+- **Fee Collection**: Student fee dues, payment recording, receipt generation, fine adjustments, and CSV exports.
+
+---
+
+### [v0.5.0] - 2026-08-10 (Student Portal & Mess QR Ecosystem)
+
+#### 🎓 Student Portal Workflows
+- **Digital Mess Tokens**: Mess token booking, static/dynamic QR code generation, and meal history.
+- **Outing Passes**: Outing requests, QR pass generation, and gate exit/entry tracking.
+- **Complaints & Leaves**: Complaint submission, repair tracking, and leave application filing.
+- **Hostel Applications**: Admission status evaluation and online room booking.
+
+---
+
+### [v0.1.0] - 2026-07-15 (Core Prototype & Database Schema)
+
+#### 🛠️ Core Infrastructure
+- Database schema initialization with PostgreSQL & Prisma ORM.
+- Express.js backend API with JWT authentication and Bcrypt hashing.
+- React + TypeScript + Vite frontend layout and component design system.
 
 ---
 
 ## 📋 Version Summary Table
 
-| Version | Release Date | Key Focus | Status |
+| Version | Release Date | Key Deliverable | Status |
 | :--- | :--- | :--- | :--- |
 | **`v1.1.0`** | **2026-09-21** | **SSE Stream Stabilization, Callback Optimization, Bugfixes & Unified Login** | **🟢 ACTIVE / CURRENT** |
-| `v1.0.0` | 2026-09-01 | Full Functional Release (Steps 1 to 11 Management & Student Portals) | 🟡 Superceded by v1.1.0 |
+| `v1.0.0` | 2026-09-15 | Full Admin & Management Portal Steps 1–10 Consolidation | 🟡 Archived |
+| `v0.8.0` | 2026-08-28 | Fee Structures & Student Fee Collection Engine | 🟡 Archived |
+| `v0.5.0` | 2026-08-10 | Student Portal Workflows & Digital Mess QR Ecosystem | 🟡 Archived |
+| `v0.1.0` | 2026-07-15 | PostgreSQL + Prisma Schema, Express API & Vite Setup | 🟡 Archived |
