@@ -14,18 +14,27 @@ router.use(authenticateManagement);
 // Financial Management Roles
 const FINANCIAL_VIEW_ROLES = [
   'ADMIN',
+  'SUPPORT_ADMIN',
   'HOSTEL_ADMIN',
   'CHIEF_WARDEN',
   'CHIEF_WARDEN_BOYS',
   'CHIEF_WARDEN_GIRLS',
   'WARDEN',
+  'WARDEN_BOYS',
+  'WARDEN_GIRLS',
+  'OFFICE_STAFF',
+  'FINANCE_OFFICER',
+  'COLLEGE_DIRECTOR',
 ];
 const FINANCIAL_ADMIN_ROLES = [
   'ADMIN',
+  'SUPPORT_ADMIN',
   'HOSTEL_ADMIN',
   'CHIEF_WARDEN',
   'CHIEF_WARDEN_BOYS',
   'CHIEF_WARDEN_GIRLS',
+  'OFFICE_STAFF',
+  'FINANCE_OFFICER',
 ];
 
 // =========================================================================
