@@ -115,28 +115,51 @@ export const UnifiedLoginPage: React.FC<UnifiedLoginPageProps> = ({
     setLoading(true);
     setError(null);
 
+    const safeParseJson = async (res: Response) => {
+      try {
+        const text = await res.text();
+        return text ? JSON.parse(text) : null;
+      } catch {
+        return null;
+      }
+    };
+
     try {
       // First attempt authentication via management endpoint (for staff/wardens/admin)
       let response = await fetch('/api/management/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: identifier, password }),
-      });
+      }).catch(() => null);
 
-      let data = await response.json();
+      if (!response) {
+        throw new Error('Backend server connection failed. Please ensure the backend server is running on port 5001.');
+      }
 
-      // If management login returned 403 (student attempting management login) or 404/401, try student login
-      if (!response.ok && data.message && (data.message.includes('Student accounts') || data.message.includes('Invalid management'))) {
-        response = await fetch('/api/auth/login', {
+      let data = await safeParseJson(response);
+
+      // If management login returned 403 (student attempting management login) or invalid management response, try student login
+      if (!response.ok || !data || (data.message && (data.message.includes('Student accounts') || data.message.includes('Invalid management')))) {
+        const studentRes = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ jntuNo: identifier, password }),
-        });
-        data = await response.json();
+        }).catch(() => null);
+
+        if (studentRes) {
+          const studentData = await safeParseJson(studentRes);
+          if (studentRes.ok && studentData?.success) {
+            response = studentRes;
+            data = studentData;
+          } else if (studentData?.message) {
+            data = studentData;
+            response = studentRes;
+          }
+        }
       }
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Invalid credentials. Please verify your login ID and password.');
+      if (!response.ok || !data || !data.success) {
+        throw new Error(data?.message || 'Invalid credentials. Please verify your login ID and password.');
       }
 
       const token = data.token;
