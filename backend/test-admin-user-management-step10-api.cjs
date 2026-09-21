@@ -859,14 +859,20 @@ async function runSuite() {
     await test('33. Database integrity — verify 0 invalid roles, 0 plaintext passwords in PostgreSQL', async () => {
       const validRoles = [
         'ADMIN',
+        'SUPPORT_ADMIN',
         'HOSTEL_ADMIN',
         'CHIEF_WARDEN',
         'CHIEF_WARDEN_BOYS',
         'CHIEF_WARDEN_GIRLS',
         'WARDEN',
+        'WARDEN_BOYS',
+        'WARDEN_GIRLS',
         'STUDENT',
         'MAINTENANCE_STAFF',
         'MESS_STAFF',
+        'OFFICE_STAFF',
+        'FINANCE_OFFICER',
+        'COLLEGE_DIRECTOR',
       ];
 
       const allUsers = await prisma.student.findMany({

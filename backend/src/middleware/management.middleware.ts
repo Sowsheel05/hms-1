@@ -5,11 +5,17 @@ import { prisma } from '../services/prisma.service';
 
 export const MANAGEMENT_ROLES = [
   'WARDEN',
+  'WARDEN_BOYS',
+  'WARDEN_GIRLS',
   'CHIEF_WARDEN',
   'CHIEF_WARDEN_BOYS',
   'CHIEF_WARDEN_GIRLS',
   'ADMIN',
+  'SUPPORT_ADMIN',
   'HOSTEL_ADMIN',
+  'OFFICE_STAFF',
+  'FINANCE_OFFICER',
+  'COLLEGE_DIRECTOR',
 ];
 export const MAINTENANCE_ROLE = 'MAINTENANCE_STAFF';
 export const ALL_MANAGEMENT_ROLES = [...MANAGEMENT_ROLES, MAINTENANCE_ROLE];
@@ -22,18 +28,20 @@ export interface ManagementUser {
   role: string;
   blockName?: string | null;
   hostelScope?: 'BOYS' | 'GIRLS' | 'ALL';
+  collegeCode?: string | null;
 }
 
 export const resolveHostelScope = (role: string, blockName?: string | null): 'BOYS' | 'GIRLS' | 'ALL' => {
-  if (role === 'CHIEF_WARDEN_BOYS') return 'BOYS';
-  if (role === 'CHIEF_WARDEN_GIRLS') return 'GIRLS';
-  if (blockName?.toLowerCase().includes('girls')) return 'GIRLS';
-  if (blockName?.toLowerCase().includes('boys')) return 'BOYS';
+  if (role === 'CHIEF_WARDEN_BOYS' || role === 'WARDEN_BOYS') return 'BOYS';
+  if (role === 'CHIEF_WARDEN_GIRLS' || role === 'WARDEN_GIRLS') return 'GIRLS';
+  if (blockName?.toUpperCase().startsWith('GH') || blockName?.toLowerCase().includes('girls')) return 'GIRLS';
+  if (blockName?.toUpperCase().startsWith('BH') || blockName?.toLowerCase().includes('boys')) return 'BOYS';
   return 'ALL';
 };
 
 export interface AuthenticatedManagementRequest extends Request {
   managementUser?: ManagementUser;
+  collegeCode?: string;
 }
 
 /**
@@ -53,6 +61,8 @@ export const authenticateManagement = async (
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
+    } else if (req.query.token && typeof req.query.token === 'string') {
+      token = req.query.token;
     }
 
     if (!token) {
@@ -71,7 +81,7 @@ export const authenticateManagement = async (
 
     if (!session || session.expiresAt < new Date()) {
       if (session) {
-        await prisma.session.delete({ where: { token } }).catch(() => {});
+        await prisma.session.delete({ where: { token } }).catch(() => { });
       }
       res.status(401).json({
         success: false,
@@ -110,6 +120,10 @@ export const authenticateManagement = async (
       return;
     }
 
+    const headerCollegeCode = (req.headers['x-college-code'] || req.query.collegeCode || '').toString().trim().toUpperCase();
+    const activeCollegeCode = headerCollegeCode || user.collegeCode || 'ACM-01';
+
+    req.collegeCode = activeCollegeCode;
     req.managementUser = {
       id: user.id,
       jntuNo: user.jntuNo,
@@ -118,6 +132,7 @@ export const authenticateManagement = async (
       role: user.role,
       blockName: user.blockName,
       hostelScope: resolveHostelScope(user.role, user.blockName),
+      collegeCode: activeCollegeCode,
     };
 
     next();
@@ -164,7 +179,7 @@ export const authenticateManagementOrMaintenance = async (
 
     if (!session || session.expiresAt < new Date()) {
       if (session) {
-        await prisma.session.delete({ where: { token } }).catch(() => {});
+        await prisma.session.delete({ where: { token } }).catch(() => { });
       }
       res.status(401).json({
         success: false,

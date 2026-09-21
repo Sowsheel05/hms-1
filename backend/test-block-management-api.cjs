@@ -235,11 +235,17 @@ async function runTests() {
 
   // 12. Dependent block deletion safely rejected
   await test('12. Deleting block with active resident allocations rejected with 409 Conflict', async () => {
-    // Find Girls-Block-B (allocated to MANI MANASVI GAVARA and NAKKULLA RITHIKA)
+    // Find GH-1 / Girls-Block-B (allocated to MANI MANASVI GAVARA and NAKKULLA RITHIKA)
     const gb = await prisma.block.findFirst({
-      where: { name: 'Girls-Block-B' },
+      where: {
+        OR: [
+          { code: 'GH-1' },
+          { name: 'Girls-Block-B' },
+          { name: 'GH-1' },
+        ],
+      },
     });
-    assert(gb, 'Girls-Block-B must exist in PostgreSQL');
+    assert(gb, 'Hostel block GH-1 / Girls-Block-B must exist in PostgreSQL');
 
     const delRes = await deleteJson(`/management/blocks/${gb.id}`, wardenToken);
     assert.strictEqual(delRes.status, 409, 'Dependent block deletion must return 409 Conflict');
@@ -348,12 +354,12 @@ async function runTests() {
 
   // 18. Room dependency protection blocks deletion even if student count is 0
   await test('18. Deleting block with configured rooms is rejected with 409 Conflict', async () => {
-    // Boys-Block-A has room 201 with 0 student allocations
-    const bbA = await prisma.block.findUnique({
-      where: { code: 'BB-A' },
+    // Find block with configured rooms (e.g. BH-1 or GH-1)
+    const bbA = await prisma.block.findFirst({
+      where: { rooms: { some: {} } },
       include: { rooms: true },
     });
-    assert(bbA, 'Boys-Block-A must exist');
+    assert(bbA, 'Hostel block with configured rooms must exist in PostgreSQL');
     assert(bbA.rooms.length > 0, 'Boys-Block-A must have at least 1 room configured');
 
     const delRes = await deleteJson(`/management/blocks/${bbA.id}`, adminToken);

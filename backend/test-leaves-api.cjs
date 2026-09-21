@@ -24,6 +24,15 @@ async function testLeavesApi() {
   assert.strictEqual(loginBRes.status, 200, 'Login B must succeed');
   const studentBToken = loginBData.token;
 
+  // Authenticate Warden for administrative test endpoints
+  const wardenLoginRes = await fetch('http://localhost:5001/api/management/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'WARDEN01', password: 'Password@123' }),
+  });
+  const wardenLoginData = await wardenLoginRes.json();
+  const wardenToken = wardenLoginData.token;
+
   // Pre-test cleanup: reset any leftover leaves from interrupted test runs
   const preCheckRes = await fetch('http://localhost:5001/api/student/leaves', {
     headers: { Authorization: `Bearer ${studentAToken}` },
@@ -39,7 +48,10 @@ async function testLeavesApi() {
       } else if (req.status === 'APPROVED') {
         await fetch('http://localhost:5001/api/student/leaves/test/admin-transition', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${wardenToken}`,
+          },
           body: JSON.stringify({
             leaveId: req.id,
             targetStatus: 'REJECTED',
@@ -279,7 +291,10 @@ async function testLeavesApi() {
   const suspEnd = new Date(now.getTime() + 10 * dayMs).toISOString();
   const suspRes = await fetch('http://localhost:5001/api/student/leaves/test/admin-suspension', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${wardenToken}`,
+    },
     body: JSON.stringify({
       studentId: studentAId,
       action: 'CREATE',
@@ -324,7 +339,10 @@ async function testLeavesApi() {
   // TEST 19: Lift Suspension
   const liftRes = await fetch('http://localhost:5001/api/student/leaves/test/admin-suspension', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${wardenToken}`,
+    },
     body: JSON.stringify({
       action: 'LIFT',
       suspensionId,
@@ -366,7 +384,10 @@ async function testLeavesApi() {
   // Transition to APPROVED
   const approveRes = await fetch('http://localhost:5001/api/student/leaves/test/admin-transition', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${wardenToken}`,
+    },
     body: JSON.stringify({
       leaveId: activeLeaveId,
       targetStatus: 'APPROVED',
@@ -386,16 +407,27 @@ async function testLeavesApi() {
   assert.strictEqual(onLeaveCheckData.activeLeave.effectiveStatus, 'ACTIVE');
   console.log('[PASS] 20. Approved current leave accurately evaluated as ACTIVE and student status as ON_LEAVE');
 
-  // Clean up active test leave so that dashboard baseline active leaves remains 0
+  // Clean up active test leave and suspensions so remaining test suites run in good standing
   await fetch('http://localhost:5001/api/student/leaves/test/admin-transition', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${wardenToken}`,
+    },
     body: JSON.stringify({
       leaveId: activeLeaveId,
       targetStatus: 'REJECTED',
       remarks: 'Test completed cleanup',
     }),
   });
+
+  const { PrismaClient } = require('@prisma/client');
+  const prisma = new PrismaClient();
+  await prisma.suspension.updateMany({
+    where: { studentId: studentAId, status: 'ACTIVE' },
+    data: { status: 'LIFTED', liftedAt: new Date() },
+  });
+  await prisma.$disconnect();
 
   console.log('\n=== All 20 Student Leaves & Suspension Tests PASSED! ===\n');
 }

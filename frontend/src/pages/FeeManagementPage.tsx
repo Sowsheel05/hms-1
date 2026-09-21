@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   CreditCard,
   Building,
@@ -220,15 +220,28 @@ export const FeeManagementPage: React.FC<FeeManagementPageProps> = ({ onNavigate
     loadActiveTabData();
   }, [loadActiveTabData]);
 
-  // Realtime subscription
+  const loadKpiStatsRef = useRef(loadKpiStats);
+  const loadActiveTabDataRef = useRef(loadActiveTabData);
   useEffect(() => {
-    const sse = new EventSource('/api/management/events-stream');
-    sse.addEventListener('fee_event', () => {
-      loadKpiStats();
-      loadActiveTabData();
-    });
-    return () => sse.close();
+    loadKpiStatsRef.current = loadKpiStats;
+    loadActiveTabDataRef.current = loadActiveTabData;
   }, [loadKpiStats, loadActiveTabData]);
+
+  // Realtime subscription via authenticated SSE
+  useEffect(() => {
+    const unsubscribe = managementApiService.subscribeToEvents((event) => {
+      if (
+        event?.type === 'FEE_PAYMENT_RECORDED' ||
+        event?.type === 'FEE_STRUCTURE_CREATED' ||
+        event?.type === 'FEE_UPDATED' ||
+        event?.type === 'fee_event'
+      ) {
+        loadKpiStatsRef.current();
+        loadActiveTabDataRef.current();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Copy helper
   const handleCopy = (text: string, id: string) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search,
   Plus,
@@ -195,14 +195,25 @@ export const FeeCollectionPage: React.FC<FeeCollectionPageProps> = () => {
     loadStudentFees();
   }, [loadStudentFees]);
 
-  // Realtime subscription via SSE
+  const loadStudentFeesRef = useRef(loadStudentFees);
   useEffect(() => {
-    const sse = new EventSource('/api/management/events-stream');
-    sse.addEventListener('fee_event', () => {
-      loadStudentFees();
-    });
-    return () => sse.close();
+    loadStudentFeesRef.current = loadStudentFees;
   }, [loadStudentFees]);
+
+  // Realtime subscription via SSE using authenticated managementApiService
+  useEffect(() => {
+    const unsubscribe = managementApiService.subscribeToEvents((event) => {
+      if (
+        event?.type === 'FEE_PAYMENT_RECORDED' ||
+        event?.type === 'FEE_STRUCTURE_CREATED' ||
+        event?.type === 'FEE_UPDATED' ||
+        event?.type === 'fee_event'
+      ) {
+        loadStudentFeesRef.current();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Toggle row expansion
   const toggleExpand = (studentId: string) => {

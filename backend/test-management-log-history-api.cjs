@@ -295,7 +295,7 @@ async function runTests() {
 
     // Test 19: Approval produces audit record with state transition
     // Clean up any lingering conflicting outings for test student first
-    const testStudentUser = await prisma.student.findFirst({ where: { role: 'STUDENT' } });
+    const testStudentUser = await prisma.student.findFirst({ where: { jntuNo: '25331A05H7' } });
     await prisma.student.update({
       where: { id: testStudentUser.id },
       data: { monthlyOutingMax: 5 },

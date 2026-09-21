@@ -24,110 +24,39 @@ export const OutingLogHistoryPage: React.FC<OutingLogHistoryPageProps> = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [logs, setLogs] = useState<GateLogEntry[]>([]);
 
-  // Sample authoritative gate logs matching the screenshots
-  const sampleLogs: GateLogEntry[] = [
-    {
-      id: 'gl-1',
-      studentName: 'KUMARI CHINTA',
-      studentId: '25331A0236',
-      logType: 'GATE_EXIT',
-      timestamp: '2026-09-10 17:30:12',
-      status: 'VERIFIED',
-    },
-    {
-      id: 'gl-2',
-      studentName: 'Sivaparvathi Gunturu',
-      studentId: '24331A1249',
-      logType: 'GATE_ENTRY',
-      timestamp: '2026-09-10 16:45:00',
-      status: 'COMPLETED',
-    },
-    {
-      id: 'gl-3',
-      studentName: 'Shriya Choudhury',
-      studentId: '24331A0512',
-      logType: 'OUTING',
-      timestamp: '2026-09-10 15:12:44',
-      status: 'VERIFIED',
-    },
-    {
-      id: 'gl-4',
-      studentName: 'Reshma Borra',
-      studentId: '24331A0545',
-      logType: 'GATE_ENTRY',
-      timestamp: '2026-09-10 14:02:18',
-      status: 'COMPLETED',
-    },
-    {
-      id: 'gl-5',
-      studentName: 'Rajana Vaishnavi',
-      studentId: '24331A0505',
-      logType: 'GATE_EXIT',
-      timestamp: '2026-09-10 11:20:05',
-      status: 'VERIFIED',
-    },
-    {
-      id: 'gl-6',
-      studentName: 'VANA BHARGAV PRASAD',
-      studentId: '23331A4462',
-      logType: 'GATE_ENTRY',
-      timestamp: '2026-09-10 09:15:30',
-      status: 'COMPLETED',
-    },
-    {
-      id: 'gl-7',
-      studentName: 'MANI MANASVI GAVARA',
-      studentId: '25331A05H7',
-      logType: 'OUTING',
-      timestamp: '2026-09-09 18:30:00',
-      status: 'COMPLETED',
-    },
-    {
-      id: 'gl-8',
-      studentName: 'Addala kavya',
-      studentId: '25331A05G7',
-      logType: 'GATE_ENTRY',
-      timestamp: '2026-09-09 17:55:12',
-      status: 'COMPLETED',
-    },
-    {
-      id: 'gl-9',
-      studentName: 'Sushma sri Reddi',
-      studentId: '24331A05J2',
-      logType: 'GATE_EXIT',
-      timestamp: '2026-09-09 14:10:00',
-      status: 'OVERDUE',
-    },
-    {
-      id: 'gl-10',
-      studentName: 'Rohini Malla',
-      studentId: '24331A0588',
-      logType: 'GATE_EXIT',
-      timestamp: '2026-09-09 12:00:25',
-      status: 'VERIFIED',
-    },
-  ];
-
   const fetchGateLogs = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Try to fetch active outings from API to merge with gate logs
-      const outingRes = await managementApiService.getOutings({ limit: 10 }).catch(() => null);
-      if (outingRes && outingRes.success && outingRes.data.length > 0) {
-        const mapped = outingRes.data.map((o) => ({
-          id: o.id,
-          studentName: o.student?.name || 'Unknown Student',
-          studentId: o.student?.jntuNo || '',
-          logType: (o.passType === 'LOCAL_OUTING' ? 'OUTING' : 'GATE_EXIT') as GateLogEntry['logType'],
-          timestamp: o.outDate ? new Date(o.outDate).toLocaleString() : 'Recent',
-          status: (o.status === 'OUT' ? 'VERIFIED' : o.status === 'RETURNED' ? 'COMPLETED' : 'PENDING') as GateLogEntry['status'],
+      const historyRes = await managementApiService.getOutingLogHistory({ pageSize: 50 }).catch(() => null);
+      if (historyRes && historyRes.success && historyRes.records && historyRes.records.length > 0) {
+        const mapped: GateLogEntry[] = historyRes.records.map((r: any) => ({
+          id: r.id,
+          studentName: r.studentName || 'Student',
+          studentId: r.studentJntuNo || '',
+          logType: r.movementType === 'ENTRY' ? 'GATE_ENTRY' : r.movementType === 'EXIT' ? 'GATE_EXIT' : 'OUTING',
+          timestamp: r.eventTimeFormatted || (r.outDate ? new Date(r.outDate).toLocaleString() : 'Recent'),
+          status: (r.status === 'APPROVED' ? 'VERIFIED' : r.status === 'COMPLETED' ? 'COMPLETED' : r.status === 'OVERDUE' ? 'OVERDUE' : 'PENDING') as GateLogEntry['status'],
         }));
         setLogs(mapped);
       } else {
-        setLogs(sampleLogs);
+        // Try fallback to outings API directly
+        const outingRes = await managementApiService.getOutings({ limit: 50 }).catch(() => null);
+        if (outingRes && outingRes.success && outingRes.data && outingRes.data.length > 0) {
+          const mapped: GateLogEntry[] = outingRes.data.map((o) => ({
+            id: o.id,
+            studentName: o.student?.name || 'Unknown Student',
+            studentId: o.student?.jntuNo || '',
+            logType: (o.passType === 'LOCAL_OUTING' ? 'OUTING' : 'GATE_EXIT') as GateLogEntry['logType'],
+            timestamp: o.outDate ? new Date(o.outDate).toLocaleString() : 'Recent',
+            status: (o.status === 'OUT' ? 'VERIFIED' : o.status === 'RETURNED' ? 'COMPLETED' : 'PENDING') as GateLogEntry['status'],
+          }));
+          setLogs(mapped);
+        } else {
+          setLogs([]);
+        }
       }
     } catch {
-      setLogs(sampleLogs);
+      setLogs([]);
     } finally {
       setIsLoading(false);
     }

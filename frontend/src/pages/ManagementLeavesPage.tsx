@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FileText,
   Clock,
@@ -253,10 +253,39 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
     }
   }, [activeTab, fetchLeaves, fetchSuspensions]);
 
+  const leaveStateRef = useRef({
+    activeTab,
+    leavesPage: leavesPagination.page,
+    suspPage: suspPagination.page,
+    fetchStats,
+    fetchLeaves,
+    fetchSuspensions,
+  });
+
+  useEffect(() => {
+    leaveStateRef.current = {
+      activeTab,
+      leavesPage: leavesPagination.page,
+      suspPage: suspPagination.page,
+      fetchStats,
+      fetchLeaves,
+      fetchSuspensions,
+    };
+  });
+
   // Real-time SSE synchronization
   useEffect(() => {
     const unsubscribe = managementApiService.subscribeToEvents(
       (event) => {
+        const {
+          activeTab: curTab,
+          leavesPage: curLeavesPage,
+          suspPage: curSuspPage,
+          fetchStats: getStats,
+          fetchLeaves: getLeaves,
+          fetchSuspensions: getSuspensions,
+        } = leaveStateRef.current;
+
         if (
           event?.type === 'LEAVE_APPROVED' ||
           event?.type === 'LEAVE_REJECTED' ||
@@ -267,11 +296,11 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
           event?.type === 'SUSPENSION_ENDED' ||
           event?.type === 'SUSPENSION_LIFTED'
         ) {
-          fetchStats(true);
-          if (activeTab === 'leaves') {
-            fetchLeaves(leavesPagination.page, true);
+          getStats(true);
+          if (curTab === 'leaves') {
+            getLeaves(curLeavesPage, true);
           } else {
-            fetchSuspensions(suspPagination.page, true);
+            getSuspensions(curSuspPage, true);
           }
         }
       },
@@ -281,7 +310,7 @@ export const ManagementLeavesPage: React.FC<ManagementLeavesPageProps> = () => {
     );
 
     return () => unsubscribe();
-  }, [fetchStats, fetchLeaves, fetchSuspensions, activeTab, leavesPagination.page, suspPagination.page]);
+  }, []);
 
   // Manual Refresh
   const handleManualRefresh = async () => {

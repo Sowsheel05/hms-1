@@ -19,7 +19,7 @@ async function main() {
       name: 'MANI MANASVI GAVARA',
       email: 'vemalivardhan@gmail.com',
       allocationStatus: 'ALLOCATED',
-      blockName: 'Girls-Block-B',
+      blockName: 'GH-1',
       floorName: '1',
       roomNumber: '119',
       bedNumber: 'Bed-1',
@@ -35,7 +35,7 @@ async function main() {
       email: 'vemalivardhan@gmail.com',
       role: 'STUDENT',
       allocationStatus: 'ALLOCATED',
-      blockName: 'Girls-Block-B',
+      blockName: 'GH-1',
       floorName: '1',
       roomNumber: '119',
       bedNumber: 'Bed-1',
@@ -252,31 +252,53 @@ async function main() {
     },
   });
 
-  // 5. Administrator account (Step 19)
+  // 5a. College Institutional Administrator Account
   await prisma.student.upsert({
-    where: { jntuNo: 'ADMIN01' },
+    where: { jntuNo: 'ADMIN_COLLEGE' },
     update: {
       passwordHash: studentPasswordHash,
       isActive: true,
       role: 'ADMIN',
+      name: 'College Administrator (Alliance)',
+      email: 'admin@alliance.edu.in',
     },
     create: {
-      jntuNo: 'ADMIN01',
+      jntuNo: 'ADMIN_COLLEGE',
       passwordHash: studentPasswordHash,
-      name: 'System Administrator',
-      email: 'admin@college.edu',
+      name: 'College Administrator (Alliance)',
+      email: 'admin@alliance.edu.in',
       role: 'ADMIN',
       isActive: true,
     },
   });
 
-  // 5b. Chief Warden Boys account
+  // 5b. Company Level-1 Support & Marketing Administrator Account
+  await prisma.student.upsert({
+    where: { jntuNo: 'SUPPORT_ADMIN' },
+    update: {
+      passwordHash: studentPasswordHash,
+      isActive: true,
+      role: 'ADMIN',
+      name: 'Campusly Support & Marketing Admin',
+      email: 'support@campusly.io',
+    },
+    create: {
+      jntuNo: 'SUPPORT_ADMIN',
+      passwordHash: studentPasswordHash,
+      name: 'Campusly Support & Marketing Admin',
+      email: 'support@campusly.io',
+      role: 'ADMIN',
+      isActive: true,
+    },
+  });
+
+  // 5b. Chief Warden / Warden Boys accounts
   await prisma.student.upsert({
     where: { jntuNo: 'CW_BOYS' },
     update: {
       passwordHash: studentPasswordHash,
       isActive: true,
-      role: 'CHIEF_WARDEN_BOYS',
+      role: 'WARDEN_BOYS',
       name: 'Chief Warden (Boys Hostel)',
       email: 'chiefwarden.boys@college.edu',
       blockName: 'Boys Hostel',
@@ -286,19 +308,40 @@ async function main() {
       passwordHash: studentPasswordHash,
       name: 'Chief Warden (Boys Hostel)',
       email: 'chiefwarden.boys@college.edu',
-      role: 'CHIEF_WARDEN_BOYS',
+      role: 'WARDEN_BOYS',
       blockName: 'Boys Hostel',
       isActive: true,
     },
   });
 
-  // 5c. Chief Warden Girls account
+  await prisma.student.upsert({
+    where: { jntuNo: 'WARDEN_BOYS' },
+    update: {
+      passwordHash: studentPasswordHash,
+      isActive: true,
+      role: 'WARDEN_BOYS',
+      name: 'Boys Hostel Warden',
+      email: 'warden.boys@college.edu',
+      blockName: 'Boys Hostel',
+    },
+    create: {
+      jntuNo: 'WARDEN_BOYS',
+      passwordHash: studentPasswordHash,
+      name: 'Boys Hostel Warden',
+      email: 'warden.boys@college.edu',
+      role: 'WARDEN_BOYS',
+      blockName: 'Boys Hostel',
+      isActive: true,
+    },
+  });
+
+  // 5c. Chief Warden / Warden Girls accounts
   await prisma.student.upsert({
     where: { jntuNo: 'CW_GIRLS' },
     update: {
       passwordHash: studentPasswordHash,
       isActive: true,
-      role: 'CHIEF_WARDEN_GIRLS',
+      role: 'WARDEN_GIRLS',
       name: 'Chief Warden (Girls Hostel)',
       email: 'chiefwarden.girls@college.edu',
       blockName: 'Girls Hostel',
@@ -308,29 +351,49 @@ async function main() {
       passwordHash: studentPasswordHash,
       name: 'Chief Warden (Girls Hostel)',
       email: 'chiefwarden.girls@college.edu',
-      role: 'CHIEF_WARDEN_GIRLS',
+      role: 'WARDEN_GIRLS',
       blockName: 'Girls Hostel',
       isActive: true,
     },
   });
 
-  // 5d. Warden account
   await prisma.student.upsert({
-    where: { jntuNo: 'WARDEN01' },
+    where: { jntuNo: 'WARDEN_GIRLS' },
     update: {
       passwordHash: studentPasswordHash,
       isActive: true,
-      role: 'WARDEN',
+      role: 'WARDEN_GIRLS',
       name: 'Girls Hostel Warden',
+      email: 'warden.girls@college.edu',
       blockName: 'Girls Hostel',
     },
     create: {
-      jntuNo: 'WARDEN01',
+      jntuNo: 'WARDEN_GIRLS',
       passwordHash: studentPasswordHash,
       name: 'Girls Hostel Warden',
-      email: 'warden@college.edu',
-      role: 'WARDEN',
+      email: 'warden.girls@college.edu',
+      role: 'WARDEN_GIRLS',
       blockName: 'Girls Hostel',
+      isActive: true,
+    },
+  });
+
+  // 5d. Office Staff account (Fee & Finance Management Only)
+  await prisma.student.upsert({
+    where: { jntuNo: 'OFFICE_STAFF' },
+    update: {
+      passwordHash: studentPasswordHash,
+      isActive: true,
+      role: 'OFFICE_STAFF',
+      name: 'Office Fee Accountant',
+      email: 'office.fees@college.edu',
+    },
+    create: {
+      jntuNo: 'OFFICE_STAFF',
+      passwordHash: studentPasswordHash,
+      name: 'Office Fee Accountant',
+      email: 'office.fees@college.edu',
+      role: 'OFFICE_STAFF',
       isActive: true,
     },
   });
@@ -353,134 +416,149 @@ async function main() {
     },
   });
 
-  // 6. Authoritative Hostel Blocks (matching screenshot: Boys A, B, C, D and Girls A, B)
+  // 6. Authoritative Hostel Blocks (BH-1, BH-2 for Boys, GH-1 for Girls)
   const initialBlocks = [
     {
-      name: 'Boys-Block-A',
-      code: 'BB-A',
-      description: 'North residential wing for male students.',
+      name: 'BH-1',
+      code: 'BH-1',
+      description: 'Alliance Boys Residential Block 1 (Ground + 3 Floors).',
       status: 'ACTIVE',
+      collegeCode: 'ACM-01',
     },
     {
-      name: 'Boys-Block-B',
-      code: 'BB-B',
-      description: 'East residential wing for male students.',
+      name: 'BH-2',
+      code: 'BH-2',
+      description: 'Alliance Boys Residential Block 2 (Ground + 3 Floors).',
       status: 'ACTIVE',
+      collegeCode: 'ACM-01',
     },
     {
-      name: 'Boys-Block-C',
-      code: 'BB-C',
-      description: 'West residential wing for male students.',
+      name: 'GH-1',
+      code: 'GH-1',
+      description: 'Alliance Girls Residential Block 1 (Ground + 3 Floors).',
       status: 'ACTIVE',
+      collegeCode: 'ACM-01',
     },
     {
-      name: 'Boys-Block-D',
-      code: 'BB-D',
-      description: 'South residential wing for male students.',
+      name: 'HITS-BH-A',
+      code: 'HITS-BH-A',
+      description: 'Harsha Tech Boys Block A (4 Floors).',
       status: 'ACTIVE',
+      collegeCode: 'HITS-01',
     },
     {
-      name: 'Girls-Block-A',
-      code: 'GB-A',
-      description: 'Main residential block A for female students.',
+      name: 'HITS-GH-B',
+      code: 'HITS-GH-B',
+      description: 'Harsha Tech Girls Block B (4 Floors).',
       status: 'ACTIVE',
+      collegeCode: 'HITS-01',
     },
     {
-      name: 'Girls-Block-B',
-      code: 'GB-B',
-      description: 'Main residential block B for female students.',
+      name: 'CEC-BH-1',
+      code: 'CEC-BH-1',
+      description: 'City Engineering Boys Block 1.',
       status: 'ACTIVE',
+      collegeCode: 'CEC-01',
+    },
+    {
+      name: 'CEC-GH-1',
+      code: 'CEC-GH-1',
+      description: 'City Engineering Girls Block 1.',
+      status: 'ACTIVE',
+      collegeCode: 'CEC-01',
     },
   ];
 
   for (const b of initialBlocks) {
     await prisma.block.upsert({
       where: { code: b.code },
-      update: { status: b.status, description: b.description },
+      update: { name: b.name, status: b.status, description: b.description, collegeCode: b.collegeCode },
       create: b,
     });
   }
 
-  // 7. Authoritative Rooms & Allocations
-  const gbBlockA = await prisma.block.findUnique({ where: { code: 'GB-A' } });
-  const gbBlockB = await prisma.block.findUnique({ where: { code: 'GB-B' } });
-  const bbBlockA = await prisma.block.findUnique({ where: { code: 'BB-A' } });
-  const bbBlockB = await prisma.block.findUnique({ where: { code: 'BB-B' } });
-  const bbBlockC = await prisma.block.findUnique({ where: { code: 'BB-C' } });
-  const bbBlockD = await prisma.block.findUnique({ where: { code: 'BB-D' } });
+  // 7. Authoritative Rooms & Allocations for BH-1, BH-2, GH-1
+  const bh1Block = await prisma.block.findUnique({ where: { code: 'BH-1' } });
+  const bh2Block = await prisma.block.findUnique({ where: { code: 'BH-2' } });
+  const gh1Block = await prisma.block.findUnique({ where: { code: 'GH-1' } });
 
-  if (gbBlockB) {
-    const room119 = await prisma.room.upsert({
-      where: { blockId_roomNumber: { blockId: gbBlockB.id, roomNumber: '119' } },
-      update: {},
-      create: {
-        blockId: gbBlockB.id,
-        roomNumber: '119',
-        floor: 1,
-        roomType: 'Non-AC Room (2 Sharing)',
-        capacity: 2,
-        status: 'ACTIVE',
-      },
-    });
+  // Seed Floor Plan Rooms for GH-1 (Girls Hostel)
+  if (gh1Block) {
+    const gh1Rooms = [
+      { roomNumber: '101', floor: 1, capacity: 2, roomType: 'Non-AC Room (2 Sharing)', status: 'ACTIVE' },
+      { roomNumber: '102', floor: 1, capacity: 2, roomType: 'AC Room (2 Sharing)', status: 'ACTIVE' },
+      { roomNumber: '119', floor: 1, capacity: 2, roomType: 'Non-AC Room (2 Sharing)', status: 'ACTIVE' },
+      { roomNumber: '120', floor: 1, capacity: 2, roomType: 'Non-AC Room (2 Sharing)', status: 'ACTIVE' },
+      { roomNumber: '201', floor: 2, capacity: 3, roomType: 'Non-AC Room (3 Sharing)', status: 'ACTIVE' },
+      { roomNumber: '202', floor: 2, capacity: 2, roomType: 'AC Room (2 Sharing)', status: 'UNDER_MAINTENANCE' },
+      { roomNumber: '301', floor: 3, capacity: 2, roomType: 'AC Room (2 Sharing)', status: 'ACTIVE' },
+    ];
 
-    await prisma.room.upsert({
-      where: { blockId_roomNumber: { blockId: gbBlockB.id, roomNumber: '120' } },
-      update: {},
-      create: {
-        blockId: gbBlockB.id,
-        roomNumber: '120',
-        floor: 1,
-        roomType: 'Non-AC Room (2 Sharing)',
-        capacity: 2,
-        status: 'ACTIVE',
-      },
-    });
-
-    // Allocations for student1 and student2
-    const existingAlloc1 = await prisma.roomAllocation.findFirst({
-      where: { studentId: student1.id, status: 'ACTIVE' },
-    });
-    if (!existingAlloc1) {
-      await prisma.roomAllocation.create({
-        data: {
-          roomId: room119.id,
-          studentId: student1.id,
-          bedNumber: 'Bed-1',
-          status: 'ACTIVE',
-          allocatedAt: new Date('2026-08-01T09:00:00.000Z'),
-        },
+    for (const r of gh1Rooms) {
+      await prisma.room.upsert({
+        where: { blockId_roomNumber: { blockId: gh1Block.id, roomNumber: r.roomNumber } },
+        update: { floor: r.floor, capacity: r.capacity, roomType: r.roomType, status: r.status },
+        create: { blockId: gh1Block.id, ...r },
       });
     }
 
-    const existingAlloc2 = await prisma.roomAllocation.findFirst({
-      where: { studentId: student2.id, status: 'ACTIVE' },
+    const room119 = await prisma.room.findUnique({
+      where: { blockId_roomNumber: { blockId: gh1Block.id, roomNumber: '119' } },
     });
-    if (!existingAlloc2) {
-      await prisma.roomAllocation.create({
-        data: {
-          roomId: room119.id,
-          studentId: student2.id,
-          bedNumber: 'Bed-2',
-          status: 'ACTIVE',
-          allocatedAt: new Date('2026-08-01T09:00:00.000Z'),
-        },
+
+    if (room119) {
+      const existingAlloc1 = await prisma.roomAllocation.findFirst({
+        where: { studentId: student1.id, status: 'ACTIVE' },
+      });
+      if (!existingAlloc1) {
+        await prisma.roomAllocation.create({
+          data: {
+            roomId: room119.id,
+            studentId: student1.id,
+            bedNumber: 'Bed-1',
+            status: 'ACTIVE',
+            allocatedAt: new Date('2026-08-01T09:00:00.000Z'),
+          },
+        });
+      }
+    }
+  }
+
+  // Seed Floor Plan Rooms for BH-1 (Boys Hostel 1)
+  if (bh1Block) {
+    const bh1Rooms = [
+      { roomNumber: '101', floor: 1, capacity: 2, roomType: 'Non-AC Room (2 Sharing)', status: 'ACTIVE' },
+      { roomNumber: '102', floor: 1, capacity: 2, roomType: 'AC Room (2 Sharing)', status: 'ACTIVE' },
+      { roomNumber: '201', floor: 2, capacity: 3, roomType: 'Non-AC Room (3 Sharing)', status: 'ACTIVE' },
+      { roomNumber: '202', floor: 2, capacity: 2, roomType: 'Non-AC Room (2 Sharing)', status: 'UNDER_MAINTENANCE' },
+      { roomNumber: '301', floor: 3, capacity: 2, roomType: 'AC Room (2 Sharing)', status: 'ACTIVE' },
+    ];
+
+    for (const r of bh1Rooms) {
+      await prisma.room.upsert({
+        where: { blockId_roomNumber: { blockId: bh1Block.id, roomNumber: r.roomNumber } },
+        update: { floor: r.floor, capacity: r.capacity, roomType: r.roomType, status: r.status },
+        create: { blockId: bh1Block.id, ...r },
       });
     }
   }
 
-  if (bbBlockD) {
-    await prisma.room.upsert({
-      where: { blockId_roomNumber: { blockId: bbBlockD.id, roomNumber: '101' } },
-      update: {},
-      create: {
-        blockId: bbBlockD.id,
-        roomNumber: '101',
-        floor: 1,
-        roomType: 'Non-AC Room (2 Sharing)',
-        capacity: 2,
-        status: 'ACTIVE',
-      },
-    });
+  // Seed Floor Plan Rooms for BH-2 (Boys Hostel 2)
+  if (bh2Block) {
+    const bh2Rooms = [
+      { roomNumber: '101', floor: 1, capacity: 2, roomType: 'Non-AC Room (2 Sharing)', status: 'ACTIVE' },
+      { roomNumber: '102', floor: 1, capacity: 3, roomType: 'Non-AC Room (3 Sharing)', status: 'ACTIVE' },
+      { roomNumber: '201', floor: 2, capacity: 2, roomType: 'AC Room (2 Sharing)', status: 'ACTIVE' },
+      { roomNumber: '301', floor: 3, capacity: 2, roomType: 'Non-AC Room (2 Sharing)', status: 'ACTIVE' },
+    ];
+
+    for (const r of bh2Rooms) {
+      await prisma.room.upsert({
+        where: { blockId_roomNumber: { blockId: bh2Block.id, roomNumber: r.roomNumber } },
+        update: { floor: r.floor, capacity: r.capacity, roomType: r.roomType, status: r.status },
+        create: { blockId: bh2Block.id, ...r },
+      });
+    }
   }
 
   // 8. Pending Room Allocation Candidate (from reference screenshot): VANA BHARGAV PRASAD
@@ -556,32 +634,76 @@ async function main() {
     },
   });
 
-  // 10. Biometric Check-In Events from reference screenshots (Reshma Borra, etc.)
-  const biometricStudent = await prisma.student.upsert({
-    where: { jntuNo: '24331A0545' },
-    update: { passwordHash: studentPasswordHash, isActive: true, role: 'STUDENT', name: 'Reshma Borra', blockName: 'Girls-Block-B', floorName: 'Floor 4', roomNumber: '410' },
-    create: { jntuNo: '24331A0545', passwordHash: studentPasswordHash, name: 'Reshma Borra', email: 'reshma.b@college.edu', role: 'STUDENT', blockName: 'Girls-Block-B', floorName: 'Floor 4', roomNumber: '410', isActive: true },
-  });
-
-  await prisma.biometricEvent.create({
-    data: {
-      studentId: biometricStudent.id,
-      eventType: 'ENTRY',
-      direction: 'IN',
-      verificationStatus: 'VERIFIED',
-      source: 'BIOMETRIC_DEVICE',
-      gate: 'Girls Hostel Biometric',
-      deviceId: 'DEV-GH-01',
-      deviceLabel: 'Fingerprint',
-      eventTimestamp: new Date('2026-07-15T13:38:27.000Z'),
+  // 11. Authoritative Meal Configurations in PostgreSQL
+  const defaultMealConfigs = [
+    {
+      mealType: 'BREAKFAST',
+      name: 'Breakfast',
+      startTime: '07:30 AM',
+      endTime: '09:30 AM',
+      description: 'Morning breakfast & beverages',
+      startHour: 7,
+      startMinute: 30,
+      endHour: 9,
+      endMinute: 30,
+      cutoffHour: 7,
+      cutoffMinute: 0,
     },
-  });
+    {
+      mealType: 'LUNCH',
+      name: 'Lunch',
+      startTime: '12:30 PM',
+      endTime: '02:30 PM',
+      description: 'Afternoon standard meal',
+      startHour: 12,
+      startMinute: 30,
+      endHour: 14,
+      endMinute: 30,
+      cutoffHour: 11,
+      cutoffMinute: 30,
+    },
+    {
+      mealType: 'SNACKS',
+      name: 'Evening Snacks',
+      startTime: '05:00 PM',
+      endTime: '06:30 PM',
+      description: 'Tea, coffee & evening refreshments',
+      startHour: 17,
+      startMinute: 0,
+      endHour: 18,
+      endMinute: 30,
+      cutoffHour: 16,
+      cutoffMinute: 0,
+    },
+    {
+      mealType: 'DINNER',
+      name: 'Dinner',
+      startTime: '07:30 PM',
+      endTime: '09:30 PM',
+      description: 'Night dinner menu',
+      startHour: 19,
+      startMinute: 30,
+      endHour: 21,
+      endMinute: 30,
+      cutoffHour: 18,
+      cutoffMinute: 30,
+    },
+  ];
+
+  for (const mc of defaultMealConfigs) {
+    await prisma.mealConfig.upsert({
+      where: { mealType: mc.mealType },
+      update: mc,
+      create: mc,
+    });
+  }
 
   console.log('Database seeded successfully:');
   console.log(`- Administrator: System Administrator (ADMIN01)`);
   console.log(`- Chief Warden Boys: Chief Warden (Boys Hostel) (CW_BOYS)`);
   console.log(`- Chief Warden Girls: Chief Warden (Girls Hostel) (CW_GIRLS)`);
-  console.log(`- Blocks: Seeded 6 authoritative blocks (BB-A, BB-B, BB-C, BB-D, GB-A, GB-B)`);
+  console.log(`- Blocks: Seeded 3 authoritative blocks (BH-1, BH-2, GH-1)`);
+  console.log(`- Meal Configs: Seeded 4 meal configurations (BREAKFAST, LUNCH, SNACKS, DINNER)`);
   console.log(`- Pending Candidate: ${pendingStudent.name} (${pendingStudent.jntuNo})`);
 }
 

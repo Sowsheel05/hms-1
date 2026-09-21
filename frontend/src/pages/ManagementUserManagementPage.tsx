@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Users,
   Search,
@@ -184,49 +184,37 @@ export const ManagementUserManagementPage: React.FC<ManagementUserManagementPage
     fetchRoles();
   }, [appliedFilters]);
 
+  const fetchUsersRef = useRef(fetchUsers);
+  const fetchSummaryRef = useRef(fetchSummary);
+
+  useEffect(() => {
+    fetchUsersRef.current = fetchUsers;
+    fetchSummaryRef.current = fetchSummary;
+  }, [fetchUsers, fetchSummary]);
+
   // -----------------------------------------------------------------
   // REAL-TIME SSE STREAM LISTENER
   // -----------------------------------------------------------------
   useEffect(() => {
-    const token = localStorage.getItem('managementToken');
-    if (!token) return;
-
-    let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource(`/api/management/events-stream?token=${encodeURIComponent(token)}`);
-
-      eventSource.onopen = () => {
-        setIsLiveConnected(true);
-      };
-
-      eventSource.onerror = () => {
-        setIsLiveConnected(false);
-      };
-
-      const handleUserMutation = () => {
-        // Refetch authoritative data on real-time mutations
-        fetchUsers();
-        fetchSummary();
-      };
-
-      eventSource.addEventListener('USER_CREATED', handleUserMutation);
-      eventSource.addEventListener('USER_UPDATED', handleUserMutation);
-      eventSource.addEventListener('USER_ROLE_CHANGED', handleUserMutation);
-      eventSource.addEventListener('USER_DISABLED', handleUserMutation);
-      eventSource.addEventListener('USER_ENABLED', handleUserMutation);
-      eventSource.addEventListener('USER_PASSWORD_RESET', handleUserMutation);
-      eventSource.addEventListener('USER_STATS_UPDATED', handleUserMutation);
-    } catch (err) {
-      console.error('Failed to establish SSE stream:', err);
-      setIsLiveConnected(false);
-    }
-
-    return () => {
-      if (eventSource) {
-        eventSource.close();
+    const unsubscribe = managementApiService.subscribeToEvents(
+      (event) => {
+        const type = (event?.type || '').toUpperCase();
+        if (
+          type.startsWith('USER_') ||
+          type === 'MANAGEMENT_DASHBOARD_EVENT' ||
+          type === 'MANAGEMENT_DASHBOARD_UPDATE'
+        ) {
+          fetchUsersRef.current();
+          fetchSummaryRef.current();
+        }
+      },
+      (connected) => {
+        setIsLiveConnected(connected);
       }
-    };
-  }, [fetchUsers, fetchSummary]);
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   // Manual Refresh Handler
   const handleManualRefresh = async () => {

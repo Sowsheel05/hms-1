@@ -1528,14 +1528,27 @@ export interface BiometricOverviewData {
    STEP 10 — MANAGEMENT DASHBOARD TYPES & API SERVICE
    ========================================================================= */
 
+export interface CollegeItem {
+  id: string;
+  code: string;
+  name: string;
+  location?: string | null;
+  contactEmail?: string | null;
+  status: string;
+  isPrimary: boolean;
+  totalBlocks: number;
+  totalStudents: number;
+}
+
 export interface ManagementUser {
   id: string;
   jntuNo: string;
   name: string;
   email?: string | null;
-  role: 'WARDEN' | 'CHIEF_WARDEN' | 'CHIEF_WARDEN_BOYS' | 'CHIEF_WARDEN_GIRLS' | 'ADMIN' | 'HOSTEL_ADMIN' | string;
+  role: 'WARDEN' | 'CHIEF_WARDEN' | 'CHIEF_WARDEN_BOYS' | 'CHIEF_WARDEN_GIRLS' | 'ADMIN' | 'SUPPORT_ADMIN' | 'HOSTEL_ADMIN' | string;
   blockName?: string | null;
   hostelScope?: 'BOYS' | 'GIRLS' | 'ALL';
+  collegeCode?: string | null;
 }
 
 export interface ResidentPresenceMetrics {
@@ -1638,6 +1651,18 @@ export const managementAuthStorage = {
     const token = localStorage.getItem(MANAGEMENT_TOKEN_STORAGE_KEY);
     return token;
   },
+  getHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+    const token = this.getToken();
+    const collegeCode = localStorage.getItem('hms_active_college_code') || 'ACM-01';
+    const headers: Record<string, string> = {
+      'x-college-code': collegeCode,
+      ...extraHeaders,
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  },
   setToken(token: string): void {
     try {
       localStorage.setItem(MANAGEMENT_TOKEN_STORAGE_KEY, token);
@@ -1659,6 +1684,19 @@ export const managementAuthStorage = {
 
 
 export const managementApiService = {
+  async getColleges(): Promise<{ success: boolean; colleges: CollegeItem[] }> {
+    const token = managementAuthStorage.getToken();
+    if (!token) throw new Error('Management session missing.');
+
+    const res = await fetch('/api/management/colleges', {
+      headers: managementAuthStorage.getHeaders(),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch colleges.');
+    return data;
+  },
+
   async login(identifier: string, password: string): Promise<ManagementLoginResponse> {
     try {
       const response = await fetch('/api/management/auth/login', {
@@ -2733,7 +2771,10 @@ export const managementApiService = {
     return data;
   },
 
-  async approveOuting(id: string): Promise<{ success: boolean; message: string; data: any }> {
+  async approveOuting(
+    id: string,
+    parentConsent?: { parentName?: string; parentPhone?: string; consentMode?: string; notes?: string }
+  ): Promise<{ success: boolean; message: string; data: any }> {
     const token = managementAuthStorage.getToken();
     if (!token) throw new Error('Management session missing.');
 
@@ -2743,6 +2784,7 @@ export const managementApiService = {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
+      body: JSON.stringify(parentConsent || {}),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to approve outing request.');
@@ -4804,6 +4846,7 @@ export interface Block {
   vacant?: number;
   maintenance?: number;
   vacancyRate?: string;
+  rooms?: RoomItem[];
   createdAt: string;
   updatedAt: string;
 }
@@ -4858,6 +4901,7 @@ export interface RoomItem {
   availableBeds: number;
   occupancyStatus: 'Occupied' | 'Partially Occupied' | 'Vacant';
   activeOccupants: RoomOccupant[];
+  allocations?: any[];
   history?: any[];
   createdAt: string;
   updatedAt: string;

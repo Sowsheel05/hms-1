@@ -9,9 +9,9 @@ import outingRoutes from './routes/outing.routes';
 import complaintRoutes from './routes/complaint.routes';
 import leaveRoutes from './routes/leave.routes';
 import notificationRoutes from './routes/notification.routes';
-import biometricRoutes, { testBiometricRouter } from './routes/biometric.routes';
 import managementRoutes from './routes/management.routes';
 import hostelApplicationRoutes from './routes/hostel-application.routes';
+import biometricRoutes, { testBiometricRouter } from './routes/biometric.routes';
 
 const app = express();
 
@@ -56,9 +56,9 @@ app.use('/api/student', complaintRoutes);
 app.use('/api/student', leaveRoutes);
 app.use('/api/student', notificationRoutes);
 app.use('/api/student', biometricRoutes);
+app.use('/api', testBiometricRouter);
 app.use('/api/student/hostel-application', hostelApplicationRoutes);
 app.use('/api/management', managementRoutes);
-app.use('/api/test', testBiometricRouter);
 
 // Fallback 404
 app.use((req, res) => {

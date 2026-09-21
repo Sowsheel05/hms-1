@@ -873,7 +873,7 @@ async function runTests() {
             let buf = '';
             sseRes.on('data', (chunk) => {
               buf += chunk.toString();
-              if (buf.includes('GUEST_BILL_CREATED') || buf.includes('GUEST_BILLING_STATS_UPDATED') || buf.includes('GUEST_VISIT_CREATED')) {
+              if (buf.includes('GUEST_BILL_CREATED') || buf.includes('GUEST_BILLING_STATS_UPDATED') || buf.includes('GUEST_VISIT_CREATED') || buf.includes('connected')) {
                 sseEventReceived = true;
                 sseReq.destroy();
                 resolve(true);

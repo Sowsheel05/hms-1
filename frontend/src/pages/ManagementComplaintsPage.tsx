@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Wrench,
   Clock,
@@ -76,15 +76,7 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
   const [searchTerm, setSearchTerm] = useState<string>('');
 
   // Residential Blocks list
-  const [blocks, setBlocks] = useState<Array<{ id: string; name: string }>>([
-    { id: 'West-Wing-C', name: 'West-Wing-C' },
-    { id: 'Boys-Block-A', name: 'Boys-Block-A' },
-    { id: 'Boys-Block-B', name: 'Boys-Block-B' },
-    { id: 'Boys-Block-C', name: 'Boys-Block-C' },
-    { id: 'Boys-Block-D', name: 'Boys-Block-D' },
-    { id: 'Girls-Block-A', name: 'Girls-Block-A' },
-    { id: 'Girls-Block-B', name: 'Girls-Block-B' },
-  ]);
+  const [blocks, setBlocks] = useState<Array<{ id: string; name: string }>>([]);
 
   // Maintenance Staff List (for assigning)
   const [staffList, setStaffList] = useState<MaintenanceStaffMember[]>([]);
@@ -228,33 +220,43 @@ export const ManagementComplaintsPage: React.FC<ManagementComplaintsPageProps> =
     fetchComplaints(1);
   }, [fetchComplaints]);
 
+  const complaintsStateRef = useRef({
+    fetchStats,
+    fetchComplaints,
+    page: pagination.page,
+  });
+
+  useEffect(() => {
+    complaintsStateRef.current = {
+      fetchStats,
+      fetchComplaints,
+      page: pagination.page,
+    };
+  });
+
   // SSE Subscription
   useEffect(() => {
-    let isMounted = true;
-    const unsubscribe = managementApiService.subscribeToEvents((event) => {
-      if (!isMounted) return;
-      setIsLiveConnected(true);
-
-      const eventType = (event.type || event.eventType || '').toUpperCase();
-      if (
-        eventType.includes('COMPLAINT') ||
-        eventType.includes('MAINTENANCE') ||
-        eventType === 'MANAGEMENT_DASHBOARD_EVENT' ||
-        eventType === 'MANAGEMENT_DASHBOARD_UPDATE'
-      ) {
-        // Silently reload stats and list
-        fetchStats(true);
-        fetchComplaints(pagination.page, true);
+    const unsubscribe = managementApiService.subscribeToEvents(
+      (event) => {
+        const { fetchStats: getStats, fetchComplaints: getComplaints, page: curPage } = complaintsStateRef.current;
+        const eventType = (event.type || event.eventType || '').toUpperCase();
+        if (
+          eventType.includes('COMPLAINT') ||
+          eventType.includes('MAINTENANCE') ||
+          eventType === 'MANAGEMENT_DASHBOARD_EVENT' ||
+          eventType === 'MANAGEMENT_DASHBOARD_UPDATE'
+        ) {
+          getStats(true);
+          getComplaints(curPage, true);
+        }
+      },
+      (connected) => {
+        setIsLiveConnected(connected);
       }
-    });
+    );
 
-    setIsLiveConnected(true);
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, [fetchStats, fetchComplaints, pagination.page]);
+    return () => unsubscribe();
+  }, []);
 
   // Manual Refresh
   const handleManualRefresh = async () => {

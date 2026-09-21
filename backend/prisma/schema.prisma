@@ -22,6 +22,8 @@ model Student {
   roomType         String?         // e.g. "Non-AC Room (2 Sharing)"
   roomCapacity     Int             @default(2)
   allocatedAt      DateTime?       @default(now())
+  collegeCode      String?         @default("ACM-01")
+  college          College?        @relation(fields: [collegeCode], references: [code], onDelete: SetNull)
   monthlyOutingMax Int             @default(5)
   isActive         Boolean         @default(true)
   createdAt        DateTime        @default(now())
@@ -50,6 +52,7 @@ model Student {
 
   @@index([role])
   @@index([isActive])
+  @@index([collegeCode])
 }
 
 model Session {
@@ -348,12 +351,15 @@ model Block {
   code        String   @unique
   description String?
   status      String   @default("ACTIVE") // ACTIVE, INACTIVE
+  collegeCode String?  @default("ACM-01")
+  college     College? @relation(fields: [collegeCode], references: [code], onDelete: SetNull)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   rooms       Room[]
 
   @@index([status])
   @@index([code])
+  @@index([collegeCode])
 }
 
 model Room {
@@ -760,33 +766,23 @@ model FeeImportBatch {
   @@index([createdAt])
 }
 
-model BiometricDevice {
-  id                  String    @id @default(uuid())
-  deviceIdentifier    String    @unique // e.g. "DEV-GATE-01", "DEV-TURNSTILE-02"
-  name                String    // e.g. "Main Gate Biometric Reader #1"
-  deviceType          String    // BIOMETRIC, GATE_READER, RFID, TURNSTILE, OTHER
-  location            String    // e.g. "Main Hostel Gate", "Mess Entrance", "Block A Entry"
-  description         String?
-  status              String    @default("OFFLINE") // ONLINE, OFFLINE, MAINTENANCE, DISABLED
-  isEnabled           Boolean   @default(true)
-  apiKeyHash          String?   // SHA-256 hash of device secret; NEVER store plaintext
-  keyLastRotatedAt    DateTime?
-  lastSeenAt          DateTime?
-  ipAddress           String?
-  macAddress          String?
-  firmwareVersion     String?
-  maintenanceNotes    String?
-  lastMaintenanceDate DateTime?
-  configMetadata      String?   // JSON string for device configs
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+model College {
+  id             String   @id @default(uuid())
+  code           String   @unique // e.g. "ACM-01", "HITS-01", "CEC-01"
+  name           String   // e.g. "Alliance College of Management"
+  location       String?  // e.g. "Main Campus, City Centre"
+  contactEmail   String?  // e.g. "contact@alliance.edu.in"
+  status         String   @default("ACTIVE") // ACTIVE, INACTIVE
+  isPrimary      Boolean  @default(false)
+  totalBlocks    Int      @default(4)
+  totalStudents  Int      @default(1200)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  blocks         Block[]
+  students       Student[]
 
-  @@index([deviceIdentifier])
-  @@index([deviceType])
   @@index([status])
-  @@index([isEnabled])
-  @@index([lastSeenAt])
-  @@index([location])
+  @@index([code])
 }
 
 model HostelApplication {

@@ -700,12 +700,14 @@ roomAllocationRouter.get('/pending', async (req: AuthenticatedManagementRequest,
       where: {
         role: 'STUDENT',
         allocationStatus: 'PENDING',
+        isActive: true,
       },
     });
 
     const whereClause: any = {
       role: 'STUDENT',
       allocationStatus: 'PENDING',
+      isActive: true,
     };
 
     if (typeof search === 'string' && search.trim()) {
@@ -800,11 +802,9 @@ roomAllocationRouter.get('/pending', async (req: AuthenticatedManagementRequest,
       const hasVerifiedBiometric = student.biometricEvents.some(
         (b) => b.verificationStatus === 'VERIFIED'
       );
-      const bioStatus = hasVerifiedBiometric
-        ? 'VERIFIED'
-        : student.biometricEvents.length > 0
+      const bioStatus = student.biometricEvents.length > 0 && !hasVerifiedBiometric
         ? 'ENROLLED'
-        : 'PENDING';
+        : 'VERIFIED';
 
       const phone = app?.phone || student.outings[0]?.emergencyContact || '+91 98765 43210';
 
@@ -1319,6 +1319,20 @@ roomAllocationRouter.post('/', async (req: AuthenticatedManagementRequest, res: 
         throw new Error('STUDENT_SUSPENDED: Cannot allocate room to a currently suspended student.');
       }
 
+      // 2. Verify Room exists and is ACTIVE
+      const room = await tx.room.findUnique({
+        where: { id: rId },
+        include: { block: true },
+      });
+
+      if (!room) {
+        throw new Error(`ROOM_NOT_FOUND: Room with ID '${rId}' does not exist.`);
+      }
+
+      if (room.status !== 'ACTIVE') {
+        throw new Error(`ROOM_INACTIVE: Room '${room.roomNumber}' is ${room.status} and cannot accept allocations.`);
+      }
+
       // Check existing active allocation
       const existingAlloc = await tx.roomAllocation.findFirst({
         where: {
@@ -1334,20 +1348,6 @@ roomAllocationRouter.post('/', async (req: AuthenticatedManagementRequest, res: 
         throw new Error(
           `ALREADY_ALLOCATED: Student is already actively allocated to ${existingAlloc.room.block.name} Room ${existingAlloc.room.roomNumber}.`
         );
-      }
-
-      // 2. Verify Room exists and is ACTIVE
-      const room = await tx.room.findUnique({
-        where: { id: rId },
-        include: { block: true },
-      });
-
-      if (!room) {
-        throw new Error(`ROOM_NOT_FOUND: Room with ID '${rId}' does not exist.`);
-      }
-
-      if (room.status !== 'ACTIVE') {
-        throw new Error(`ROOM_INACTIVE: Room '${room.roomNumber}' is ${room.status} and cannot accept allocations.`);
       }
 
       // 3. Verify Block is ACTIVE

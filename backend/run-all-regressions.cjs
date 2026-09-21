@@ -26,7 +26,6 @@ const suites = [
   { name: 'Fee Management & Collection', script: 'test-fee-management-collection-api.cjs', expected: 17 },
   { name: 'Fee Hardening & Reconciliation', script: 'test-fee-hardening-reconciliation.cjs', expected: 12 },
   { name: 'Outing Log History', script: 'test-management-outing-log-history.cjs', expected: 25 },
-  { name: 'Device Management', script: 'test-management-device-api.cjs', expected: 32 },
   { name: 'Admin Notifications', script: 'test-management-notifications.cjs', expected: 43 },
   { name: 'Student Portal Foundation Hardening', script: 'test-student-portal-hardening.cjs', expected: 18 },
   { name: 'Student Mess Workflow', script: 'test-student-mess-workflow.cjs', expected: 20 },
@@ -72,7 +71,7 @@ for (const suite of suites) {
     if (match) {
       passedCount = parseInt(match[1], 10);
     }
-    
+
     totalPassed += passedCount;
     totalExpected += suite.expected;
     results.push({ name: suite.name, passed: passedCount, expected: suite.expected, status: 'PASS' });

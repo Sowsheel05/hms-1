@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   History,
   Search,
@@ -142,72 +142,37 @@ export const ManagementLogHistoryPage: React.FC<ManagementLogHistoryPageProps> =
   }, [appliedFilters]);
 
   // -----------------------------------------------------------------
+  const fetchLogsRef = useRef(fetchLogs);
+  const fetchSummaryRef = useRef(fetchSummary);
+
+  useEffect(() => {
+    fetchLogsRef.current = fetchLogs;
+    fetchSummaryRef.current = fetchSummary;
+  }, [fetchLogs, fetchSummary]);
+
   // REAL-TIME SSE SUBSCRIPTION
   // -----------------------------------------------------------------
   useEffect(() => {
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: any = null;
-    let isMounted = true;
-
-    const connectSSE = () => {
-      if (!isMounted) return;
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        eventSource = new EventSource(
-          `/api/management/events-stream?token=${encodeURIComponent(token)}`
-        );
-
-        eventSource.onopen = () => {
-          if (isMounted) setIsLiveConnected(true);
-        };
-
-        const handleUpdate = (e: MessageEvent) => {
-          if (!isMounted) return;
-          try {
-            const data = JSON.parse(e.data);
-            if (
-              data.type === 'AUDIT_LOG_CREATED' ||
-              data.type === 'MANAGEMENT_AUDIT_UPDATE' ||
-              data.type?.includes('UPDATE') ||
-              data.type?.includes('CREATED')
-            ) {
-              fetchLogs();
-              fetchSummary();
-            }
-          } catch (err) {
-            console.error('Error parsing SSE audit event:', err);
-          }
-        };
-
-        eventSource.addEventListener('management_dashboard_update', handleUpdate);
-        eventSource.addEventListener('management_dashboard_event', handleUpdate);
-
-        eventSource.onerror = () => {
-          if (isMounted) setIsLiveConnected(false);
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-          if (isMounted) {
-            reconnectTimeout = setTimeout(connectSSE, 4000);
-          }
-        };
-      } catch (err) {
-        console.error('SSE initialization error:', err);
-        if (isMounted) setIsLiveConnected(false);
+    const unsubscribe = managementApiService.subscribeToEvents(
+      (event) => {
+        const type = (event?.type || '').toUpperCase();
+        if (
+          type === 'AUDIT_LOG_CREATED' ||
+          type === 'MANAGEMENT_AUDIT_UPDATE' ||
+          type.includes('UPDATE') ||
+          type.includes('CREATED')
+        ) {
+          fetchLogsRef.current();
+          fetchSummaryRef.current();
+        }
+      },
+      (connected) => {
+        setIsLiveConnected(connected);
       }
-    };
+    );
 
-    connectSSE();
-
-    return () => {
-      isMounted = false;
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (eventSource) eventSource.close();
-    };
-  }, [fetchLogs, fetchSummary]);
+    return () => unsubscribe();
+  }, []);
 
   // -----------------------------------------------------------------
   // FILTER HANDLERS

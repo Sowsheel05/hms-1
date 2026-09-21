@@ -750,16 +750,60 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
     }
   }, [activeTab, reportDate, reportMeal, reportBlock, reportSearch, reportCategory, fetchReportsSummary, fetchReportsData]);
 
+  const stateRef = useRef({
+    activeTab,
+    markingPage,
+    reportPage,
+    attendancePage,
+    fetchMeals,
+    fetchAttendanceMarking,
+    fetchReportsSummary,
+    fetchReportsData,
+    fetchAnalytics,
+    fetchIndentPlan,
+    fetchAttendance,
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      activeTab,
+      markingPage,
+      reportPage,
+      attendancePage,
+      fetchMeals,
+      fetchAttendanceMarking,
+      fetchReportsSummary,
+      fetchReportsData,
+      fetchAnalytics,
+      fetchIndentPlan,
+      fetchAttendance,
+    };
+  });
+
   // Unified SSE Subscription
   useEffect(() => {
     const unsubscribe = managementApiService.subscribeToEvents(
       (event) => {
+        const {
+          activeTab: curTab,
+          markingPage: curMarkingPage,
+          reportPage: curReportPage,
+          attendancePage: curAttendancePage,
+          fetchMeals: getMeals,
+          fetchAttendanceMarking: getAttendanceMarking,
+          fetchReportsSummary: getReportsSummary,
+          fetchReportsData: getReportsData,
+          fetchAnalytics: getAnalytics,
+          fetchIndentPlan: getIndentPlan,
+          fetchAttendance: getAttendance,
+        } = stateRef.current;
+
         if (
           event?.type === 'MEAL_CREATED' ||
           event?.type === 'MEAL_UPDATED' ||
           event?.type === 'MEAL_DELETED'
         ) {
-          fetchMeals(true);
+          getMeals(true);
         }
         if (
           event?.type === 'MESS_TOKEN_BOOKED' ||
@@ -769,14 +813,14 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
           event?.type === 'MESS_ATTENDANCE_UPDATED' ||
           event?.type === 'MESS_STATS_UPDATED'
         ) {
-          if (activeTab === 'attendance-marking') fetchAttendanceMarking(markingPage, true);
-          if (activeTab === 'reports') {
-            fetchReportsSummary(true);
-            fetchReportsData(reportPage, true);
+          if (curTab === 'attendance-marking') getAttendanceMarking(curMarkingPage, true);
+          if (curTab === 'reports') {
+            getReportsSummary(true);
+            getReportsData(curReportPage, true);
           }
-          if (activeTab === 'analytics') fetchAnalytics(true);
-          if (activeTab === 'indent') fetchIndentPlan(true);
-          if (activeTab === 'attendance') fetchAttendance(attendancePage, true);
+          if (curTab === 'analytics') getAnalytics(true);
+          if (curTab === 'indent') getIndentPlan(true);
+          if (curTab === 'attendance') getAttendance(curAttendancePage, true);
         }
       },
       (connected) => {
@@ -785,7 +829,7 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
     );
 
     return () => unsubscribe();
-  }, [activeTab, fetchAttendanceMarking, fetchReportsSummary, fetchReportsData, fetchMeals, fetchAnalytics, fetchIndentPlan, fetchAttendance, attendancePage, markingPage, reportPage]);
+  }, []);
 
   // Global manual refresh
   const handleGlobalRefresh = async () => {
@@ -1001,22 +1045,19 @@ export const MessManagementPage: React.FC<MessManagementPageProps> = () => {
 
             {/* Search Box & Quick Batch Action */}
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.75rem', flexWrap: 'wrap', marginLeft: 'auto' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '240px' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Search Student</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '0.45rem 0.75rem', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
-                  <Search size={15} style={{ color: '#64748B' }} />
-                  <input
-                    type="text"
-                    placeholder="Roll No or Student Name..."
-                    value={markingSearch}
-                    onChange={(e) => {
-                      setMarkingSearch(e.target.value);
-                      setMarkingPage(1);
-                    }}
-                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.875rem', color: '#0F172A', width: '100%' }}
-                    aria-label="Search students by name or roll number"
-                  />
-                </div>
+              <div className="campusly-search-input-group" style={{ minWidth: '280px' }}>
+                <Search size={18} className="campusly-search-icon" />
+                <input
+                  type="text"
+                  className="campusly-search-input"
+                  placeholder="Search by name, email, or ID..."
+                  value={markingSearch}
+                  onChange={(e) => {
+                    setMarkingSearch(e.target.value);
+                    setMarkingPage(1);
+                  }}
+                  aria-label="Search students by name, email or ID"
+                />
               </div>
 
               <button

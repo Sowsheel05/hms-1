@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Footprints,
   Plus,
@@ -43,6 +43,9 @@ export const OutingRequestsPage: React.FC = () => {
   const [passType, setPassType] = useState<'LOCAL_OUTING' | 'EMERGENCY' | 'NIGHT_OUT'>('LOCAL_OUTING');
   const [destination, setDestination] = useState<string>('');
   const [purpose, setPurpose] = useState<string>('');
+  const [outingDate, setOutingDate] = useState<string>('');
+  const [exitTime, setExitTime] = useState<string>('');
+  const [returnTime, setReturnTime] = useState<string>('');
   const [outDate, setOutDate] = useState<string>('');
   const [returnDate, setReturnDate] = useState<string>('');
   const [emergencyContact, setEmergencyContact] = useState<string>('');
@@ -70,27 +73,50 @@ export const OutingRequestsPage: React.FC = () => {
     fetchOutings();
   }, [fetchOutings]);
 
+  // Update outDate & returnDate ISO strings whenever outingDate, exitTime, or returnTime changes
+  useEffect(() => {
+    if (outingDate && exitTime) {
+      setOutDate(`${outingDate}T${exitTime}`);
+    }
+    if (outingDate && returnTime) {
+      setReturnDate(`${outingDate}T${returnTime}`);
+    }
+  }, [outingDate, exitTime, returnTime]);
+
   // Set default initial dates when opening modal (exit in 1 hour, return in 4 hours)
   const handleOpenCreateModal = () => {
     const now = new Date();
-    const defaultExit = new Date(now.getTime() + 60 * 60 * 1000);
-    const defaultReturn = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    
+    const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const exitHour = (now.getHours() + 1) % 24;
+    const returnHour = (now.getHours() + 4) % 24;
 
-    const formatForInput = (d: Date) => {
-      const pad = (n: number) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
+    const defaultExitTime = `${pad(exitHour)}:00`;
+    const defaultReturnTime = `${pad(returnHour)}:00`;
 
     setPassType('LOCAL_OUTING');
     setDestination('');
     setPurpose('');
-    setOutDate(formatForInput(defaultExit));
-    setReturnDate(formatForInput(defaultReturn));
+    setOutingDate(todayStr);
+    setExitTime(defaultExitTime);
+    setReturnTime(defaultReturnTime);
+    setOutDate(`${todayStr}T${defaultExitTime}`);
+    setReturnDate(`${todayStr}T${defaultReturnTime}`);
     setEmergencyContact('');
     setRemarks('');
     setFormError(null);
     setIsCreateModalOpen(true);
   };
+
+  // Helper calculation for live hourly duration preview
+  const calculatedDurationHours = useMemo(() => {
+    if (!outDate || !returnDate) return 0;
+    const start = new Date(outDate).getTime();
+    const end = new Date(returnDate).getTime();
+    if (isNaN(start) || isNaN(end) || end <= start) return 0;
+    return Math.round(((end - start) / (1000 * 60 * 60)) * 10) / 10;
+  }, [outDate, returnDate]);
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -670,36 +696,63 @@ export const OutingRequestsPage: React.FC = () => {
                   />
                 </div>
 
-                {/* Date/Time Grid */}
+                {/* Hourly Same-Day Pass Grid */}
+                <div className="form-field-group">
+                  <label htmlFor="outing-date" className="form-field-label">
+                    Outing Date <span className="required">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    id="outing-date"
+                    className="form-input"
+                    value={outingDate}
+                    onChange={(e) => setOutingDate(e.target.value)}
+                    required
+                  />
+                </div>
+
                 <div className="form-grid-2col">
                   <div className="form-field-group">
-                    <label htmlFor="outing-out-date" className="form-field-label">
-                      Expected Exit Date & Time <span className="required">*</span>
+                    <label htmlFor="outing-exit-time" className="form-field-label">
+                      Exit Time <span className="required">*</span>
                     </label>
                     <input
-                      type="datetime-local"
-                      id="outing-out-date"
+                      type="time"
+                      id="outing-exit-time"
                       className="form-input"
-                      value={outDate}
-                      onChange={(e) => setOutDate(e.target.value)}
+                      value={exitTime}
+                      onChange={(e) => setExitTime(e.target.value)}
                       required
                     />
                   </div>
 
                   <div className="form-field-group">
-                    <label htmlFor="outing-return-date" className="form-field-label">
-                      Expected Return Date & Time <span className="required">*</span>
+                    <label htmlFor="outing-return-time" className="form-field-label">
+                      Expected Return Time <span className="required">*</span>
                     </label>
                     <input
-                      type="datetime-local"
-                      id="outing-return-date"
+                      type="time"
+                      id="outing-return-time"
                       className="form-input"
-                      value={returnDate}
-                      onChange={(e) => setReturnDate(e.target.value)}
+                      value={returnTime}
+                      onChange={(e) => setReturnTime(e.target.value)}
                       required
                     />
                   </div>
                 </div>
+
+                {/* Duration Badge */}
+                {calculatedDurationHours > 0 && (
+                  <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-between text-indigo-900 text-sm">
+                    <span className="font-medium flex items-center gap-1.5">
+                      <Clock size={16} className="text-indigo-600" />
+                      Pass Duration:
+                    </span>
+                    <span className="font-semibold bg-indigo-200/60 px-2.5 py-0.5 rounded-full text-indigo-950">
+                      {calculatedDurationHours} {calculatedDurationHours === 1 ? 'Hour' : 'Hours'} (Same Day)
+                    </span>
+                  </div>
+                )}
 
                 {/* Purpose */}
                 <div className="form-field-group">

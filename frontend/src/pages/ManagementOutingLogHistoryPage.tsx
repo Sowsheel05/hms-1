@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ClipboardList,
   Search,
@@ -127,38 +127,30 @@ export const ManagementOutingLogHistoryPage: React.FC<ManagementOutingLogHistory
     fetchLogHistory(pagination.page);
   }, [fetchLogHistory, pagination.page]);
 
-  // Realtime SSE Listener using existing Server-Sent Events architecture
+  const fetchLogHistoryRef = useRef(fetchLogHistory);
+  const currentPageRef = useRef(pagination.page);
+
   useEffect(() => {
-    let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource('/api/events');
-
-      const handleOutingEvent = () => {
-        // Authoritative refetch on real-time domain event
-        fetchLogHistory(pagination.page);
-      };
-
-      eventSource.addEventListener('OUTING_CREATED', handleOutingEvent);
-      eventSource.addEventListener('OUTING_APPROVED', handleOutingEvent);
-      eventSource.addEventListener('OUTING_REJECTED', handleOutingEvent);
-      eventSource.addEventListener('OUTING_EXIT_CONFIRMED', handleOutingEvent);
-      eventSource.addEventListener('OUTING_RETURN_CONFIRMED', handleOutingEvent);
-      eventSource.addEventListener('OUTING_MANAGEMENT_UPDATE', handleOutingEvent);
-      eventSource.addEventListener('BIOMETRIC_MOVEMENT', handleOutingEvent);
-
-      eventSource.onerror = () => {
-        // SSE reconnect handles itself gracefully
-      };
-    } catch (e) {
-      console.warn('SSE Outing Log connection notice:', e);
-    }
-
-    return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
-    };
+    fetchLogHistoryRef.current = fetchLogHistory;
+    currentPageRef.current = pagination.page;
   }, [fetchLogHistory, pagination.page]);
+
+  // Realtime SSE Listener using managementApiService
+  useEffect(() => {
+    const unsubscribe = managementApiService.subscribeToEvents((event) => {
+      const type = (event?.type || '').toUpperCase();
+      if (
+        type.startsWith('OUTING_') ||
+        type === 'BIOMETRIC_MOVEMENT' ||
+        type === 'MANAGEMENT_DASHBOARD_EVENT' ||
+        type === 'MANAGEMENT_DASHBOARD_UPDATE'
+      ) {
+        fetchLogHistoryRef.current(currentPageRef.current);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Load detailed record for modal
   const handleOpenDetail = async (id: string) => {

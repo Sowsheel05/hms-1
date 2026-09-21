@@ -113,6 +113,9 @@ export class OutingLogHistoryService {
       if (query.to) {
         const toDate = new Date(query.to);
         if (!isNaN(toDate.getTime())) {
+          if (query.to.length <= 10) {
+            toDate.setHours(23, 59, 59, 999);
+          }
           where.createdAt.lte = toDate;
         }
       }

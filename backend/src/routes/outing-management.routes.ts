@@ -501,6 +501,7 @@ router.get('/:id', async (req: AuthenticatedManagementRequest, res: Response): P
 router.post('/:id/approve', async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    const { parentName, parentPhone, consentMode, notes } = req.body || {};
     const manager = req.managementUser!;
     const approverName = manager.name || manager.jntuNo || 'Hostel Warden';
 
@@ -534,6 +535,10 @@ router.post('/:id/approve', async (req: AuthenticatedManagementRequest, res: Res
         },
       });
 
+      const consentLogStr = consentMode
+        ? ` (Parent Consent Verified via ${consentMode.replace(/_/g, ' ')}${parentPhone ? `: ${parentPhone}` : ''}${notes ? ` - ${notes}` : ''})`
+        : '';
+
       // 2. Create authoritative ActivityLog
       await tx.activityLog.create({
         data: {
@@ -545,7 +550,7 @@ router.post('/:id/approve', async (req: AuthenticatedManagementRequest, res: Res
           entityId: existing.id,
           previousState: existing.status,
           newState: 'APPROVED',
-          description: `Outing request #${existing.requestNumber || existing.id} approved by ${approverName}.`,
+          description: `Outing request #${existing.requestNumber || existing.id} approved by ${approverName}${consentLogStr}.`,
         },
       });
 
@@ -554,7 +559,7 @@ router.post('/:id/approve', async (req: AuthenticatedManagementRequest, res: Res
         {
           studentId: existing.studentId,
           title: 'Outing Request Approved',
-          message: `Your outing request #${existing.requestNumber || existing.id} to ${existing.destination || 'destination'} has been approved. You may proceed through the biometric exit gate during the designated hours.`,
+          message: `Your outing request #${existing.requestNumber || existing.id} to ${existing.destination || 'destination'} has been approved. You may proceed through the hostel exit gate during the designated hours.`,
           type: 'SUCCESS',
           category: 'OUTING',
           entityId: existing.id,

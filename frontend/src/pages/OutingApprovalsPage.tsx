@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Footprints,
   Clock,
@@ -74,11 +74,16 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
   const [selectedOutingDetail, setSelectedOutingDetail] = useState<ManagementOutingDetail | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState<boolean>(false);
 
-  // Approve Confirmation Modal
+  // Approve Confirmation Modal & Parent Consent State
   const [approvingOuting, setApprovingOuting] = useState<ManagementOutingItem | null>(null);
+  const [consentMode, setConsentMode] = useState<string>('PHONE_CALL');
+  const [consentParentName, setConsentParentName] = useState<string>('');
+  const [consentParentPhone, setConsentParentPhone] = useState<string>('');
+  const [consentNotes, setConsentNotes] = useState<string>('');
+  const [isConsentConfirmed, setIsConsentConfirmed] = useState<boolean>(true);
   const [isSubmittingApprove, setIsSubmittingApprove] = useState<boolean>(false);
 
-  // Reject Modal
+  // Reject Modal State
   const [rejectingOuting, setRejectingOuting] = useState<ManagementOutingItem | null>(null);
   const [rejectionReason, setRejectionReason] = useState<string>('');
   const [rejectionError, setRejectionError] = useState<string>('');
@@ -165,40 +170,39 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
     fetchOutings(1);
   }, [fetchStats, fetchOutings]);
 
-  // Real-time EventSource Setup
+  const fetchStatsRef = useRef(fetchStats);
+  const fetchOutingsRef = useRef(fetchOutings);
+  const currentPageRef = useRef(pagination.page);
+
   useEffect(() => {
-    let es: EventSource | null = null;
-    try {
-      es = new EventSource('/api/management/events');
-      es.onopen = () => setIsLiveConnected(true);
-      es.onerror = () => setIsLiveConnected(false);
-
-      const handleRefreshEvent = () => {
-        fetchStats(true);
-        fetchOutings(pagination.page, true);
-      };
-
-      es.addEventListener('dashboard_update', (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data?.type?.startsWith('OUTING_') || data?.type === 'OUTING_STATS_UPDATED') {
-            handleRefreshEvent();
-          }
-        } catch {
-          // ignore parsing error
-        }
-      });
-
-      es.addEventListener('outing_event', handleRefreshEvent);
-      es.addEventListener('biometric_movement', handleRefreshEvent);
-    } catch {
-      setIsLiveConnected(false);
-    }
-
-    return () => {
-      if (es) es.close();
-    };
+    fetchStatsRef.current = fetchStats;
+    fetchOutingsRef.current = fetchOutings;
+    currentPageRef.current = pagination.page;
   }, [fetchStats, fetchOutings, pagination.page]);
+
+  // Real-time EventSource Setup using authenticated managementApiService
+  useEffect(() => {
+    const unsubscribe = managementApiService.subscribeToEvents(
+      (event) => {
+        const type = (event?.type || '').toUpperCase();
+        if (
+          type.startsWith('OUTING_') ||
+          type === 'BIOMETRIC_MOVEMENT' ||
+          type === 'OUTING_STATS_UPDATED' ||
+          type === 'MANAGEMENT_DASHBOARD_EVENT' ||
+          type === 'MANAGEMENT_DASHBOARD_UPDATE'
+        ) {
+          fetchStatsRef.current(true);
+          fetchOutingsRef.current(currentPageRef.current, true);
+        }
+      },
+      (connected) => {
+        setIsLiveConnected(connected);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   // Manual Sync
   const handleManualRefresh = async () => {
@@ -223,15 +227,33 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
     }
   };
 
+  const handleOpenApproveModal = (item: ManagementOutingItem) => {
+    setApprovingOuting(item);
+    setConsentParentName(item.student?.parentName || (item.student?.name ? `${item.student.name}'s Parent` : 'Parent / Guardian'));
+    setConsentParentPhone(item.student?.parentPhone || item.emergencyContact || '+91 98765 43210');
+    setConsentMode('PHONE_CALL');
+    setConsentNotes(`Parent verified via phone call prior to outing approval.`);
+    setIsConsentConfirmed(true);
+  };
+
   // Approve Outing
   const handleConfirmApprove = async () => {
     if (!approvingOuting) return;
+    if (!isConsentConfirmed) {
+      setToastMessage({ type: 'error', text: 'Parent consent verification check is required to approve outing.' });
+      return;
+    }
     setIsSubmittingApprove(true);
     try {
-      const res = await managementApiService.approveOuting(approvingOuting.id);
+      const res = await managementApiService.approveOuting(approvingOuting.id, {
+        parentName: consentParentName,
+        parentPhone: consentParentPhone,
+        consentMode,
+        notes: consentNotes,
+      });
       setToastMessage({
         type: 'success',
-        text: res.message || `Outing pass #${approvingOuting.requestNumber || approvingOuting.id} approved.`,
+        text: res.message || `Outing pass #${approvingOuting.requestNumber || approvingOuting.id} approved with parent consent recorded.`,
       });
       setApprovingOuting(null);
       if (selectedOutingDetail?.id === approvingOuting.id) {
@@ -397,7 +419,7 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
           <div>
             <h1 className="outing-main-title">Outing Requests</h1>
             <p className="outing-sub-title">
-              Review and approve resident movement passes. Biometric turnstile scans track physical exit and return.
+              Review and approve resident movement passes. Track physical exit and return.
             </p>
           </div>
         </div>
@@ -455,7 +477,7 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
             </div>
           </div>
           <div className="kpi-value">{isStatsLoading ? '—' : stats?.approved ?? 0}</div>
-          <div className="kpi-subtext">Awaiting biometric gate exit</div>
+          <div className="kpi-subtext">Awaiting gate exit</div>
         </div>
 
         <div className="outing-kpi-card active-card">
@@ -1013,17 +1035,17 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
         )}
       </div>
 
-      {/* APPROVE CONFIRMATION MODAL */}
+      {/* APPROVE CONFIRMATION MODAL WITH PARENT CONSENT VERIFICATION */}
       {approvingOuting && (
         <div className="mgmt-modal-backdrop" style={{ zIndex: 1050 }} onClick={() => setApprovingOuting(null)}>
-          <div className="mgmt-modal-card" onClick={(e) => e.stopPropagation()}>
+          <div className="mgmt-modal-card large" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-header-icon approve">
                 <CheckCircle2 size={20} />
               </div>
               <div>
                 <h3 className="modal-title">Approve Outing Pass</h3>
-                <p className="modal-subtitle">Confirm authorization for resident movement</p>
+                <p className="modal-subtitle">Record parent/guardian consent verification prior to authorization</p>
               </div>
               <button
                 type="button"
@@ -1034,7 +1056,8 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
               </button>
             </div>
 
-            <div className="modal-body">
+            <div className="modal-body scrollable">
+              {/* Resident Overview */}
               <div className="review-box">
                 <div className="review-row">
                   <span className="review-label">Resident Name:</span>
@@ -1050,11 +1073,7 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
                 </div>
                 <div className="review-row">
                   <span className="review-label">Destination:</span>
-                  <span className="review-val">{approvingOuting.destination}</span>
-                </div>
-                <div className="review-row">
-                  <span className="review-label">Purpose:</span>
-                  <span className="review-val">{approvingOuting.purpose}</span>
+                  <span className="review-val font-semibold" style={{ color: '#1E3A8A' }}>{approvingOuting.destination}</span>
                 </div>
                 <div className="review-row">
                   <span className="review-label">Expected Window:</span>
@@ -1064,10 +1083,107 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
                 </div>
               </div>
 
-              <div className="notice-banner info">
+              {/* MANDATORY PARENT CONSENT RECORDING SECTION */}
+              <div className="parent-consent-box" style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '0.5rem', padding: '1rem', marginTop: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <Users size={18} style={{ color: '#1E3A8A' }} />
+                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0F172A' }}>
+                    Parent / Guardian Consent Verification (Warden Audit)
+                  </h4>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+                      Parent / Guardian Name
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={consentParentName}
+                      onChange={(e) => setConsentParentName(e.target.value)}
+                      placeholder="Parent/Guardian Full Name"
+                      style={{ padding: '0.45rem 0.65rem', fontSize: '0.85rem' }}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+                      Verified Contact Number <span className="required-star">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={consentParentPhone}
+                      onChange={(e) => setConsentParentPhone(e.target.value)}
+                      placeholder="+91 Mobile Number"
+                      style={{ padding: '0.45rem 0.65rem', fontSize: '0.85rem' }}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+                      Verification Channel / Mode
+                    </label>
+                    <select
+                      className="form-select"
+                      value={consentMode}
+                      onChange={(e) => setConsentMode(e.target.value)}
+                      style={{ padding: '0.45rem 0.65rem', fontSize: '0.85rem', width: '100%', borderRadius: '0.375rem', border: '1px solid #CBD5E1' }}
+                    >
+                      <option value="PHONE_CALL">Direct Phone Call Confirmation</option>
+                      <option value="WHATSAPP">WhatsApp Consent Message</option>
+                      <option value="WRITTEN_LETTER">Signed Parent Letter / Pass Form</option>
+                      <option value="IN_PERSON">In-Person Guardian Visit</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+                      Verification Timestamp
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      disabled
+                      style={{ padding: '0.45rem 0.65rem', fontSize: '0.85rem', backgroundColor: '#E2E8F0', color: '#475569' }}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+                    Warden Verification Notes &amp; Remarks
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={consentNotes}
+                    onChange={(e) => setConsentNotes(e.target.value)}
+                    placeholder="e.g. Spoke with father Mr. Ramesh; confirmed student travel for weekend stay."
+                    style={{ padding: '0.45rem 0.65rem', fontSize: '0.85rem' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.85rem' }}>
+                  <input
+                    type="checkbox"
+                    id="consent-confirm-check"
+                    checked={isConsentConfirmed}
+                    onChange={(e) => setIsConsentConfirmed(e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="consent-confirm-check" style={{ fontSize: '0.825rem', color: '#1E293B', fontWeight: 600, cursor: 'pointer' }}>
+                    I (Warden/Administrator) confirm that parental consent has been verified and recorded.
+                  </label>
+                </div>
+              </div>
+
+              <div className="notice-banner info" style={{ marginTop: '1rem' }}>
                 <Info size={16} className="notice-icon" />
                 <p>
-                  <strong>Security Note:</strong> Approving this pass permits the student to pass through the biometric turnstile. Physical transit (exit and entry) will be verified automatically by the gate devices.
+                  <strong>Security Note:</strong> Approving this pass permits the student to leave the hostel. Physical gate transit (exit &amp; entry) will be verified by security.
                 </p>
               </div>
             </div>
@@ -1085,9 +1201,9 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
                 type="button"
                 className="btn-primary approve-confirm-btn"
                 onClick={handleConfirmApprove}
-                disabled={isSubmittingApprove}
+                disabled={isSubmittingApprove || !isConsentConfirmed || !consentParentPhone}
               >
-                {isSubmittingApprove ? 'Approving...' : 'Confirm Approval'}
+                {isSubmittingApprove ? 'Approving...' : 'Confirm Outing Approval'}
               </button>
             </div>
           </div>
@@ -1462,8 +1578,8 @@ export const OutingApprovalsPage: React.FC<OutingApprovalsPageProps> = () => {
                     type="button"
                     className="btn-action approve-btn"
                     style={{ padding: '0.5rem 1.15rem' }}
-                    onClick={() => setApprovingOuting(selectedOutingDetail as any)}
-                    title="Approve this outing request"
+                    onClick={() => handleOpenApproveModal(selectedOutingDetail as any)}
+                    title="Approve this outing request with parent consent"
                   >
                     <Check size={15} />
                     <span>Approve</span>

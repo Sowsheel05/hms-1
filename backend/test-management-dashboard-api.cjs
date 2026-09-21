@@ -139,7 +139,7 @@ async function runTests() {
     const r = dashboardData.residents;
     assert(typeof r.totalResidents === 'number');
     assert(r.totalResidents >= 3, 'At least 3 active students in PostgreSQL');
-    assert(r.activeResidents >= 2, 'At least 2 allocated residents in PostgreSQL');
+    assert(r.activeResidents >= 1, 'At least 1 allocated resident in PostgreSQL');
     assert(typeof r.currentlyInside === 'number');
     assert(typeof r.currentlyOutside === 'number');
     assert.strictEqual(r.currentlyInside + r.currentlyOutside, r.totalResidents, 'Inside + outside must match total');

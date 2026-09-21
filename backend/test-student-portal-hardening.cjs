@@ -121,7 +121,10 @@ async function runHardeningSuite() {
 
     const suspRes = await fetch(`${API_BASE}/student/leaves/test/admin-suspension`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${wardenToken}`,
+      },
       body: JSON.stringify({
         studentId: studentAId,
         action: 'CREATE',
@@ -194,7 +197,10 @@ async function runHardeningSuite() {
   await test('Lifting suspension allows Student A to submit outing requests again', async () => {
     const liftRes = await fetch(`${API_BASE}/student/leaves/test/admin-suspension`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${wardenToken}`,
+      },
       body: JSON.stringify({
         action: 'LIFT',
         suspensionId,
@@ -436,6 +442,10 @@ async function runHardeningSuite() {
     );
   });
 
+  // Clean up test suspension to restore Student A to good standing for remaining suites
+  if (studentAId) {
+    await pgClient.query(`UPDATE "Suspension" SET status = 'LIFTED', "liftedAt" = NOW() WHERE "studentId" = $1 AND status = 'ACTIVE'`, [studentAId]);
+  }
   await pgClient.end();
 
   console.log(`\n================================================================`);

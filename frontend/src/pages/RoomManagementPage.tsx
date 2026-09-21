@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   BedDouble,
   Plus,
@@ -16,15 +16,15 @@ import {
   History,
   LayoutGrid,
   Filter,
-  Fingerprint,
   Phone,
   Mail,
-  GraduationCap,
-  Calendar,
   ShieldCheck,
   Check,
   ChevronLeft,
   ChevronRight,
+  Bookmark,
+  MapPin,
+  SlidersHorizontal,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -62,7 +62,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
   const [residentSearchQuery, setResidentSearchQuery] = useState<string>('');
   const [pendingBlockFilter, setPendingBlockFilter] = useState<string>('ALL');
   const [pendingRoomTypeFilter, setPendingRoomTypeFilter] = useState<string>('ALL');
-  const [pendingBiometricFilter, setPendingBiometricFilter] = useState<string>('ALL');
 
   // Modals for Pending Allocations
   // 1. Assign Modal
@@ -73,6 +72,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
   const [assignModalBlockFilter, setAssignModalBlockFilter] = useState<string>('ALL');
   const [assignError, setAssignError] = useState<string | null>(null);
   const [isAssigning, setIsAssigning] = useState<boolean>(false);
+  const [isWardenVerified, setIsWardenVerified] = useState<boolean>(false);
 
   // 2. Reject Modal
   const [isRejectModalOpen, setIsRejectModalOpen] = useState<boolean>(false);
@@ -85,11 +85,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState<boolean>(false);
   const [viewStudentTarget, setViewStudentTarget] = useState<PendingAllocationItem | null>(null);
 
-  // 4. Biometric Status Mapping Modal
-  const [isBiometricModalOpen, setIsBiometricModalOpen] = useState<boolean>(false);
-  const [biometricSyncing, setBiometricSyncing] = useState<boolean>(false);
-
-  // 5. Filter Modal
+  // 4. Filter Modal
   const [isFilterModalOpen, setIsFilterModalOpen] = useState<boolean>(false);
 
   // 6. Login Credentials Receipt Modal
@@ -203,7 +199,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
         search: residentSearchQuery.trim() || undefined,
         block: pendingBlockFilter !== 'ALL' ? pendingBlockFilter : undefined,
         roomType: pendingRoomTypeFilter !== 'ALL' ? pendingRoomTypeFilter : undefined,
-        biometricStatus: pendingBiometricFilter !== 'ALL' ? pendingBiometricFilter : undefined,
         page: pendingPage,
         limit: pendingLimit,
       });
@@ -219,7 +214,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
       setPendingLoading(false);
       setPendingRefreshing(false);
     }
-  }, [residentSearchQuery, pendingBlockFilter, pendingRoomTypeFilter, pendingBiometricFilter, pendingPage, pendingLimit]);
+  }, [residentSearchQuery, pendingBlockFilter, pendingRoomTypeFilter, pendingPage, pendingLimit]);
 
   // Fetch Blocks for Dropdowns
   const fetchBlocks = useCallback(async () => {
@@ -284,9 +279,32 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     }
   }, [activeTab, fetchAllocations, fetchPendingAllocations]);
 
+  const roomStateRef = useRef({
+    activeTab,
+    fetchPendingAllocations,
+    fetchRooms,
+    fetchAllocations,
+  });
+
+  useEffect(() => {
+    roomStateRef.current = {
+      activeTab,
+      fetchPendingAllocations,
+      fetchRooms,
+      fetchAllocations,
+    };
+  });
+
   // Real-time SSE synchronization
   useEffect(() => {
     const unsubscribe = managementApiService.subscribeToEvents((event) => {
+      const {
+        activeTab: curTab,
+        fetchPendingAllocations: getPending,
+        fetchRooms: getRooms,
+        fetchAllocations: getAllocations,
+      } = roomStateRef.current;
+
       if (
         event?.type === 'ROOM_CREATED' ||
         event?.type === 'ROOM_UPDATED' ||
@@ -297,20 +315,26 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
         event?.type === 'ALLOCATION_REJECTED' ||
         event?.type === 'ROOM_ALLOCATION_CHANGED'
       ) {
-        fetchPendingAllocations(true);
-        fetchRooms(true);
-        if (activeTab === 'allocations') {
-          fetchAllocations();
+        getPending(true);
+        getRooms(true);
+        if (curTab === 'allocations') {
+          getAllocations();
         }
       }
     });
 
     return () => unsubscribe();
-  }, [fetchPendingAllocations, fetchRooms, fetchAllocations, activeTab]);
+  }, []);
 
-  // =========================================================================
-  //                  PENDING ALLOCATION ACTIONS (STEP 3)
-  // =========================================================================
+  const isBoysBlockName = (nameOrCode: string) => {
+    const s = (nameOrCode || '').toLowerCase();
+    return s.includes('boys') || s.includes('bh') || s.includes('boy');
+  };
+
+  const isGirlsBlockName = (nameOrCode: string) => {
+    const s = (nameOrCode || '').toLowerCase();
+    return s.includes('girls') || s.includes('gh') || s.includes('girl');
+  };
 
   // Open Assign Modal for a pending resident
   const handleOpenAssignModal = (item: PendingAllocationItem) => {
@@ -318,15 +342,55 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
     setSelectedAssignRoomId('');
     setSelectedAssignBed('');
     setAssignError(null);
-    setAssignModalBlockFilter(item.preferences.blockPreference || 'ALL');
+    setIsWardenVerified(false);
+
+    const pref = item.preferences.blockPreference || '';
+    const roomPref = item.preferences.roomPreference || '';
+    const isGirl = isGirlsBlockName(pref) || isGirlsBlockName(roomPref);
+
+    const matchingBlocks = blocks.filter(
+      (b) => b.status === 'ACTIVE' && (isGirl ? (isGirlsBlockName(b.name) || isGirlsBlockName(b.code)) : (isBoysBlockName(b.name) || isBoysBlockName(b.code)))
+    );
+
+    setAssignModalBlockFilter(matchingBlocks.length > 0 ? matchingBlocks[0].name : 'ALL');
     setIsAssignModalOpen(true);
   };
 
-  // Rooms available for pending allocation
+  // Filter blocks list for assign modal strictly by gender
+  const filteredBlocksForAssignModal = useMemo(() => {
+    if (!assignStudentTarget) return blocks.filter((b) => b.status === 'ACTIVE');
+    const prefBlock = assignStudentTarget.preferences.blockPreference || '';
+    const roomPref = assignStudentTarget.preferences.roomPreference || '';
+    const isGirl = isGirlsBlockName(prefBlock) || isGirlsBlockName(roomPref);
+
+    return blocks.filter((b) => {
+      if (b.status !== 'ACTIVE') return false;
+      if (isGirl) {
+        return isGirlsBlockName(b.name) || isGirlsBlockName(b.code);
+      } else {
+        return isBoysBlockName(b.name) || isBoysBlockName(b.code);
+      }
+    });
+  }, [blocks, assignStudentTarget]);
+
+  // Rooms available for pending allocation (Strictly Gender Scoped)
   const availableRoomsForPending = useMemo(() => {
+    if (!assignStudentTarget) return [];
+    const prefBlock = assignStudentTarget.preferences.blockPreference || '';
+    const roomPref = assignStudentTarget.preferences.roomPreference || '';
+    const isGirlTarget = isGirlsBlockName(prefBlock) || isGirlsBlockName(roomPref);
+
     return rooms.filter((r) => {
       if (r.status !== 'ACTIVE') return false;
       if (r.occupancy >= r.capacity) return false;
+
+      // Enforce Gender Scoping
+      const blockIsGirl = isGirlsBlockName(r.block.name) || isGirlsBlockName(r.block.code);
+      const blockIsBoy = isBoysBlockName(r.block.name) || isBoysBlockName(r.block.code);
+
+      if (isGirlTarget && !blockIsGirl) return false;
+      if (!isGirlTarget && !blockIsBoy) return false;
+
       if (assignModalBlockFilter !== 'ALL') {
         const matchesName = r.block.name.toLowerCase().includes(assignModalBlockFilter.toLowerCase());
         const matchesCode = r.block.code.toLowerCase().includes(assignModalBlockFilter.toLowerCase());
@@ -335,7 +399,72 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
       }
       return true;
     });
-  }, [rooms, assignModalBlockFilter]);
+  }, [rooms, assignModalBlockFilter, assignStudentTarget]);
+
+  // Check if student's preferred room (or room type & block) is available in current inventory
+  const preferredRoomAvailability = useMemo(() => {
+    if (!assignStudentTarget) return null;
+    const prefRoom = (assignStudentTarget.preferences.roomPreference || '').trim().toLowerCase();
+    const prefBlock = (assignStudentTarget.preferences.blockPreference || '').trim().toLowerCase();
+
+    const matchingRooms = rooms.filter((r) => {
+      if (r.status !== 'ACTIVE' || r.occupancy >= r.capacity || r.availableBeds <= 0) return false;
+
+      const isGirlTarget = isGirlsBlockName(prefBlock) || isGirlsBlockName(prefRoom);
+      const blockIsGirl = isGirlsBlockName(r.block.name) || isGirlsBlockName(r.block.code);
+      const blockIsBoy = isBoysBlockName(r.block.name) || isBoysBlockName(r.block.code);
+      if (isGirlTarget && !blockIsGirl) return false;
+      if (!isGirlTarget && !blockIsBoy) return false;
+
+      const rType = (r.roomType || '').toLowerCase();
+      const rNum = (r.roomNumber || '').toLowerCase();
+      const bName = (r.block.name || '').toLowerCase();
+      const bCode = (r.block.code || '').toLowerCase();
+
+      const matchesRoom = !prefRoom || rType.includes(prefRoom) || prefRoom.includes(rType) || rNum === prefRoom;
+      const matchesBlock = !prefBlock || bName.includes(prefBlock) || prefBlock.includes(bName) || bCode.includes(prefBlock) || prefBlock.includes(bCode);
+
+      return matchesRoom || matchesBlock;
+    });
+
+    return {
+      isAvailable: matchingRooms.length > 0,
+      matchingCount: matchingRooms.length,
+      matchingRooms,
+    };
+  }, [rooms, assignStudentTarget]);
+
+  // Check if student's preferred room is available for View modal
+  const viewStudentPreferredRoomAvailability = useMemo(() => {
+    if (!viewStudentTarget) return null;
+    const prefRoom = (viewStudentTarget.preferences.roomPreference || '').trim().toLowerCase();
+    const prefBlock = (viewStudentTarget.preferences.blockPreference || '').trim().toLowerCase();
+
+    const matchingRooms = rooms.filter((r) => {
+      if (r.status !== 'ACTIVE' || r.occupancy >= r.capacity || r.availableBeds <= 0) return false;
+
+      const isGirlTarget = isGirlsBlockName(prefBlock) || isGirlsBlockName(prefRoom);
+      const blockIsGirl = isGirlsBlockName(r.block.name) || isGirlsBlockName(r.block.code);
+      const blockIsBoy = isBoysBlockName(r.block.name) || isBoysBlockName(r.block.code);
+      if (isGirlTarget && !blockIsGirl) return false;
+      if (!isGirlTarget && !blockIsBoy) return false;
+
+      const rType = (r.roomType || '').toLowerCase();
+      const rNum = (r.roomNumber || '').toLowerCase();
+      const bName = (r.block.name || '').toLowerCase();
+      const bCode = (r.block.code || '').toLowerCase();
+
+      const matchesRoom = !prefRoom || rType.includes(prefRoom) || prefRoom.includes(rType) || rNum === prefRoom;
+      const matchesBlock = !prefBlock || bName.includes(prefBlock) || prefBlock.includes(bName) || bCode.includes(prefBlock) || prefBlock.includes(bCode);
+
+      return matchesRoom || matchesBlock;
+    });
+
+    return {
+      isAvailable: matchingRooms.length > 0,
+      matchingCount: matchingRooms.length,
+    };
+  }, [rooms, viewStudentTarget]);
 
   // Selected room details in assign modal
   const selectedAssignRoom = useMemo(() => {
@@ -433,19 +562,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
   const handleOpenViewModal = (item: PendingAllocationItem) => {
     setViewStudentTarget(item);
     setIsViewModalOpen(true);
-  };
-
-  // Biometric Sync handler
-  const handleBiometricSync = async () => {
-    setBiometricSyncing(true);
-    try {
-      await fetchPendingAllocations(true);
-      showToast('Biometric status synchronized from authoritative access control logs.');
-    } catch (err) {
-      showToast('Failed to synchronize biometric status.', 'error');
-    } finally {
-      setBiometricSyncing(false);
-    }
   };
 
   // =========================================================================
@@ -724,66 +840,24 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
         </div>
       )}
 
-      {/* Top View-Switcher Tabs */}
-      <div className="allocation-tabs-navigation" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'pending'}
-          onClick={() => setActiveTab('pending')}
-          className={`allocation-nav-tab ${activeTab === 'pending' ? 'active' : ''}`}
-        >
-          <Users size={16} />
-          <span>Pending Allocations</span>
-          <span className="allocation-tab-badge">{pendingCount}</span>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'rooms'}
-          onClick={() => setActiveTab('rooms')}
-          className={`allocation-nav-tab ${activeTab === 'rooms' ? 'active' : ''}`}
-        >
-          <LayoutGrid size={16} />
-          <span>Room Inventory</span>
-          <span className="allocation-tab-badge">{rooms.length}</span>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'allocations'}
-          onClick={() => setActiveTab('allocations')}
-          className={`allocation-nav-tab ${activeTab === 'allocations' ? 'active' : ''}`}
-        >
-          <History size={16} />
-          <span>Allocations History</span>
-        </button>
-      </div>
-
-      {/* ================================================================= */}
-      {/*              TAB 1: PENDING ALLOCATIONS (STEP 3)                  */}
-      {/* ================================================================= */}
-      {activeTab === 'pending' && (
-        <div className="allocation-view-container">
-          {/* Header Section with Page Title and Status Indicator */}
-          <div className="room-allocation-header-card">
-            <div className="room-allocation-title-row">
-              <h1 className="room-allocation-main-title">Room Allocation</h1>
-              <div className="pending-allocations-badge" aria-live="polite">
-                <span className="pending-badge-pulse-dot" />
-                <span>{pendingCount} pending allocations</span>
-              </div>
-            </div>
+      {/* Top Header Control Bar - Screenshot 7 Exact Alignment */}
+      <div className="room-allocation-top-bar">
+        {/* Left Title & Pending Badge */}
+        <div className="room-allocation-title-group">
+          <h1 className="room-allocation-main-title">Room Allocation</h1>
+          <div className="pending-allocations-badge" aria-live="polite">
+            <span className="pending-badge-pulse-dot" />
+            <span>{pendingCount} pending allocations</span>
           </div>
+        </div>
 
-          {/* Search Bar */}
-          <div className="allocation-search-wrap">
-            <Search size={18} className="allocation-search-icon" />
+        {/* Right Toolbar Controls: Search input, Map Attendance Status, Filter, Refresh */}
+        <div className="room-allocation-toolbar">
+          <div className="allocation-search-pill">
+            <Search size={16} className="search-pill-icon" />
             <input
               type="text"
-              className="allocation-search-input"
+              className="search-pill-input"
               placeholder="Search by resident ID or name"
               value={residentSearchQuery}
               onChange={(e) => setResidentSearchQuery(e.target.value)}
@@ -793,51 +867,96 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
               <button
                 type="button"
                 onClick={() => setResidentSearchQuery('')}
-                className="allocation-search-clear"
+                className="search-pill-clear"
                 title="Clear search query"
               >
-                <X size={16} />
+                <X size={14} />
               </button>
             )}
           </div>
 
-          {/* Action Bar */}
-          <div className="allocation-action-bar">
-            <button
-              type="button"
-              onClick={() => setIsBiometricModalOpen(true)}
-              className="btn-navy-primary"
-              title="View and verify resident biometric status"
-            >
-              <Fingerprint size={16} />
-              <span>Map Biometric Status</span>
-            </button>
+          <button
+            type="button"
+            onClick={() => {
+              showToast('Attendance status mapped to latest PostgreSQL gate logs.');
+              fetchPendingAllocations(true);
+            }}
+            className="btn-navy-action"
+            title="Map attendance status with gate records"
+          >
+            <MapPin size={15} />
+            <span>Map Attendance Status</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() => setIsFilterModalOpen(true)}
-              className="btn-navy-primary"
-              title="Filter allocations by block or room type"
-            >
-              <Filter size={16} />
-              <span>Filter</span>
-              {(pendingBlockFilter !== 'ALL' || pendingRoomTypeFilter !== 'ALL' || pendingBiometricFilter !== 'ALL') && (
-                <span className="filter-active-badge" />
-              )}
-            </button>
+          <button
+            type="button"
+            onClick={() => setIsFilterModalOpen(true)}
+            className="btn-navy-action"
+            title="Filter allocations by block or room type"
+          >
+            <SlidersHorizontal size={15} />
+            <span>Filter</span>
+            {(pendingBlockFilter !== 'ALL' || pendingRoomTypeFilter !== 'ALL') && (
+              <span className="filter-active-dot" />
+            )}
+          </button>
 
-            <button
-              type="button"
-              onClick={() => fetchPendingAllocations(true)}
-              className="btn-light-secondary"
-              title="Fetch authoritative pending records from PostgreSQL"
-              disabled={pendingRefreshing}
-            >
-              <RotateCw size={16} className={pendingRefreshing ? 'spin-anim' : ''} />
-              <span>Refresh</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => fetchPendingAllocations(true)}
+            className="btn-ghost-action"
+            title="Fetch authoritative pending records from PostgreSQL"
+            disabled={pendingRefreshing}
+          >
+            <RotateCw size={15} className={pendingRefreshing ? 'spin-anim' : ''} />
+            <span>Refresh</span>
+          </button>
+        </div>
+      </div>
 
+      {/* Sub-Navigation Tabs */}
+      <div className="allocation-subtabs-row" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'pending'}
+          onClick={() => setActiveTab('pending')}
+          className={`allocation-subtab-item ${activeTab === 'pending' ? 'active' : ''}`}
+        >
+          <Users size={15} />
+          <span>Pending Allocations</span>
+          <span className="subtab-count-pill">{pendingCount}</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'rooms'}
+          onClick={() => setActiveTab('rooms')}
+          className={`allocation-subtab-item ${activeTab === 'rooms' ? 'active' : ''}`}
+        >
+          <LayoutGrid size={15} />
+          <span>Room Inventory</span>
+          <span className="subtab-count-pill">{rooms.length}</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'allocations'}
+          onClick={() => setActiveTab('allocations')}
+          className={`allocation-subtab-item ${activeTab === 'allocations' ? 'active' : ''}`}
+        >
+          <History size={15} />
+          <span>Allocations History</span>
+        </button>
+      </div>
+
+      {/* ================================================================= */}
+      {/*              TAB 1: PENDING ALLOCATIONS (STEP 3)                  */}
+      {/* ================================================================= */}
+      {activeTab === 'pending' && (
+        <div className="allocation-view-container">
           {/* Loading State */}
           {pendingLoading ? (
             <div style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
@@ -877,14 +996,13 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   ? 'No resident applications matched the active search or filter criteria.'
                   : 'All resident accommodations are currently allocated or processed in the database.'}
               </p>
-              {(residentSearchQuery || pendingBlockFilter !== 'ALL' || pendingRoomTypeFilter !== 'ALL' || pendingBiometricFilter !== 'ALL') && (
+              {(residentSearchQuery || pendingBlockFilter !== 'ALL' || pendingRoomTypeFilter !== 'ALL') && (
                 <button
                   type="button"
                   onClick={() => {
                     setResidentSearchQuery('');
                     setPendingBlockFilter('ALL');
                     setPendingRoomTypeFilter('ALL');
-                    setPendingBiometricFilter('ALL');
                   }}
                   className="btn-light-secondary"
                   style={{ marginTop: '0.5rem' }}
@@ -898,8 +1016,8 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
             <div className="pending-cards-container">
               {pendingAllocations.map((item) => (
                 <article key={item.id} className="pending-resident-card" aria-label={`Allocation request for ${item.name}`}>
-                  {/* Top Section: Avatar + Student Name/JNTU + Date */}
-                  <div className="pending-card-top">
+                  {/* Top Section: Avatar + Student Name/JNTU + Submission Date */}
+                  <div className="pending-card-header-row">
                     <div className="pending-student-info">
                       <div className="student-avatar-badge" aria-hidden="true">
                         {item.name
@@ -917,108 +1035,85 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                     </div>
 
                     <div className="pending-submission-date" title={`Submission date: ${item.createdAt}`}>
-                      <Calendar size={13} />
                       <span>{formatDate(item.createdAt)}</span>
                     </div>
                   </div>
 
-                  {/* Card Details Responsive Grid */}
-                  <div className="pending-card-grid">
-                    {/* 1. Contact */}
-                    <div className="pending-grid-group">
-                      <span className="pending-group-title">Contact</span>
-                      <div className="pending-detail-line" title={item.phone}>
+                  {/* Card Details Grid (Screenshot 7 Exact 4-Column Layout) */}
+                  <div className="pending-card-details-grid">
+                    {/* 1. CONTACT */}
+                    <div className="detail-col">
+                      <span className="col-heading">CONTACT</span>
+                      <div className="detail-row" title={item.phone}>
                         <Phone size={13} style={{ color: '#64748B', flexShrink: 0 }} />
                         <span>{item.phone}</span>
                       </div>
-                      <div className="pending-detail-line" title={item.email}>
+                      <div className="detail-row" title={item.email}>
                         <Mail size={13} style={{ color: '#64748B', flexShrink: 0 }} />
-                        <span>{item.email}</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.email}</span>
                       </div>
                     </div>
 
-                    {/* 2. Course Information */}
-                    <div className="pending-grid-group">
-                      <span className="pending-group-title">Course Information</span>
-                      <div className="pending-detail-line" title={`${item.courseInfo.degree} - ${item.courseInfo.department}`}>
-                        <GraduationCap size={14} style={{ color: '#64748B', flexShrink: 0 }} />
-                        <span>{item.courseInfo.degree}</span>
-                      </div>
-                      <div className="pending-detail-line" style={{ fontSize: '0.8rem', color: '#475569' }}>
-                        <span>{item.courseInfo.department}</span>
-                      </div>
-                      <div className="pending-detail-chips">
-                        <span className="info-chip-tag">{item.courseInfo.year}</span>
-                        <span className="info-chip-tag">{item.courseInfo.semester}</span>
+                    {/* 2. COURSE INFO */}
+                    <div className="detail-col">
+                      <span className="col-heading">COURSE INFO</span>
+                      <div className="col-bold-text">{item.courseInfo.degree}</div>
+                      <div className="col-sub-text">
+                        {item.courseInfo.department} • {item.courseInfo.year}, {item.courseInfo.semester}
                       </div>
                     </div>
 
-                    {/* 3. Preference */}
-                    <div className="pending-grid-group">
-                      <span className="pending-group-title">Preference</span>
-                      <div className="preference-highlight">
-                        <BedDouble size={14} style={{ color: '#2563EB', flexShrink: 0 }} />
-                        <span>{item.preferences.roomPreference}</span>
-                      </div>
-                      <div className="preference-sub-specs">
-                        <span>
-                          Block: <strong>{item.preferences.blockPreference}</strong>
-                        </span>
-                        <span>
-                          Floor: <strong>{item.preferences.floorPreference}</strong>
-                        </span>
+                    {/* 3. PREFERENCE */}
+                    <div className="detail-col">
+                      <span className="col-heading">PREFERENCE</span>
+                      <div className="col-bold-text">{item.preferences.roomPreference}</div>
+                      <div className="col-sub-text">
+                        Block: {item.preferences.blockPreference} • Floor: {item.preferences.floorPreference}
                       </div>
                     </div>
 
-                    {/* 4. Documents / Verification */}
-                    <div className="pending-grid-group">
-                      <span className="pending-group-title">Documents / Verification</span>
-                      <div className="verification-status-row">
-                        <span className="verification-label">Biometric Status</span>
-                        <span
-                          className={`status-badge ${
-                            item.documents.biometricStatus === 'VERIFIED'
-                              ? 'badge-verified'
-                              : 'badge-pending'
-                          }`}
-                        >
-                          {item.documents.biometricStatus}
-                        </span>
+                    {/* 4. DOCUMENTS */}
+                    <div className="detail-col">
+                      <span className="col-heading">DOCUMENTS</span>
+                      <div className="status-badge-row">
+                        <span className="badge-meta-label">Attendance Status</span>
+                        <span className="badge-pill badge-amber">PENDING</span>
                       </div>
-                      <div className="verification-status-row">
-                        <span className="verification-label">Photos</span>
-                        <span className="status-badge badge-submitted">
-                          {item.documents.photos}
-                        </span>
+                      <div className="status-badge-row">
+                        <span className="badge-meta-label">Photos</span>
+                        <span className="badge-pill badge-sky">{item.documents.photos || 'SUBMITTED'}</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Action Buttons Row */}
-                  <div className="pending-card-actions">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenViewModal(item)}
-                      className="btn-card-action btn-card-view"
-                      title={`Review submitted registration details for ${item.name}`}
-                    >
-                      Review
-                    </button>
+                  {/* Action Buttons Row: Assign (Navy), Reject (Red), View (Gray) */}
+                  <div className="pending-card-actions-bar">
                     <button
                       type="button"
                       onClick={() => handleOpenAssignModal(item)}
-                      className="btn-card-action btn-card-assign"
+                      className="btn-card-action btn-assign-navy"
                       title={`Accept and allocate room to ${item.name}`}
                     >
-                      Accept & Allocate
+                      <Bookmark size={14} />
+                      <span>Assign</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleOpenRejectModal(item)}
-                      className="btn-card-action btn-card-reject"
+                      className="btn-card-action btn-reject-red"
                       title={`Reject registration for ${item.name}`}
                     >
-                      Reject
+                      <X size={14} />
+                      <span>Reject</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenViewModal(item)}
+                      className="btn-card-action btn-view-gray"
+                      title={`Review submitted registration details for ${item.name}`}
+                    >
+                      <Search size={14} />
+                      <span>View</span>
                     </button>
                   </div>
                 </article>
@@ -1436,46 +1531,133 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   </div>
                 )}
 
-                {/* Requested Preferences Summary */}
+                {/* Requested Preferences Summary & Warden Inspection Card */}
                 <div
                   style={{
                     backgroundColor: '#F8FAFC',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '8px',
+                    padding: '0.85rem 1rem',
+                    borderRadius: '10px',
                     border: '1px solid #E2E8F0',
                     fontSize: '0.825rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.5rem',
                   }}
                 >
-                  <span style={{ fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                    SUBMITTED REGISTRATION PREFERENCES:
-                  </span>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', color: '#1E293B' }}>
-                    <span>
-                      Room: <strong>{assignStudentTarget.preferences.roomPreference}</strong>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 800, color: '#151B54', letterSpacing: '0.04em', fontSize: '0.75rem' }}>
+                      STUDENT DETAILS FOR WARDEN REVERIFICATION:
                     </span>
-                    <span>
-                      Block: <strong>{assignStudentTarget.preferences.blockPreference}</strong>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        backgroundColor: isGirlsBlockName(assignStudentTarget.preferences.blockPreference || '') ? '#FCE7F3' : '#DBEAFE',
+                        color: isGirlsBlockName(assignStudentTarget.preferences.blockPreference || '') ? '#9D174D' : '#1E40AF',
+                        padding: '2px 8px',
+                        borderRadius: '9999px',
+                      }}
+                    >
+                      {isGirlsBlockName(assignStudentTarget.preferences.blockPreference || '') ? 'GIRLS HOSTEL ALLOCATION' : 'BOYS HOSTEL ALLOCATION'}
                     </span>
-                    <span>
-                      Floor: <strong>{assignStudentTarget.preferences.floorPreference}</strong>
-                    </span>
-                    {assignStudentTarget.preferences.stayDuration && (
-                      <span>
-                        Stay: <strong>{assignStudentTarget.preferences.stayDuration}</strong>
-                      </span>
-                    )}
-                    {assignStudentTarget.preferences.foodPreference && (
-                      <span>
-                        Mess: <strong>{assignStudentTarget.preferences.foodPreference}</strong>
-                      </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', color: '#1E293B', fontSize: '0.82rem' }}>
+                    <div>
+                      <span style={{ color: '#64748B' }}>Full Name:</span> <strong>{assignStudentTarget.name}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748B' }}>Roll / JNTU No:</span> <strong>{assignStudentTarget.jntuNo}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748B' }}>Contact:</span> {assignStudentTarget.phone}
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748B' }}>Email:</span> {assignStudentTarget.email}
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748B' }}>Course & Dept:</span> {assignStudentTarget.courseInfo.degree} ({assignStudentTarget.courseInfo.department})
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748B' }}>Year & Sem:</span> {assignStudentTarget.courseInfo.year}, {assignStudentTarget.courseInfo.semester}
+                    </div>
+                  </div>
+
+                  {/* Preferred Room & Live Vacancy Availability Indicator */}
+                  <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                      <div style={{ fontSize: '0.82rem', color: '#0F172A' }}>
+                        <span style={{ color: '#64748B' }}>Preferred Room Spec:</span>{' '}
+                        <strong style={{ color: '#151B54' }}>{assignStudentTarget.preferences.roomPreference || 'Non-AC Room (2 Sharing)'}</strong>
+                        {assignStudentTarget.preferences.blockPreference && (
+                          <span style={{ color: '#475569', marginLeft: '6px' }}>
+                            ({assignStudentTarget.preferences.blockPreference} • {assignStudentTarget.preferences.floorPreference || 'Any Floor'})
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Availability Badge */}
+                      {preferredRoomAvailability && (
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '3px 10px',
+                            borderRadius: '9999px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            backgroundColor: preferredRoomAvailability.isAvailable ? '#DEF7EC' : '#FEE2E2',
+                            color: preferredRoomAvailability.isAvailable ? '#03543F' : '#991B1B',
+                            border: preferredRoomAvailability.isAvailable ? '1px solid #BCF0DA' : '1px solid #F87171',
+                            letterSpacing: '0.02em',
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: '7px',
+                              height: '7px',
+                              borderRadius: '50%',
+                              backgroundColor: preferredRoomAvailability.isAvailable ? '#0E9F6E' : '#E02424',
+                            }}
+                          />
+                          {preferredRoomAvailability.isAvailable
+                            ? `PREFERRED ROOM AVAILABLE (${preferredRoomAvailability.matchingCount} VACANT)`
+                            : 'PREFERRED ROOM NOT AVAILABLE'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Availability Status Detailed Sub-text below preferred room */}
+                    {preferredRoomAvailability && (
+                      <div
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          backgroundColor: preferredRoomAvailability.isAvailable ? '#F0FDF4' : '#FFF5F5',
+                          border: preferredRoomAvailability.isAvailable ? '1px solid #DCFCE7' : '1px solid #FED7D7',
+                          color: preferredRoomAvailability.isAvailable ? '#15803D' : '#991B1B',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <span>
+                          {preferredRoomAvailability.isAvailable
+                            ? `✓ Preferred room specification (${assignStudentTarget.preferences.roomPreference}) is AVAILABLE in active inventory (${preferredRoomAvailability.matchingCount} matching vacant room${preferredRoomAvailability.matchingCount > 1 ? 's' : ''}).`
+                            : `⚠ Preferred room specification (${assignStudentTarget.preferences.roomPreference}) is NOT AVAILABLE (0 matching vacant rooms). Please select an alternate available room from the list below.`}
+                        </span>
+                      </div>
                     )}
                   </div>
                 </div>
 
-                {/* Filter by Block */}
+                {/* Filter by Block (Gender-Scoped Only) */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
-                    1. Filter Block
+                    1. Select {isGirlsBlockName(assignStudentTarget.preferences.blockPreference || '') ? 'Girls' : 'Boys'} Hostel Block *
                   </label>
                   <select
                     value={assignModalBlockFilter}
@@ -1486,14 +1668,12 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                     className="mgmt-select"
                     style={{ width: '100%', height: '38px' }}
                   >
-                    <option value="ALL">All Active Blocks</option>
-                    {blocks
-                      .filter((b) => b.status === 'ACTIVE')
-                      .map((b) => (
-                        <option key={b.id} value={b.name}>
-                          {b.name} ({b.code})
-                        </option>
-                      ))}
+                    <option value="ALL">All Active {isGirlsBlockName(assignStudentTarget.preferences.blockPreference || '') ? 'Girls' : 'Boys'} Blocks</option>
+                    {filteredBlocksForAssignModal.map((b) => (
+                      <option key={b.id} value={b.name}>
+                        {b.name} ({b.code})
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -1514,7 +1694,7 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                         fontSize: '0.85rem',
                       }}
                     >
-                      No rooms with available beds in the selected block. Please pick another block.
+                      No active rooms with available beds in the selected {isGirlsBlockName(assignStudentTarget.preferences.blockPreference || '') ? 'Girls' : 'Boys'} block. Please select another block.
                     </div>
                   ) : (
                     <div className="room-selection-list">
@@ -1593,6 +1773,40 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                     />
                   </div>
                 )}
+
+                {/* Mandatory Warden Reverification Checkbox */}
+                <div
+                  style={{
+                    padding: '0.85rem 1rem',
+                    backgroundColor: isWardenVerified ? '#F0FDF4' : '#FFFBEB',
+                    border: isWardenVerified ? '1px solid #BBF7D0' : '1px solid #FDE68A',
+                    borderRadius: '8px',
+                    marginTop: '0.25rem',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.65rem',
+                      cursor: 'pointer',
+                      fontSize: '0.83rem',
+                      color: isWardenVerified ? '#166534' : '#B45309',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isWardenVerified}
+                      onChange={(e) => setIsWardenVerified(e.target.checked)}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#151B54' }}
+                    />
+                    <span>
+                      Warden Verification: I confirm that I have reverified student details, parent contact, and eligibility before room assignment.
+                    </span>
+                  </label>
+                </div>
               </div>
 
               <div
@@ -1610,9 +1824,10 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                 <button
                   type="submit"
                   className="btn-navy-primary"
-                  disabled={isAssigning || !selectedAssignRoomId}
+                  disabled={isAssigning || !selectedAssignRoomId || !isWardenVerified}
+                  title={!isWardenVerified ? 'Please check the Warden Verification box first' : !selectedAssignRoomId ? 'Please select a room' : 'Confirm Allocation'}
                 >
-                  {isAssigning ? 'Accepting & Allocating...' : 'Accept & Allocate'}
+                  {isAssigning ? 'Accepting & Allocating...' : 'Confirm & Allocate'}
                 </button>
               </div>
             </form>
@@ -1941,12 +2156,31 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                     <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Medical / Dietary Notes</span>
                     <strong style={{ color: '#0F172A' }}>{viewStudentTarget.preferences.medicalConditions || 'None reported'}</strong>
                   </div>
-                  <div>
-                    <span style={{ color: '#64748B', display: 'block', fontSize: '0.75rem' }}>Biometric Status</span>
-                    <span className={`status-badge ${viewStudentTarget.documents.biometricStatus === 'VERIFIED' ? 'badge-verified' : 'badge-pending'}`}>
-                      {viewStudentTarget.documents.biometricStatus}
-                    </span>
-                  </div>
+
+                  {/* Live Preference Availability Status */}
+                  {viewStudentPreferredRoomAvailability && (
+                    <div style={{ gridColumn: '1 / -1', marginTop: '0.25rem', paddingTop: '0.5rem', borderTop: '1px dashed #CBD5E1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 600 }}>Live Preferred Room Availability:</span>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '3px 10px',
+                          borderRadius: '9999px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          backgroundColor: viewStudentPreferredRoomAvailability.isAvailable ? '#DEF7EC' : '#FEE2E2',
+                          color: viewStudentPreferredRoomAvailability.isAvailable ? '#03543F' : '#991B1B',
+                          border: viewStudentPreferredRoomAvailability.isAvailable ? '1px solid #BCF0DA' : '1px solid #F87171',
+                        }}
+                      >
+                        {viewStudentPreferredRoomAvailability.isAvailable
+                          ? `✓ PREFERRED ROOM AVAILABLE (${viewStudentPreferredRoomAvailability.matchingCount} vacant room${viewStudentPreferredRoomAvailability.matchingCount > 1 ? 's' : ''})`
+                          : '⚠ PREFERRED ROOM NOT AVAILABLE (0 matching vacancies)'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1981,121 +2215,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                 }}
               >
                 Accept & Allocate
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ================================================================= */}
-      {/*              MODAL 4: MAP BIOMETRIC STATUS (STEP 3)               */}
-      {/* ================================================================= */}
-      {isBiometricModalOpen && (
-        <div className="mgmt-modal-backdrop" onClick={() => setIsBiometricModalOpen(false)}>
-          <div
-            className="mgmt-notice-modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '560px', width: '92%' }}
-          >
-            <div className="notice-modal-header">
-              <div className="notice-icon-circle" style={{ backgroundColor: '#EEF2FF', color: '#151B54' }}>
-                <Fingerprint size={20} />
-              </div>
-              <div>
-                <h3 className="notice-modal-title" style={{ margin: 0 }}>
-                  Biometric Access Mapping
-                </h3>
-                <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
-                  Authoritative device status for resident allocation
-                </span>
-              </div>
-              <button
-                type="button"
-                className="notice-close-btn"
-                onClick={() => setIsBiometricModalOpen(false)}
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="notice-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  padding: '0.85rem',
-                  backgroundColor: '#EFF6FF',
-                  borderRadius: '10px',
-                  border: '1px solid #BFDBFE',
-                  fontSize: '0.85rem',
-                  color: '#1E40AF',
-                }}
-              >
-                <ShieldCheck size={20} style={{ flexShrink: 0 }} />
-                <span>
-                  Physical biometric access control events are recorded authoritatively in PostgreSQL from gate
-                  sensors.
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                  Pending Resident Enrollment Status
-                </span>
-
-                {pendingAllocations.map((p) => (
-                  <div
-                    key={p.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '0.75rem 1rem',
-                      borderRadius: '8px',
-                      border: '1px solid #E2E8F0',
-                      backgroundColor: '#FFFFFF',
-                    }}
-                  >
-                    <div>
-                      <strong style={{ fontSize: '0.9rem', color: '#0F172A' }}>{p.name}</strong>
-                      <div style={{ fontSize: '0.8rem', color: '#64748B' }}>
-                        {p.jntuNo} • Events logged: {p.biometricEventsCount}
-                      </div>
-                    </div>
-
-                    <span
-                      className={`status-badge ${
-                        p.documents.biometricStatus === 'VERIFIED' ? 'badge-verified' : 'badge-pending'
-                      }`}
-                    >
-                      {p.documents.biometricStatus}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div
-              className="notice-modal-footer"
-              style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem' }}
-            >
-              <button
-                type="button"
-                className="btn-light-secondary"
-                onClick={() => setIsBiometricModalOpen(false)}
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                className="btn-navy-primary"
-                onClick={handleBiometricSync}
-                disabled={biometricSyncing}
-              >
-                <RotateCw size={15} className={biometricSyncing ? 'spin-anim' : ''} />
-                <span>{biometricSyncing ? 'Syncing...' : 'Sync Biometrics'}</span>
               </button>
             </div>
           </div>
@@ -2167,23 +2286,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                   <option value="AC Room (2 Sharing)">AC Room (2 Sharing)</option>
                 </select>
               </div>
-
-              {/* Biometric Status Filter */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
-                  Biometric Status
-                </label>
-                <select
-                  value={pendingBiometricFilter}
-                  onChange={(e) => setPendingBiometricFilter(e.target.value)}
-                  className="mgmt-select"
-                  style={{ width: '100%', height: '38px' }}
-                >
-                  <option value="ALL">All Statuses</option>
-                  <option value="VERIFIED">Verified / Enrolled</option>
-                  <option value="PENDING">Pending</option>
-                </select>
-              </div>
             </div>
 
             <div
@@ -2196,7 +2298,6 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                 onClick={() => {
                   setPendingBlockFilter('ALL');
                   setPendingRoomTypeFilter('ALL');
-                  setPendingBiometricFilter('ALL');
                   setIsFilterModalOpen(false);
                 }}
               >

@@ -2,12 +2,27 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
+import os from 'os';
 
 const prisma = new PrismaClient();
 
-const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const TEMP_PROFILE = 'C:\\Users\\shank\\AppData\\Local\\Temp\\chrome-hms-outing-management-test';
-const ARTIFACT_DIR = 'C:\\Users\\shank\\.gemini\\antigravity-ide\\brain\\d6c51559-2b8b-4440-9f7f-97df80816706';
+function getChromePath() {
+  const candidates = [
+    path.join(os.homedir(), 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe'),
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return candidates[0];
+}
+
+const CHROME_PATH = getChromePath();
+const TEMP_PROFILE = path.join(os.tmpdir(), 'chrome-hms-outing-management-test');
+const ARTIFACT_DIR = path.join(os.tmpdir(), 'hms-browser-artifacts');
 
 async function sleep(ms) {
   return new Promise((res) => setTimeout(res, ms));
@@ -17,6 +32,13 @@ async function main() {
   console.log('=== Starting Headless Chrome CDP Verification for Outing Management (Step 5) ===\n');
 
   let tempPendingId = null;
+
+  if (!fs.existsSync(TEMP_PROFILE)) {
+    fs.mkdirSync(TEMP_PROFILE, { recursive: true });
+  }
+  if (!fs.existsSync(ARTIFACT_DIR)) {
+    fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+  }
 
   // Ensure there is at least one PENDING request for testing approval/rejection modal interactions
   const pendingCount = await prisma.outingRequest.count({ where: { status: 'PENDING' } });

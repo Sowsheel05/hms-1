@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Bell,
   Plus,
@@ -139,27 +139,26 @@ export const ManagementNotificationsPage: React.FC = () => {
     loadNotifications();
   }, [loadNotifications]);
 
-  // Real-time SSE listener
+  const loadNotificationsRef = useRef(loadNotifications);
   useEffect(() => {
-    let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource('/api/management/events');
-      eventSource.addEventListener('notification_event', () => {
-        loadNotifications();
-      });
-      eventSource.addEventListener('dashboard_update', () => {
-        loadNotifications();
-      });
-    } catch (e) {
-      // Graceful fallback
-    }
-
-    return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
-    };
+    loadNotificationsRef.current = loadNotifications;
   }, [loadNotifications]);
+
+  // Real-time SSE listener via authenticated managementApiService
+  useEffect(() => {
+    const unsubscribe = managementApiService.subscribeToEvents((event) => {
+      const type = (event?.type || '').toUpperCase();
+      if (
+        type.includes('NOTIFICATION') ||
+        type === 'MANAGEMENT_DASHBOARD_EVENT' ||
+        type === 'MANAGEMENT_DASHBOARD_UPDATE'
+      ) {
+        loadNotificationsRef.current();
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Handle Filter Reset
   const handleResetFilters = () => {

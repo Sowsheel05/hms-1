@@ -12,16 +12,12 @@ import {
   Eye,
   CreditCard,
   Ban,
-  Phone,
-  Mail,
   Clock,
   Trash2,
   X,
-  ChevronLeft,
-  ChevronRight,
-  AlertTriangle,
   UserPlus,
   Check,
+  Printer,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -32,15 +28,15 @@ import {
   HostStudentItem,
   BillingItemRecord,
 } from '../services/api';
+import { APP_BRANDING } from '../config/branding';
 
 interface GuestBillingManagementPageProps {
   onNavigate?: (path: string) => void;
 }
 
 export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProps> = () => {
-
-  // Active Tab: 'guests' | 'visits' | 'bills'
-  const [activeTab, setActiveTab] = useState<'guests' | 'visits' | 'bills'>('bills');
+  // Active Tab: 'bills' | 'visits' | 'guests'
+  const [activeTab, setActiveTab] = useState<'bills' | 'visits' | 'guests'>('bills');
 
   // KPI Statistics
   const [stats, setStats] = useState<GuestBillingStats | null>(null);
@@ -66,10 +62,6 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
   const [billStatusFilter, setBillStatusFilter] = useState<string>('ALL');
   const [billPagination, setBillPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
 
-  // Realtime Connection State
-  const [isLiveConnected, setIsLiveConnected] = useState<boolean>(false);
-  const [isManualRefreshing, setIsManualRefreshing] = useState<boolean>(false);
-
   // Notification Toast
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -86,6 +78,7 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
     address: '',
   });
 
+  // Check-In Visit Modal
   const [isVisitModalOpen, setIsVisitModalOpen] = useState<boolean>(false);
   const [visitFormData, setVisitFormData] = useState({
     guestId: '',
@@ -93,25 +86,34 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
     purpose: '',
     remarks: '',
   });
+  const [selectedGuestName, setSelectedGuestName] = useState<string>('');
   const [hostSearchQuery, setHostSearchQuery] = useState<string>('');
   const [searchedHosts, setSearchedHosts] = useState<HostStudentItem[]>([]);
   const [isSearchingHosts, setIsSearchingHosts] = useState<boolean>(false);
-  const [selectedHostName, setSelectedHostName] = useState<string>('');
+  const [selectedHost, setSelectedHost] = useState<HostStudentItem | null>(null);
 
+  // Checkout Confirm Modal
   const [isCheckoutConfirmOpen, setIsCheckoutConfirmOpen] = useState<boolean>(false);
   const [visitToCheckout, setVisitToCheckout] = useState<GuestVisitItem | null>(null);
 
+  // Create Bill Modal
   const [isBillModalOpen, setIsBillModalOpen] = useState<boolean>(false);
-  const [billFormData, setBillFormData] = useState({
+  const [billFormData, setBillFormData] = useState<{
+    guestVisitId: string;
+    billNumber: string;
+    items: BillingItemRecord[];
+  }>({
     guestVisitId: '',
     billNumber: '',
-    items: [{ description: 'Guest Room Accommodation', quantity: 1, unitAmount: 500 }],
+    items: [{ description: 'Guest Room Accommodation (1 Night)', quantity: 1, unitAmount: 500 }],
   });
 
+  // Bill Detail / Invoice Modal
   const [isBillDetailModalOpen, setIsBillDetailModalOpen] = useState<boolean>(false);
   const [selectedBillDetail, setSelectedBillDetail] = useState<GuestBillItem | null>(null);
   const [isLoadingBillDetail, setIsLoadingBillDetail] = useState<boolean>(false);
 
+  // Record Payment Modal
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
   const [billToPay, setBillToPay] = useState<GuestBillItem | null>(null);
   const [paymentFormData, setPaymentFormData] = useState({
@@ -121,6 +123,7 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
     notes: '',
   });
 
+  // Void Bill Modal
   const [isVoidModalOpen, setIsVoidModalOpen] = useState<boolean>(false);
   const [billToVoid, setBillToVoid] = useState<GuestBillItem | null>(null);
   const [voidReason, setVoidReason] = useState<string>('');
@@ -224,110 +227,18 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
     }
   }, [billPagination.page, billPagination.limit, billSearch, billStatusFilter]);
 
-  const refreshAll = useCallback(async () => {
-    setIsManualRefreshing(true);
-    await Promise.all([
-      fetchOverview(),
-      activeTab === 'guests' ? fetchGuests() : Promise.resolve(),
-      activeTab === 'visits' ? fetchVisits() : Promise.resolve(),
-      activeTab === 'bills' ? fetchBills() : Promise.resolve(),
-    ]);
-    setIsManualRefreshing(false);
-  }, [fetchOverview, activeTab, fetchGuests, fetchVisits, fetchBills]);
-
-  // Initial Load
-  useEffect(() => {
+  const fetchAllData = useCallback(() => {
     fetchOverview();
-  }, [fetchOverview]);
-
-  useEffect(() => {
     if (activeTab === 'guests') fetchGuests();
     if (activeTab === 'visits') fetchVisits();
     if (activeTab === 'bills') fetchBills();
-  }, [activeTab, fetchGuests, fetchVisits, fetchBills]);
-
-  // -----------------------------------------------------------------
-  // REAL-TIME SSE SUBSCRIPTION
-  // -----------------------------------------------------------------
-
-  useEffect(() => {
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: any = null;
-    let isMounted = true;
-
-    const connectSSE = () => {
-      if (!isMounted) return;
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        eventSource = new EventSource(`/api/management/events-stream?token=${encodeURIComponent(token)}`);
-
-        eventSource.onopen = () => {
-          if (isMounted) setIsLiveConnected(true);
-        };
-
-        const handleUpdate = (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
-            const evtType = data.type || '';
-            const guestBillingEvents = [
-              'GUEST_CREATED',
-              'GUEST_UPDATED',
-              'GUEST_VISIT_CREATED',
-              'GUEST_VISIT_UPDATED',
-              'GUEST_CHECKED_OUT',
-              'GUEST_BILL_CREATED',
-              'GUEST_PAYMENT_RECORDED',
-              'GUEST_BILL_VOIDED',
-              'GUEST_BILLING_STATS_UPDATED',
-            ];
-
-            if (guestBillingEvents.includes(evtType)) {
-              fetchOverview();
-              if (activeTab === 'guests') fetchGuests();
-              if (activeTab === 'visits') fetchVisits();
-              if (activeTab === 'bills') fetchBills();
-            }
-          } catch (err) {
-            console.error('Error parsing SSE event:', err);
-          }
-        };
-
-        eventSource.addEventListener('management_dashboard_update', handleUpdate);
-        eventSource.addEventListener('management_dashboard_event', handleUpdate);
-
-        eventSource.onerror = () => {
-          if (isMounted) setIsLiveConnected(false);
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-          if (isMounted) {
-            reconnectTimeout = setTimeout(connectSSE, 4000);
-          }
-        };
-      } catch (err) {
-        if (isMounted) {
-          setIsLiveConnected(false);
-          reconnectTimeout = setTimeout(connectSSE, 5000);
-        }
-      }
-    };
-
-    connectSSE();
-
-    return () => {
-      isMounted = false;
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-    };
   }, [activeTab, fetchOverview, fetchGuests, fetchVisits, fetchBills]);
 
-  // Host Student Lookup for Check-in Modal
+  useEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
+
+  // Host Student Live Search for Check-in Modal
   const searchHosts = useCallback(async (query: string) => {
     try {
       setIsSearchingHosts(true);
@@ -394,7 +305,7 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
     try {
       if (editingGuest) {
         const res = await managementApiService.updateGuest(editingGuest.id, guestFormData);
-        showToast('success', res.message || 'Guest updated successfully.');
+        showToast('success', res.message || 'Guest profile updated.');
       } else {
         const res = await managementApiService.createGuest(guestFormData);
         showToast('success', res.message || 'Guest registered successfully.');
@@ -418,7 +329,9 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
       purpose: '',
       remarks: '',
     });
-    setSelectedHostName('');
+    setSelectedGuestName(g.name);
+    setSelectedHost(null);
+    setHostSearchQuery('');
     setIsVisitModalOpen(true);
   };
 
@@ -429,17 +342,17 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
       return;
     }
     if (!visitFormData.hostStudentId) {
-      showToast('error', 'Please select the host resident student.');
+      showToast('error', 'Please search and select the resident host student.');
       return;
     }
     if (!visitFormData.purpose.trim()) {
-      showToast('error', 'Please provide the purpose of the visit.');
+      showToast('error', 'Please enter the visit purpose.');
       return;
     }
 
     try {
       const res = await managementApiService.createGuestVisit(visitFormData);
-      showToast('success', res.message || 'Guest check-in registered.');
+      showToast('success', res.message || 'Guest checked in successfully.');
       setIsVisitModalOpen(false);
       fetchVisits();
       fetchOverview();
@@ -489,7 +402,7 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
 
   const handleRemoveItemFromBill = (index: number) => {
     if (billFormData.items.length <= 1) {
-      showToast('error', 'A bill must have at least one item.');
+      showToast('error', 'A bill must contain at least one line item.');
       return;
     }
     setBillFormData((prev) => ({
@@ -521,7 +434,6 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
       return;
     }
 
-    // Validate items
     for (let i = 0; i < billFormData.items.length; i++) {
       const it = billFormData.items[i];
       if (!it.description.trim()) {
@@ -529,18 +441,18 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
         return;
       }
       if (it.quantity <= 0) {
-        showToast('error', `Item #${i + 1} quantity must be greater than zero.`);
+        showToast('error', `Item #${i + 1} quantity must be at least 1.`);
         return;
       }
       if (it.unitAmount < 0) {
-        showToast('error', `Item #${i + 1} unit amount cannot be negative.`);
+        showToast('error', `Item #${i + 1} unit price cannot be negative.`);
         return;
       }
     }
 
     try {
       const res = await managementApiService.createGuestBill(billFormData);
-      showToast('success', res.message || 'Bill created successfully.');
+      showToast('success', res.message || 'Guest bill created successfully.');
       setIsBillModalOpen(false);
       fetchBills();
       fetchOverview();
@@ -558,15 +470,11 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
         setSelectedBillDetail(res.bill);
       }
     } catch (err: any) {
-      showToast('error', err.message || 'Failed to load bill details.');
+      showToast('error', err.message || 'Failed to load bill invoice.');
     } finally {
       setIsLoadingBillDetail(false);
     }
   };
-
-  // -----------------------------------------------------------------
-  // HANDLERS: PAYMENT
-  // -----------------------------------------------------------------
 
   const handleOpenRecordPayment = (b: GuestBillItem) => {
     setBillToPay(b);
@@ -600,23 +508,15 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
         paymentReference: paymentFormData.paymentReference || undefined,
         notes: paymentFormData.notes || undefined,
       });
-
       showToast('success', res.message || 'Payment recorded successfully.');
       setIsPaymentModalOpen(false);
       setBillToPay(null);
       fetchBills();
       fetchOverview();
-      if (selectedBillDetail && selectedBillDetail.id === billToPay.id) {
-        handleViewBillDetail(billToPay.id);
-      }
     } catch (err: any) {
       showToast('error', err.message || 'Failed to record payment.');
     }
   };
-
-  // -----------------------------------------------------------------
-  // HANDLERS: VOID
-  // -----------------------------------------------------------------
 
   const handleOpenVoidBill = (b: GuestBillItem) => {
     setBillToVoid(b);
@@ -624,11 +524,11 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
     setIsVoidModalOpen(true);
   };
 
-  const handleConfirmVoid = async (e: React.FormEvent) => {
+  const handleConfirmVoidBill = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!billToVoid) return;
     if (!voidReason.trim() || voidReason.trim().length < 3) {
-      showToast('error', 'A valid reason (min 3 characters) is required to void this bill.');
+      showToast('error', 'Void reason must be at least 3 characters.');
       return;
     }
 
@@ -639,820 +539,740 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
       setBillToVoid(null);
       fetchBills();
       fetchOverview();
-      if (selectedBillDetail && selectedBillDetail.id === billToVoid.id) {
-        handleViewBillDetail(billToVoid.id);
-      }
     } catch (err: any) {
       showToast('error', err.message || 'Failed to void bill.');
     }
   };
 
+  const handlePrintReceipt = () => {
+    window.print();
+  };
+
+  // Helper for status badge styling
+  const renderStatusBadge = (status: string) => {
+    const s = status.toUpperCase();
+    if (s === 'PAID') {
+      return (
+        <span style={{ padding: '0.25rem 0.65rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, background: '#DCFCE7', color: '#15803D', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+          <CheckCircle2 size={13} /> PAID
+        </span>
+      );
+    }
+    if (s === 'PARTIALLY_PAID') {
+      return (
+        <span style={{ padding: '0.25rem 0.65rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, background: '#FEF3C7', color: '#B45309', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+          <Clock size={13} /> PARTIAL
+        </span>
+      );
+    }
+    if (s === 'UNPAID') {
+      return (
+        <span style={{ padding: '0.25rem 0.65rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, background: '#FEE2E2', color: '#B91C1C', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+          <AlertCircle size={13} /> UNPAID
+        </span>
+      );
+    }
+    if (s === 'CHECKED_IN') {
+      return (
+        <span style={{ padding: '0.25rem 0.65rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, background: '#CCFBF1', color: '#0F766E', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+          <UserCheck size={13} /> CHECKED IN
+        </span>
+      );
+    }
+    if (s === 'CHECKED_OUT') {
+      return (
+        <span style={{ padding: '0.25rem 0.65rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, background: '#F1F5F9', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+          <Clock size={13} /> CHECKED OUT
+        </span>
+      );
+    }
+    return (
+      <span style={{ padding: '0.25rem 0.65rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, background: '#E2E8F0', color: '#64748B' }}>
+        {status}
+      </span>
+    );
+  };
+
   return (
-    <div className="guest-billing-management-page">
-      {/* Toast feedback */}
+    <div style={{ padding: '1.5rem', background: '#F8FAFC', minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      {/* Toast Notification */}
       {toast && (
-        <div className={`toast-alert toast-${toast.type}`} role="alert">
+        <div style={{
+          position: 'fixed',
+          bottom: '1.5rem',
+          right: '1.5rem',
+          zIndex: 9999,
+          background: toast.type === 'success' ? '#065F46' : '#991B1B',
+          color: '#FFFFFF',
+          padding: '0.85rem 1.25rem',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          fontSize: '0.9rem',
+          fontWeight: 600,
+        }}>
           {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
           <span>{toast.text}</span>
         </div>
       )}
 
-      {/* Top Banner with Realtime Sync Status & Quick Actions */}
-      <div className="guest-billing-top-bar">
-        <div className="guest-billing-header-title">
-          <div className="guest-billing-badge-icon">
-            <Receipt size={24} />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 m-0 leading-tight">
-              Guest Visits & Billing Operations
-            </h2>
-            <p className="text-xs text-slate-500 m-0 mt-0.5">
-              Authoritative visitor management, resident check-ins, line-item invoicing, and payment processing
-            </p>
-          </div>
+      {/* Header Title Section */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0F172A', margin: 0, letterSpacing: '-0.02em' }}>
+            Guest Visits & Billing Management
+          </h1>
+          <p style={{ fontSize: '0.875rem', color: '#64748B', margin: '0.25rem 0 0 0' }}>
+            Track resident host check-ins, record guest visits, generate itemized bills, and process payments.
+          </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Real-time SSE Connection Indicator */}
-          <div className="guest-live-indicator" title={isLiveConnected ? 'SSE Stream Online' : 'Connecting...'}>
-            <span className={`guest-live-dot ${isLiveConnected ? 'connected' : ''}`} />
-            <span>{isLiveConnected ? 'Live Synchronized' : 'Connecting Realtime...'}</span>
-          </div>
-
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <button
             type="button"
-            className="guest-header-btn-sync"
-            onClick={refreshAll}
-            disabled={isManualRefreshing}
-            title="Refresh latest data"
-          >
-            <RefreshCw size={15} className={isManualRefreshing ? 'animate-spin' : ''} />
-            <span>{isManualRefreshing ? 'Syncing...' : 'Sync'}</span>
-          </button>
-
-          <button
-            type="button"
-            className="guest-btn-primary"
-            onClick={handleOpenAddGuest}
-          >
-            <UserPlus size={15} />
-            <span>Add Guest</span>
-          </button>
-
-          <button
-            type="button"
-            className="guest-btn-primary"
-            style={{ background: 'linear-gradient(135deg, #047857 0%, #10B981 100%)' }}
-            onClick={() => {
-              setVisitFormData({ guestId: '', hostStudentId: '', purpose: '', remarks: '' });
-              setSelectedHostName('');
-              setIsVisitModalOpen(true);
+            onClick={fetchAllData}
+            style={{
+              background: '#FFFFFF',
+              border: '1px solid #CBD5E1',
+              borderRadius: '10px',
+              padding: '0.6rem 1rem',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              color: '#334155',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
             }}
           >
-            <UserCheck size={15} />
-            <span>Check-In Visit</span>
+            <RefreshCw size={15} /> Refresh Data
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenAddGuest}
+            style={{
+              background: 'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)',
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: '10px',
+              padding: '0.6rem 1.1rem',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              boxShadow: '0 4px 12px rgba(79, 70, 229, 0.3)',
+            }}
+          >
+            <UserPlus size={16} /> Register New Guest
           </button>
         </div>
       </div>
 
-      {/* 6 KPI Cards Grid */}
-      <div className="guest-kpi-grid">
-        <div className="guest-kpi-card" onClick={() => setActiveTab('guests')} style={{ cursor: 'pointer' }}>
-          <div className="guest-kpi-header">
-            <span className="guest-kpi-label">Total Guests</span>
-            <div className="guest-kpi-icon-wrap" style={{ background: '#EFF6FF', color: '#2563EB' }}>
-              <Users size={18} />
-            </div>
+      {/* Overview Summary KPI Cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: '1rem',
+        marginBottom: '1.75rem',
+      }}>
+        <div style={{ background: '#FFFFFF', borderRadius: '16px', padding: '1.25rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Registered Guests</span>
+            <Users size={20} color="#2563EB" />
           </div>
-          <div className="guest-kpi-val">
-            {isStatsLoading ? '—' : (stats?.totalGuests ?? 0).toLocaleString()}
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0F172A' }}>
+            {isStatsLoading ? '...' : stats?.totalGuests || 0}
           </div>
-          <div className="guest-kpi-sub">Registered in directory</div>
         </div>
 
-        <div className="guest-kpi-card" onClick={() => { setActiveTab('visits'); setVisitStatusFilter('ALL'); }} style={{ cursor: 'pointer' }}>
-          <div className="guest-kpi-header">
-            <span className="guest-kpi-label">Today's Visits</span>
-            <div className="guest-kpi-icon-wrap" style={{ background: '#ECFDF5', color: '#059669' }}>
-              <Calendar size={18} />
-            </div>
+        <div style={{ background: '#FFFFFF', borderRadius: '16px', padding: '1.25rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Today's Visits</span>
+            <Calendar size={20} color="#0D9488" />
           </div>
-          <div className="guest-kpi-val" style={{ color: '#059669' }}>
-            {isStatsLoading ? '—' : (stats?.todayVisits ?? 0).toLocaleString()}
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0F172A' }}>
+            {isStatsLoading ? '...' : stats?.todayVisits || 0}
           </div>
-          <div className="guest-kpi-sub">Arrived today</div>
         </div>
 
-        <div className="guest-kpi-card" onClick={() => { setActiveTab('visits'); setVisitStatusFilter('CHECKED_IN'); }} style={{ cursor: 'pointer' }}>
-          <div className="guest-kpi-header">
-            <span className="guest-kpi-label">Active Visits</span>
-            <div className="guest-kpi-icon-wrap" style={{ background: '#FFFBEB', color: '#D97706' }}>
-              <UserCheck size={18} />
-            </div>
+        <div style={{ background: '#FFFFFF', borderRadius: '16px', padding: '1.25rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Active Checked-In</span>
+            <UserCheck size={20} color="#059669" />
           </div>
-          <div className="guest-kpi-val" style={{ color: '#D97706' }}>
-            {isStatsLoading ? '—' : (stats?.activeVisits ?? 0).toLocaleString()}
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#059669' }}>
+            {isStatsLoading ? '...' : stats?.activeVisits || 0}
           </div>
-          <div className="guest-kpi-sub">Currently on campus</div>
         </div>
 
-        <div className="guest-kpi-card" onClick={() => { setActiveTab('bills'); setBillStatusFilter('ALL'); }} style={{ cursor: 'pointer' }}>
-          <div className="guest-kpi-header">
-            <span className="guest-kpi-label">Total Bills</span>
-            <div className="guest-kpi-icon-wrap" style={{ background: '#FAF5FF', color: '#7C3AED' }}>
-              <Receipt size={18} />
-            </div>
+        <div style={{ background: '#FFFFFF', borderRadius: '16px', padding: '1.25rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Total Issued Bills</span>
+            <Receipt size={20} color="#4F46E5" />
           </div>
-          <div className="guest-kpi-val" style={{ color: '#7C3AED' }}>
-            {isStatsLoading ? '—' : (stats?.totalBills ?? 0).toLocaleString()}
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0F172A' }}>
+            {isStatsLoading ? '...' : stats?.totalBills || 0}
           </div>
-          <div className="guest-kpi-sub">Invoices generated</div>
         </div>
 
-        <div className="guest-kpi-card" onClick={() => { setActiveTab('bills'); setBillStatusFilter('UNPAID'); }} style={{ cursor: 'pointer' }}>
-          <div className="guest-kpi-header">
-            <span className="guest-kpi-label">Unpaid Amount</span>
-            <div className="guest-kpi-icon-wrap" style={{ background: '#FFF1F2', color: '#E11D48' }}>
-              <AlertCircle size={18} />
-            </div>
+        <div style={{ background: '#FFFFFF', borderRadius: '16px', padding: '1.25rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Total Paid</span>
+            <CheckCircle2 size={20} color="#16A34A" />
           </div>
-          <div className="guest-kpi-val" style={{ color: '#E11D48' }}>
-            {isStatsLoading ? '—' : `₹ ${(stats?.unpaidAmount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#16A34A' }}>
+            {isStatsLoading ? '...' : `₹ ${(stats?.paidAmount || 0).toLocaleString()}`}
           </div>
-          <div className="guest-kpi-sub">Pending receivables</div>
         </div>
 
-        <div className="guest-kpi-card" onClick={() => { setActiveTab('bills'); setBillStatusFilter('PAID'); }} style={{ cursor: 'pointer' }}>
-          <div className="guest-kpi-header">
-            <span className="guest-kpi-label">Paid Amount</span>
-            <div className="guest-kpi-icon-wrap" style={{ background: '#F0FDFA', color: '#0D9488' }}>
-              <CheckCircle2 size={18} />
-            </div>
+        <div style={{ background: '#FFFFFF', borderRadius: '16px', padding: '1.25rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Outstanding Balance</span>
+            <AlertCircle size={20} color="#DC2626" />
           </div>
-          <div className="guest-kpi-val" style={{ color: '#0D9488' }}>
-            {isStatsLoading ? '—' : `₹ ${(stats?.paidAmount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#DC2626' }}>
+            {isStatsLoading ? '...' : `₹ ${(stats?.unpaidAmount || 0).toLocaleString()}`}
           </div>
-          <div className="guest-kpi-sub">Authoritative collections</div>
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="guest-tabs-bar">
-        <button
-          type="button"
-          className={`guest-tab-button ${activeTab === 'bills' ? 'active' : ''}`}
-          onClick={() => setActiveTab('bills')}
-        >
-          <Receipt size={18} />
-          <span>Bills & Payments</span>
-          {stats?.totalBills !== undefined && <span className="guest-tab-counter">{stats.totalBills}</span>}
-        </button>
+      {/* Main Content Area with Navigation Tabs */}
+      <div style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid #E2E8F0', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+        {/* Navigation Tabs Header */}
+        <div style={{ display: 'flex', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', padding: '0 1rem' }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab('bills')}
+            style={{
+              padding: '1rem 1.25rem',
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              color: activeTab === 'bills' ? '#4F46E5' : '#64748B',
+              border: 'none',
+              borderBottom: activeTab === 'bills' ? '3px solid #4F46E5' : '3px solid transparent',
+              background: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <Receipt size={18} /> Guest Bills & Payments
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('visits')}
+            style={{
+              padding: '1rem 1.25rem',
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              color: activeTab === 'visits' ? '#4F46E5' : '#64748B',
+              border: 'none',
+              borderBottom: activeTab === 'visits' ? '3px solid #4F46E5' : '3px solid transparent',
+              background: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <Calendar size={18} /> Guest Visits (Check-Ins)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('guests')}
+            style={{
+              padding: '1rem 1.25rem',
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              color: activeTab === 'guests' ? '#4F46E5' : '#64748B',
+              border: 'none',
+              borderBottom: activeTab === 'guests' ? '3px solid #4F46E5' : '3px solid transparent',
+              background: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <Users size={18} /> Registered Guest Directory
+          </button>
+        </div>
 
-        <button
-          type="button"
-          className={`guest-tab-button ${activeTab === 'visits' ? 'active' : ''}`}
-          onClick={() => setActiveTab('visits')}
-        >
-          <Clock size={18} />
-          <span>Visits Lifecycle</span>
-          {stats?.activeVisits !== undefined && <span className="guest-tab-counter">{stats.activeVisits} active</span>}
-        </button>
+        {/* Tab 1: Guest Bills */}
+        {activeTab === 'bills' && (
+          <div style={{ padding: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flex: '1 1 300px' }}>
+                <Search size={18} color="#94A3B8" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  value={billSearch}
+                  onChange={(e) => { setBillSearch(e.target.value); setBillPagination((p) => ({ ...p, page: 1 })); }}
+                  placeholder="Search by Bill No., Guest Name, Phone, or Bill ID..."
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 1rem 0.65rem 2.5rem',
+                    fontSize: '0.875rem',
+                    borderRadius: '10px',
+                    border: '1px solid #CBD5E1',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
 
-        <button
-          type="button"
-          className={`guest-tab-button ${activeTab === 'guests' ? 'active' : ''}`}
-          onClick={() => setActiveTab('guests')}
-        >
-          <Users size={18} />
-          <span>Guest Directory</span>
-          {stats?.totalGuests !== undefined && <span className="guest-tab-counter">{stats.totalGuests}</span>}
-        </button>
-      </div>
-
-      {/* TAB 1: BILLS & PAYMENTS */}
-      {activeTab === 'bills' && (
-        <section className="guest-content-container">
-          {/* Filters Bar */}
-          <div className="guest-filter-controls-bar">
-            <div className="guest-search-input-wrapper">
-              <Search size={16} className="guest-search-icon-inside" />
-              <input
-                type="text"
-                placeholder="Search by Bill #, Guest, or Resident..."
-                value={billSearch}
-                onChange={(e) => {
-                  setBillSearch(e.target.value);
-                  setBillPagination((p) => ({ ...p, page: 1 }));
-                }}
-              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <select
+                  value={billStatusFilter}
+                  onChange={(e) => { setBillStatusFilter(e.target.value); setBillPagination((p) => ({ ...p, page: 1 })); }}
+                  style={{
+                    padding: '0.65rem 1rem',
+                    fontSize: '0.875rem',
+                    borderRadius: '10px',
+                    border: '1px solid #CBD5E1',
+                    background: '#FFFFFF',
+                    color: '#0F172A',
+                    fontWeight: 600,
+                  }}
+                >
+                  <option value="ALL">All Payment Statuses</option>
+                  <option value="UNPAID">UNPAID</option>
+                  <option value="PARTIALLY_PAID">PARTIALLY PAID</option>
+                  <option value="PAID">PAID</option>
+                  <option value="VOID">VOID</option>
+                </select>
+              </div>
             </div>
 
-            <div className="guest-select-filter-group">
-              <label htmlFor="billStatusSelect">Payment Status:</label>
-              <select
-                id="billStatusSelect"
-                value={billStatusFilter}
-                onChange={(e) => {
-                  setBillStatusFilter(e.target.value);
-                  setBillPagination((p) => ({ ...p, page: 1 }));
-                }}
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="UNPAID">UNPAID</option>
-                <option value="PARTIALLY_PAID">PARTIALLY PAID</option>
-                <option value="PAID">PAID</option>
-                <option value="VOID">VOID</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Bills Data Table */}
-          <div className="guest-table-wrapper">
-            {isBillsLoading ? (
-              <div className="loading-state p-8 text-center">
-                <RefreshCw size={24} className="animate-spin text-primary inline-block" />
-                <p className="mt-2 text-sm text-slate-500">Loading authoritative bills...</p>
-              </div>
-            ) : bills.length === 0 ? (
-              <div className="empty-state p-8 text-center">
-                <Receipt size={40} className="empty-icon inline-block text-slate-400" />
-                <h4 className="mt-2 text-base font-semibold text-slate-700">No Guest Bills Found</h4>
-                <p className="text-sm text-slate-500">There are no guest bills matching your selected filter.</p>
-              </div>
-            ) : (
-              <table className="guest-data-table">
+            {/* Table */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
                 <thead>
-                  <tr>
-                    <th>Bill Number</th>
-                    <th>Guest & Host</th>
-                    <th>Total Amount</th>
-                    <th>Paid / Balance</th>
-                    <th>Status</th>
-                    <th>Date</th>
-                    <th className="text-right">Actions</th>
+                  <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 700 }}>
+                    <th style={{ padding: '0.85rem 1rem' }}>Bill No</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Guest Name</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Host Student</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Total Amount</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Paid Amount</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Outstanding Balance</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Status</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {bills.map((b) => (
-                    <tr key={b.id} className={b.paymentStatus === 'VOID' ? 'row-voided' : ''}>
-                      <td>
-                        <span className="font-mono font-bold text-primary">{b.billNumber}</span>
-                        {b.paymentMethod && (
-                          <div className="text-xs text-muted mt-0.5">
-                            Method: {b.paymentMethod} {b.paymentReference ? `(${b.paymentReference})` : ''}
-                          </div>
-                        )}
+                  {isBillsLoading ? (
+                    <tr>
+                      <td colSpan={8} style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
+                        Loading guest bills...
                       </td>
-                      <td>
-                        <div className="font-semibold text-slate-900">
+                    </tr>
+                  ) : bills.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
+                        No guest billing records match the search filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    bills.map((b) => (
+                      <tr key={b.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1E293B' }}>
+                          {b.billNumber}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>
                           {b.guestVisit?.guest?.name || 'Guest'}
-                        </div>
-                        <div className="text-xs text-muted">
-                          Host: {b.guestVisit?.hostStudent?.name} ({b.guestVisit?.hostStudent?.jntuNo})
-                        </div>
-                      </td>
-                      <td>
-                        <span className="font-bold text-slate-900">
-                          ₹ {b.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </span>
-                        <div className="text-xs text-muted">
-                          {b.items?.length || 0} line item(s)
-                        </div>
-                      </td>
-                      <td>
-                        <div className="text-sm font-semibold text-emerald-600">
-                          Paid: ₹ {b.paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </div>
-                        <div className="text-xs font-semibold text-rose-600">
-                          Bal: ₹ {b.balanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`status-pill status-${b.paymentStatus.toLowerCase().replace('_', '-')}`}>
-                          {b.paymentStatus.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="text-sm font-medium">
-                          {new Date(b.createdAt).toLocaleDateString()}
-                        </div>
-                        <div className="text-xs text-muted">
-                          {new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      </td>
-                      <td className="text-right">
-                        <div className="guest-actions-cluster">
-                          <button
-                            type="button"
-                            className="guest-btn-table-action btn-details"
-                            onClick={() => handleViewBillDetail(b.id)}
-                            title="View bill & payment details"
-                          >
-                            <Eye size={14} />
-                            <span>Details</span>
-                          </button>
-
-                          {b.paymentStatus !== 'PAID' && b.paymentStatus !== 'VOID' && (
+                          <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{b.guestVisit?.guest?.phone}</div>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          {b.guestVisit?.hostStudent?.name || 'Resident Host'}
+                          <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{b.guestVisit?.hostStudent?.jntuNo}</div>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0F172A' }}>
+                          ₹ {b.totalAmount.toFixed(2)}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#16A34A' }}>
+                          ₹ {b.paidAmount.toFixed(2)}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: b.balanceAmount > 0 ? '#DC2626' : '#64748B' }}>
+                          ₹ {b.balanceAmount.toFixed(2)}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          {renderStatusBadge(b.paymentStatus)}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
                             <button
                               type="button"
-                              className="guest-btn-table-action btn-pay"
-                              onClick={() => handleOpenRecordPayment(b)}
-                              title="Record payment"
+                              onClick={() => handleViewBillDetail(b.id)}
+                              style={{ background: '#EEF2FF', color: '#4F46E5', border: 'none', padding: '0.4rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
                             >
-                              <CreditCard size={14} />
-                              <span>Pay</span>
+                              <Eye size={14} /> View Invoice
                             </button>
-                          )}
-
-                          {b.paymentStatus !== 'VOID' && (
-                            <button
-                              type="button"
-                              className="guest-btn-table-action btn-void"
-                              onClick={() => handleOpenVoidBill(b)}
-                              title="Void this bill"
-                            >
-                              <Ban size={14} />
-                              <span>Void</span>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {b.paymentStatus !== 'PAID' && b.paymentStatus !== 'VOID' && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenRecordPayment(b)}
+                                style={{ background: '#DCFCE7', color: '#15803D', border: 'none', padding: '0.4rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                              >
+                                <CreditCard size={14} /> Record Payment
+                              </button>
+                            )}
+                            {b.paymentStatus !== 'VOID' && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenVoidBill(b)}
+                                style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', padding: '0.4rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                              >
+                                <Ban size={14} /> Void
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
-            )}
-          </div>
-
-          {/* Bills Pagination */}
-          {billPagination.totalPages > 1 && (
-            <div className="pagination-bar p-3 border-t border-slate-200 flex justify-between items-center">
-              <span className="pagination-info text-xs text-slate-500">
-                Showing page {billPagination.page} of {billPagination.totalPages} ({billPagination.total} bills)
-              </span>
-              <div className="pagination-controls flex items-center gap-1">
-                <button
-                  type="button"
-                  className="btn-page"
-                  disabled={billPagination.page <= 1}
-                  onClick={() => setBillPagination((p) => ({ ...p, page: p.page - 1 }))}
-                >
-                  <ChevronLeft size={16} />
-                  <span>Previous</span>
-                </button>
-                <button
-                  type="button"
-                  className="btn-page"
-                  disabled={billPagination.page >= billPagination.totalPages}
-                  onClick={() => setBillPagination((p) => ({ ...p, page: p.page + 1 }))}
-                >
-                  <span>Next</span>
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* TAB 2: VISITS LIFECYCLE */}
-      {activeTab === 'visits' && (
-        <section className="guest-content-container">
-          {/* Visits Filter Bar */}
-          <div className="guest-filter-controls-bar">
-            <div className="guest-search-input-wrapper">
-              <Search size={16} className="guest-search-icon-inside" />
-              <input
-                type="text"
-                placeholder="Search visits by guest, host, or purpose..."
-                value={visitSearch}
-                onChange={(e) => {
-                  setVisitSearch(e.target.value);
-                  setVisitPagination((p) => ({ ...p, page: 1 }));
-                }}
-              />
-            </div>
-
-            <div className="guest-select-filter-group">
-              <label htmlFor="visitStatusSelect">Visit Status:</label>
-              <select
-                id="visitStatusSelect"
-                value={visitStatusFilter}
-                onChange={(e) => {
-                  setVisitStatusFilter(e.target.value);
-                  setVisitPagination((p) => ({ ...p, page: 1 }));
-                }}
-              >
-                <option value="ALL">All Visits</option>
-                <option value="CHECKED_IN">CHECKED IN (Active)</option>
-                <option value="CHECKED_OUT">CHECKED OUT</option>
-              </select>
             </div>
           </div>
+        )}
 
-          {/* Visits Table */}
-          <div className="guest-table-wrapper">
-            {isVisitsLoading ? (
-              <div className="loading-state p-8 text-center">
-                <RefreshCw size={24} className="animate-spin text-primary inline-block" />
-                <p className="mt-2 text-sm text-slate-500">Loading guest visits...</p>
+        {/* Tab 2: Guest Visits */}
+        {activeTab === 'visits' && (
+          <div style={{ padding: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flex: '1 1 300px' }}>
+                <Search size={18} color="#94A3B8" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  value={visitSearch}
+                  onChange={(e) => { setVisitSearch(e.target.value); setVisitPagination((p) => ({ ...p, page: 1 })); }}
+                  placeholder="Search visits by Guest Name, Phone, Host Student..."
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 1rem 0.65rem 2.5rem',
+                    fontSize: '0.875rem',
+                    borderRadius: '10px',
+                    border: '1px solid #CBD5E1',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
               </div>
-            ) : visits.length === 0 ? (
-              <div className="empty-state p-8 text-center">
-                <Clock size={40} className="empty-icon inline-block text-slate-400" />
-                <h4 className="mt-2 text-base font-semibold text-slate-700">No Visits Recorded</h4>
-                <p className="text-sm text-slate-500">No guest visits matching your criteria were found.</p>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <select
+                  value={visitStatusFilter}
+                  onChange={(e) => { setVisitStatusFilter(e.target.value); setVisitPagination((p) => ({ ...p, page: 1 })); }}
+                  style={{
+                    padding: '0.65rem 1rem',
+                    fontSize: '0.875rem',
+                    borderRadius: '10px',
+                    border: '1px solid #CBD5E1',
+                    background: '#FFFFFF',
+                    color: '#0F172A',
+                    fontWeight: 600,
+                  }}
+                >
+                  <option value="ALL">All Visit Statuses</option>
+                  <option value="CHECKED_IN">CHECKED IN</option>
+                  <option value="CHECKED_OUT">CHECKED OUT</option>
+                </select>
               </div>
-            ) : (
-              <table className="guest-data-table">
+            </div>
+
+            {/* Table */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
                 <thead>
-                  <tr>
-                    <th>Guest Information</th>
-                    <th>Host Resident</th>
-                    <th>Purpose & Remarks</th>
-                    <th>Check-In Time</th>
-                    <th>Check-Out Time</th>
-                    <th>Status</th>
-                    <th className="text-right">Actions</th>
+                  <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 700 }}>
+                    <th style={{ padding: '0.85rem 1rem' }}>Guest Name</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Host Student</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Purpose</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Check In Time</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Check Out Time</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Status</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visits.map((v) => (
-                    <tr key={v.id}>
-                      <td>
-                        <div className="font-semibold text-slate-900">{v.guest?.name}</div>
-                        <div className="text-xs text-muted flex items-center gap-1 mt-0.5">
-                          <Phone size={12} /> {v.guest?.phone}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="font-semibold text-slate-900">{v.hostStudent?.name}</div>
-                        <div className="text-xs text-muted">
-                          {v.hostStudent?.jntuNo} • {v.hostStudent?.blockName || 'Main'} / {v.hostStudent?.roomNumber || 'Room'}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="text-sm font-medium text-slate-800">{v.purpose}</div>
-                        {v.remarks && <div className="text-xs text-muted italic">"{v.remarks}"</div>}
-                      </td>
-                      <td>
-                        <div className="text-sm font-medium">
-                          {new Date(v.checkInTime).toLocaleDateString()}
-                        </div>
-                        <div className="text-xs text-muted">
-                          {new Date(v.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      </td>
-                      <td>
-                        {v.checkOutTime ? (
-                          <>
-                            <div className="text-sm font-medium text-slate-700">
-                              {new Date(v.checkOutTime).toLocaleDateString()}
-                            </div>
-                            <div className="text-xs text-muted">
-                              {new Date(v.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </div>
-                          </>
-                        ) : (
-                          <span className="text-xs text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded">Currently On Campus</span>
-                        )}
-                      </td>
-                      <td>
-                        <span className={`status-pill status-${v.status.toLowerCase().replace('_', '-')}`}>
-                          {v.status.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="text-right">
-                        <div className="guest-actions-cluster">
-                          {v.status === 'CHECKED_IN' && (
-                            <button
-                              type="button"
-                              className="guest-btn-table-action btn-checkout"
-                              onClick={() => handleOpenCheckout(v)}
-                              title="Checkout guest"
-                            >
-                              <UserCheck size={14} />
-                              <span>Check-out</span>
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            className="guest-btn-table-action btn-bill"
-                            onClick={() => handleOpenCreateBillForVisit(v)}
-                            title="Generate bill for this visit"
-                          >
-                            <Receipt size={14} />
-                            <span>Bill</span>
-                          </button>
-                        </div>
+                  {isVisitsLoading ? (
+                    <tr>
+                      <td colSpan={7} style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
+                        Loading guest visits...
                       </td>
                     </tr>
-                  ))}
+                  ) : visits.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
+                        No guest visit check-in records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    visits.map((v) => (
+                      <tr key={v.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1E293B' }}>
+                          {v.guest?.name}
+                          <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{v.guest?.phone}</div>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          {v.hostStudent?.name}
+                          <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{v.hostStudent?.jntuNo}</div>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', color: '#334155' }}>
+                          {v.purpose}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', color: '#475569' }}>
+                          {new Date(v.checkInTime).toLocaleString()}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', color: '#475569' }}>
+                          {v.checkOutTime ? new Date(v.checkOutTime).toLocaleString() : '—'}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          {renderStatusBadge(v.status)}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
+                            {v.status === 'CHECKED_IN' && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCheckout(v)}
+                                style={{ background: '#FEF3C7', color: '#B45309', border: 'none', padding: '0.4rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                              >
+                                Check Out
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCreateBillForVisit(v)}
+                              style={{ background: '#EEF2FF', color: '#4F46E5', border: 'none', padding: '0.4rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                            >
+                              <Receipt size={14} /> Generate Bill
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
-            )}
-          </div>
-
-          {/* Visits Pagination */}
-          {visitPagination.totalPages > 1 && (
-            <div className="pagination-bar p-3 border-t border-slate-200 flex justify-between items-center">
-              <span className="pagination-info text-xs text-slate-500">
-                Showing page {visitPagination.page} of {visitPagination.totalPages} ({visitPagination.total} visits)
-              </span>
-              <div className="pagination-controls flex items-center gap-1">
-                <button
-                  type="button"
-                  className="btn-page"
-                  disabled={visitPagination.page <= 1}
-                  onClick={() => setVisitPagination((p) => ({ ...p, page: p.page - 1 }))}
-                >
-                  <ChevronLeft size={16} />
-                  <span>Previous</span>
-                </button>
-                <button
-                  type="button"
-                  className="btn-page"
-                  disabled={visitPagination.page >= visitPagination.totalPages}
-                  onClick={() => setVisitPagination((p) => ({ ...p, page: p.page + 1 }))}
-                >
-                  <span>Next</span>
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* TAB 3: GUEST DIRECTORY */}
-      {activeTab === 'guests' && (
-        <section className="guest-content-container">
-          {/* Guest Search Bar */}
-          <div className="guest-filter-controls-bar">
-            <div className="guest-search-input-wrapper">
-              <Search size={16} className="guest-search-icon-inside" />
-              <input
-                type="text"
-                placeholder="Search guests by name, phone, ID proof..."
-                value={guestSearch}
-                onChange={(e) => {
-                  setGuestSearch(e.target.value);
-                  setGuestPagination((p) => ({ ...p, page: 1 }));
-                }}
-              />
             </div>
           </div>
+        )}
 
-          {/* Guests Table */}
-          <div className="guest-table-wrapper">
-            {isGuestsLoading ? (
-              <div className="loading-state p-8 text-center">
-                <RefreshCw size={24} className="animate-spin text-primary inline-block" />
-                <p className="mt-2 text-sm text-slate-500">Loading guest directory...</p>
+        {/* Tab 3: Registered Guests Directory */}
+        {activeTab === 'guests' && (
+          <div style={{ padding: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flex: '1 1 300px' }}>
+                <Search size={18} color="#94A3B8" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  value={guestSearch}
+                  onChange={(e) => { setGuestSearch(e.target.value); setGuestPagination((p) => ({ ...p, page: 1 })); }}
+                  placeholder="Search guest directory by Name, Phone, ID Proof..."
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 1rem 0.65rem 2.5rem',
+                    fontSize: '0.875rem',
+                    borderRadius: '10px',
+                    border: '1px solid #CBD5E1',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
               </div>
-            ) : guests.length === 0 ? (
-              <div className="empty-state p-8 text-center">
-                <Users size={40} className="empty-icon inline-block text-slate-400" />
-                <h4 className="mt-2 text-base font-semibold text-slate-700">No Guests Registered</h4>
-                <p className="text-sm text-slate-500">No guest records found. Use "+ Add Guest" above to register new visitors.</p>
-              </div>
-            ) : (
-              <table className="guest-data-table">
+            </div>
+
+            {/* Table */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
                 <thead>
-                  <tr>
-                    <th>Guest Name</th>
-                    <th>Contact Phone & Email</th>
-                    <th>Identity Proof</th>
-                    <th>Relation</th>
-                    <th>Address</th>
-                    <th>Total Visits</th>
-                    <th className="text-right">Actions</th>
+                  <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 700 }}>
+                    <th style={{ padding: '0.85rem 1rem' }}>Guest Name</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Phone</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>ID Proof Type</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>ID Proof No</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Relation</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {guests.map((g) => (
-                    <tr key={g.id}>
-                      <td className="font-semibold text-slate-900">{g.name}</td>
-                      <td>
-                        <div className="text-sm font-medium flex items-center gap-1">
-                          <Phone size={13} className="text-muted" /> {g.phone}
-                        </div>
-                        {g.email && (
-                          <div className="text-xs text-muted flex items-center gap-1 mt-0.5">
-                            <Mail size={12} /> {g.email}
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        {g.idProofType ? (
-                          <div className="text-sm">
-                            <span className="font-medium text-slate-700">{g.idProofType}:</span>{' '}
-                            <span className="font-mono text-xs text-slate-600">{g.idProofNumber || 'N/A'}</span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted">Not recorded</span>
-                        )}
-                      </td>
-                      <td>
-                        <span className="badge-relation">{g.relation || 'VISITOR'}</span>
-                      </td>
-                      <td className="text-sm text-slate-600 max-w-xs truncate" title={g.address || ''}>
-                        {g.address || '—'}
-                      </td>
-                      <td>
-                        <span className="font-bold text-primary">
-                          {g._count?.visits ?? (g.visits?.length || 0)}
-                        </span>{' '}
-                        visit(s)
-                      </td>
-                      <td className="text-right">
-                        <div className="guest-actions-cluster">
-                          <button
-                            type="button"
-                            className="guest-btn-table-action btn-checkout"
-                            onClick={() => handleOpenCheckinForGuest(g)}
-                            title="Check-in this guest"
-                          >
-                            <UserCheck size={14} />
-                            <span>Check-in</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            className="guest-btn-table-action btn-details"
-                            onClick={() => handleOpenEditGuest(g)}
-                            title="Edit guest profile"
-                          >
-                            <span>Edit</span>
-                          </button>
-                        </div>
+                  {isGuestsLoading ? (
+                    <tr>
+                      <td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
+                        Loading guest directory...
                       </td>
                     </tr>
-                  ))}
+                  ) : guests.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
+                        No guests registered in directory.
+                      </td>
+                    </tr>
+                  ) : (
+                    guests.map((g) => (
+                      <tr key={g.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1E293B' }}>
+                          {g.name}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', color: '#334155' }}>
+                          {g.phone}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <span style={{ background: '#F1F5F9', color: '#475569', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
+                            {g.idProofType || 'AADHAAR'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', color: '#334155' }}>
+                          {g.idProofNumber || '—'}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>
+                          {g.relation || 'PARENT'}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCheckinForGuest(g)}
+                              style={{ background: '#DCFCE7', color: '#15803D', border: 'none', padding: '0.4rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                            >
+                              <UserCheck size={14} /> Check In Guest
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditGuest(g)}
+                              style={{ background: '#F1F5F9', color: '#334155', border: 'none', padding: '0.4rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
+                            >
+                              Edit Profile
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
-            )}
-          </div>
-
-          {/* Guests Pagination */}
-          {guestPagination.totalPages > 1 && (
-            <div className="pagination-bar p-3 border-t border-slate-200 flex justify-between items-center">
-              <span className="pagination-info text-xs text-slate-500">
-                Showing page {guestPagination.page} of {guestPagination.totalPages} ({guestPagination.total} guests)
-              </span>
-              <div className="pagination-controls flex items-center gap-1">
-                <button
-                  type="button"
-                  className="btn-page"
-                  disabled={guestPagination.page <= 1}
-                  onClick={() => setGuestPagination((p) => ({ ...p, page: p.page - 1 }))}
-                >
-                  <ChevronLeft size={16} />
-                  <span>Previous</span>
-                </button>
-                <button
-                  type="button"
-                  className="btn-page"
-                  disabled={guestPagination.page >= guestPagination.totalPages}
-                  onClick={() => setGuestPagination((p) => ({ ...p, page: p.page + 1 }))}
-                >
-                  <span>Next</span>
-                  <ChevronRight size={16} />
-                </button>
-              </div>
             </div>
-          )}
-        </section>
-      )}
+          </div>
+        )}
+      </div>
 
-      {/* ============================================================= */}
-      {/* MODALS */}
-      {/* ============================================================= */}
-
-      {/* 1. ADD / EDIT GUEST MODAL */}
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL 1: REGISTER / EDIT GUEST */}
+      {/* ------------------------------------------------------------- */}
       {isGuestModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsGuestModalOpen(false)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>{editingGuest ? 'Edit Guest Details' : 'Register New Guest'}</h3>
-              <button
-                type="button"
-                className="btn-icon-close"
-                onClick={() => setIsGuestModalOpen(false)}
-                aria-label="Close dialog"
-              >
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '20px', width: '100%', maxWidth: '520px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '1.25rem 1.5rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
+                {editingGuest ? 'Edit Guest Profile' : 'Register New Guest'}
+              </h3>
+              <button type="button" onClick={() => setIsGuestModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
                 <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveGuest}>
-              <div className="modal-body">
-                <div className="form-group">
-                  <label htmlFor="guestNameInput">Guest Full Name *</label>
+            <form onSubmit={handleSaveGuest} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Guest Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={guestFormData.name}
+                  onChange={(e) => setGuestFormData({ ...guestFormData, name: e.target.value })}
+                  placeholder="e.g. Ramesh Chandra"
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Phone Number *</label>
                   <input
-                    id="guestNameInput"
                     type="text"
                     required
-                    placeholder="e.g. Ramesh Sharma"
-                    value={guestFormData.name}
-                    onChange={(e) => setGuestFormData({ ...guestFormData, name: e.target.value })}
+                    value={guestFormData.phone}
+                    onChange={(e) => setGuestFormData({ ...guestFormData, phone: e.target.value })}
+                    placeholder="e.g. 9876543210"
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
                   />
                 </div>
 
-                <div className="form-row">
-                  <div className="form-group flex-1">
-                    <label htmlFor="guestPhoneInput">Contact Phone Number *</label>
-                    <input
-                      id="guestPhoneInput"
-                      type="tel"
-                      required
-                      placeholder="e.g. 9848012345"
-                      value={guestFormData.phone}
-                      onChange={(e) => setGuestFormData({ ...guestFormData, phone: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="form-group flex-1">
-                    <label htmlFor="guestEmailInput">Email Address</label>
-                    <input
-                      id="guestEmailInput"
-                      type="email"
-                      placeholder="e.g. ramesh@example.com"
-                      value={guestFormData.email}
-                      onChange={(e) => setGuestFormData({ ...guestFormData, email: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="form-row">
-                  <div className="form-group flex-1">
-                    <label htmlFor="guestIdTypeSelect">ID Proof Type</label>
-                    <select
-                      id="guestIdTypeSelect"
-                      value={guestFormData.idProofType}
-                      onChange={(e) => setGuestFormData({ ...guestFormData, idProofType: e.target.value })}
-                    >
-                      <option value="AADHAAR">Aadhaar Card</option>
-                      <option value="PAN">PAN Card</option>
-                      <option value="DRIVING_LICENSE">Driving License</option>
-                      <option value="PASSPORT">Passport</option>
-                      <option value="VOTER_ID">Voter ID</option>
-                      <option value="OTHER">Other Government ID</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group flex-1">
-                    <label htmlFor="guestIdNumInput">ID Proof Number</label>
-                    <input
-                      id="guestIdNumInput"
-                      type="text"
-                      placeholder="e.g. 1234 5678 9012"
-                      value={guestFormData.idProofNumber}
-                      onChange={(e) => setGuestFormData({ ...guestFormData, idProofNumber: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="guestRelationSelect">Relationship to Resident</label>
-                  <select
-                    id="guestRelationSelect"
-                    value={guestFormData.relation}
-                    onChange={(e) => setGuestFormData({ ...guestFormData, relation: e.target.value })}
-                  >
-                    <option value="PARENT">Parent (Father / Mother)</option>
-                    <option value="GUARDIAN">Local Guardian</option>
-                    <option value="SIBLING">Sibling (Brother / Sister)</option>
-                    <option value="RELATIVE">Relative</option>
-                    <option value="FRIEND">Friend</option>
-                    <option value="OTHER">Other</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="guestAddressInput">Permanent Residential Address</label>
-                  <textarea
-                    id="guestAddressInput"
-                    rows={2}
-                    placeholder="Enter city, state, or address..."
-                    value={guestFormData.address}
-                    onChange={(e) => setGuestFormData({ ...guestFormData, address: e.target.value })}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Email Address</label>
+                  <input
+                    type="email"
+                    value={guestFormData.email}
+                    onChange={(e) => setGuestFormData({ ...guestFormData, email: e.target.value })}
+                    placeholder="e.g. ramesh@example.com"
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
 
-              <div className="modal-footer">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>ID Proof Type</label>
+                  <select
+                    value={guestFormData.idProofType}
+                    onChange={(e) => setGuestFormData({ ...guestFormData, idProofType: e.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', background: '#FFFFFF' }}
+                  >
+                    <option value="AADHAAR">Aadhaar Card</option>
+                    <option value="PAN">PAN Card</option>
+                    <option value="DRIVING_LICENSE">Driving License</option>
+                    <option value="PASSPORT">Passport</option>
+                    <option value="VOTER_ID">Voter ID</option>
+                    <option value="OTHER">Other Official ID</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>ID Proof Number</label>
+                  <input
+                    type="text"
+                    value={guestFormData.idProofNumber}
+                    onChange={(e) => setGuestFormData({ ...guestFormData, idProofNumber: e.target.value })}
+                    placeholder="e.g. 1234-5678-9012"
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Relationship to Student</label>
+                <select
+                  value={guestFormData.relation}
+                  onChange={(e) => setGuestFormData({ ...guestFormData, relation: e.target.value })}
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', background: '#FFFFFF' }}
+                >
+                  <option value="PARENT">Parent (Father / Mother)</option>
+                  <option value="GUARDIAN">Guardian</option>
+                  <option value="SIBLING">Sibling (Brother / Sister)</option>
+                  <option value="RELATIVE">Relative</option>
+                  <option value="FRIEND">Friend / Academic Visitor</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', justifySelf: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
                 <button
                   type="button"
-                  className="btn-secondary"
                   onClick={() => setIsGuestModalOpen(false)}
+                  style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary">
-                  {editingGuest ? 'Update Guest' : 'Save Guest Record'}
+                <button
+                  type="submit"
+                  style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: 'none', background: '#4F46E5', color: '#FFFFFF', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {editingGuest ? 'Save Changes' : 'Register Guest'}
                 </button>
               </div>
             </form>
@@ -1460,126 +1280,131 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
         </div>
       )}
 
-      {/* 2. CHECK-IN VISIT MODAL */}
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL 2: GUEST CHECK-IN & HOST STUDENT SEARCH */}
+      {/* ------------------------------------------------------------- */}
       {isVisitModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsVisitModalOpen(false)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Check-In Guest Visit</h3>
-              <button
-                type="button"
-                className="btn-icon-close"
-                onClick={() => setIsVisitModalOpen(false)}
-                aria-label="Close dialog"
-              >
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '20px', width: '100%', maxWidth: '580px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '1.25rem 1.5rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
+                  Register Guest Check-In
+                </h3>
+                {selectedGuestName && (
+                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#4F46E5', fontWeight: 600 }}>
+                    Guest: {selectedGuestName}
+                  </p>
+                )}
+              </div>
+              <button type="button" onClick={() => setIsVisitModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
                 <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateVisit}>
-              <div className="modal-body">
-                {/* Guest Selector */}
-                <div className="form-group">
-                  <label htmlFor="visitGuestSelect">Select Guest *</label>
-                  <select
-                    id="visitGuestSelect"
-                    required
-                    value={visitFormData.guestId}
-                    onChange={(e) => setVisitFormData({ ...visitFormData, guestId: e.target.value })}
-                  >
-                    <option value="">-- Choose registered guest --</option>
-                    {guests.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name} ({g.phone}) - {g.relation || 'Guest'}
-                      </option>
-                    ))}
-                  </select>
-                  {guests.length === 0 && (
-                    <span className="text-xs text-rose-600 mt-1">
-                      No guests loaded. You can add one via "+ Add Guest" first.
-                    </span>
-                  )}
-                </div>
-
-                {/* Host Student Lookup */}
-                <div className="form-group">
-                  <label htmlFor="hostSearchInput">Search Host Student (Name or JNTU No.) *</label>
+            <form onSubmit={handleCreateVisit} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Host Student Live Search Field */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                  Search Host Resident Student *
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Search size={18} color="#94A3B8" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
                   <input
-                    id="hostSearchInput"
                     type="text"
-                    placeholder="Type student name or roll number..."
                     value={hostSearchQuery}
                     onChange={(e) => setHostSearchQuery(e.target.value)}
+                    placeholder="Type student name or JNTU No. to search..."
+                    style={{ width: '100%', padding: '0.65rem 1rem 0.65rem 2.5rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
                   />
+                </div>
 
-                  {/* Search Results Dropdown */}
-                  <div className="host-select-container mt-2">
-                    {isSearchingHosts ? (
-                      <div className="p-2 text-xs text-muted">Searching students...</div>
-                    ) : searchedHosts.length === 0 ? (
-                      <div className="p-2 text-xs text-muted">No students found matching query.</div>
-                    ) : (
-                      <div className="host-options-list">
-                        {searchedHosts.slice(0, 5).map((h) => (
-                          <div
-                            key={h.id}
-                            className={`host-option-item ${visitFormData.hostStudentId === h.id ? 'host-selected' : ''}`}
-                            onClick={() => {
-                              setVisitFormData({ ...visitFormData, hostStudentId: h.id });
-                              setSelectedHostName(`${h.name} (${h.jntuNo})`);
-                            }}
-                          >
-                            <div className="font-semibold text-sm">{h.name}</div>
-                            <div className="text-xs text-muted">
-                              {h.jntuNo} • {h.blockName || 'Block'} / {h.roomNumber || 'Room'}
+                {/* Host Search Results Container */}
+                <div style={{ marginTop: '0.5rem', maxHeight: '160px', overflowY: 'auto', border: '1px solid #E2E8F0', borderRadius: '8px', background: '#F8FAFC' }}>
+                  {isSearchingHosts ? (
+                    <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.8rem', color: '#64748B' }}>
+                      Searching host students...
+                    </div>
+                  ) : searchedHosts.length === 0 ? (
+                    <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.8rem', color: '#64748B' }}>
+                      {hostSearchQuery ? 'No host student found.' : 'Start typing student name or JNTU No.'}
+                    </div>
+                  ) : (
+                    searchedHosts.map((h) => {
+                      const isSelected = selectedHost?.id === h.id;
+                      return (
+                        <div
+                          key={h.id}
+                          onClick={() => {
+                            setSelectedHost(h);
+                            setVisitFormData({ ...visitFormData, hostStudentId: h.id });
+                          }}
+                          style={{
+                            padding: '0.65rem 0.85rem',
+                            borderBottom: '1px solid #E2E8F0',
+                            cursor: 'pointer',
+                            background: isSelected ? '#EEF2FF' : '#FFFFFF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0F172A' }}>{h.name}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                              JNTU: {h.jntuNo} | Block: {h.blockName || 'Unassigned'} | Room: {h.roomNumber || '—'}
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {selectedHostName && (
-                    <div className="mt-2 text-xs font-semibold text-emerald-700 bg-emerald-50 p-2 rounded flex items-center gap-1.5">
-                      <Check size={14} /> Selected Host: {selectedHostName}
-                    </div>
+                          {isSelected && <Check size={18} color="#4F46E5" />}
+                        </div>
+                      );
+                    })
                   )}
                 </div>
 
-                <div className="form-group">
-                  <label htmlFor="visitPurposeInput">Purpose of Visit *</label>
-                  <input
-                    id="visitPurposeInput"
-                    type="text"
-                    required
-                    placeholder="e.g. Meeting resident, campus tour, fee clearance..."
-                    value={visitFormData.purpose}
-                    onChange={(e) => setVisitFormData({ ...visitFormData, purpose: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="visitRemarksInput">Optional Remarks</label>
-                  <input
-                    id="visitRemarksInput"
-                    type="text"
-                    placeholder="e.g. Expected stay duration, special permission..."
-                    value={visitFormData.remarks}
-                    onChange={(e) => setVisitFormData({ ...visitFormData, remarks: e.target.value })}
-                  />
-                </div>
+                {selectedHost && (
+                  <div style={{ marginTop: '0.5rem', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.8rem', color: '#065F46', fontWeight: 600 }}>
+                    Selected Host: {selectedHost.name} ({selectedHost.jntuNo})
+                  </div>
+                )}
               </div>
 
-              <div className="modal-footer">
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Visit Purpose *</label>
+                <input
+                  type="text"
+                  required
+                  value={visitFormData.purpose}
+                  onChange={(e) => setVisitFormData({ ...visitFormData, purpose: e.target.value })}
+                  placeholder="e.g. Family Visit / Delivering Academic Documents"
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Additional Remarks / Gate Notes</label>
+                <textarea
+                  rows={2}
+                  value={visitFormData.remarks}
+                  onChange={(e) => setVisitFormData({ ...visitFormData, remarks: e.target.value })}
+                  placeholder="Optional gate entry notes or visitor luggage comments..."
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifySelf: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
                 <button
                   type="button"
-                  className="btn-secondary"
                   onClick={() => setIsVisitModalOpen(false)}
+                  style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary">
-                  Confirm Check-In
+                <button
+                  type="submit"
+                  style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: 'none', background: '#059669', color: '#FFFFFF', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <UserCheck size={16} /> Confirm Check-In
                 </button>
               </div>
             </form>
@@ -1587,510 +1412,129 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
         </div>
       )}
 
-      {/* 3. CHECKOUT CONFIRMATION MODAL */}
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL 3: CHECKOUT CONFIRMATION */}
+      {/* ------------------------------------------------------------- */}
       {isCheckoutConfirmOpen && visitToCheckout && (
-        <div className="modal-backdrop" onClick={() => setIsCheckoutConfirmOpen(false)}>
-          <div className="modal-dialog modal-dialog-sm" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Confirm Guest Check-Out</h3>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '20px', width: '100%', maxWidth: '440px', padding: '1.75rem', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto' }}>
+              <Clock size={24} color="#D97706" />
+            </div>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.2rem', fontWeight: 800, color: '#0F172A' }}>
+              Check Out Guest Visit?
+            </h3>
+            <p style={{ fontSize: '0.875rem', color: '#64748B', margin: '0 0 1.5rem 0' }}>
+              Are you sure you want to mark guest <strong>{visitToCheckout.guest?.name}</strong> as checked out?
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
               <button
                 type="button"
-                className="btn-icon-close"
                 onClick={() => setIsCheckoutConfirmOpen(false)}
-                aria-label="Close dialog"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <p className="text-slate-700">
-                Are you sure you want to mark guest <strong>{visitToCheckout.guest?.name}</strong> as checked out?
-              </p>
-              <div className="checkout-summary-box mt-3">
-                <div className="text-xs text-muted">Check-In Time</div>
-                <div className="font-semibold text-sm">
-                  {new Date(visitToCheckout.checkInTime).toLocaleString()}
-                </div>
-                <div className="text-xs text-muted mt-2">Host Resident</div>
-                <div className="font-medium text-sm">
-                  {visitToCheckout.hostStudent?.name} ({visitToCheckout.hostStudent?.jntuNo})
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setIsCheckoutConfirmOpen(false)}
+                style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="btn-primary btn-checkout-confirm"
                 onClick={handleConfirmCheckout}
+                style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: 'none', background: '#D97706', color: '#FFFFFF', fontWeight: 700, cursor: 'pointer' }}
               >
-                Confirm Check-Out
+                Confirm Checkout
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 4. CREATE BILL MODAL */}
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL 4: CREATE ITEMIZE GUEST BILL & PRICING CALCULATOR */}
+      {/* ------------------------------------------------------------- */}
       {isBillModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsBillModalOpen(false)}>
-          <div className="modal-dialog modal-dialog-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Create Guest Billing Invoice</h3>
-              <button
-                type="button"
-                className="btn-icon-close"
-                onClick={() => setIsBillModalOpen(false)}
-                aria-label="Close dialog"
-              >
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '20px', width: '100%', maxWidth: '640px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '1.25rem 1.5rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
+                Generate Itemized Guest Bill
+              </h3>
+              <button type="button" onClick={() => setIsBillModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
                 <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateBill}>
-              <div className="modal-body">
-                {/* Visit Selector (if not preselected) */}
-                <div className="form-group">
-                  <label htmlFor="billVisitSelect">Select Associated Guest Visit *</label>
-                  <select
-                    id="billVisitSelect"
-                    required
-                    value={billFormData.guestVisitId}
-                    onChange={(e) => setBillFormData({ ...billFormData, guestVisitId: e.target.value })}
-                  >
-                    <option value="">-- Choose guest visit --</option>
-                    {visits.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.guest?.name} visiting {v.hostStudent?.name} ({new Date(v.checkInTime).toLocaleDateString()}) - {v.status}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="customBillNumInput">Custom Bill Number (Optional, auto-generated if left empty)</label>
-                  <input
-                    id="customBillNumInput"
-                    type="text"
-                    placeholder="Leave empty for auto: GB-YYYYMMDD-XXXX"
-                    value={billFormData.billNumber}
-                    onChange={(e) => setBillFormData({ ...billFormData, billNumber: e.target.value })}
-                  />
-                </div>
-
-                {/* Line Items Builder */}
-                <div className="line-items-section mt-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="font-semibold text-slate-800">Billing Line Items *</label>
-                    <button
-                      type="button"
-                      className="btn-secondary btn-sm flex items-center gap-1"
-                      onClick={handleAddItemToBill}
-                    >
-                      <Plus size={14} /> Add Line Item
-                    </button>
-                  </div>
-
-                  <div className="line-items-list">
-                    {billFormData.items.map((it, idx) => (
-                      <div key={idx} className="line-item-row">
-                        <div className="item-col-desc">
-                          <input
-                            type="text"
-                            required
-                            placeholder="Description (e.g. Room accommodation, Guest meals)"
-                            value={it.description}
-                            onChange={(e) => handleBillItemChange(idx, 'description', e.target.value)}
-                          />
-                        </div>
-
-                        <div className="item-col-qty">
-                          <input
-                            type="number"
-                            required
-                            min="1"
-                            title="Quantity"
-                            placeholder="Qty"
-                            value={it.quantity}
-                            onChange={(e) => handleBillItemChange(idx, 'quantity', parseInt(e.target.value, 10) || 1)}
-                          />
-                        </div>
-
-                        <div className="item-col-unit">
-                          <input
-                            type="number"
-                            required
-                            min="0"
-                            step="0.01"
-                            title="Unit Price"
-                            placeholder="Unit Amount (₹)"
-                            value={it.unitAmount}
-                            onChange={(e) => handleBillItemChange(idx, 'unitAmount', parseFloat(e.target.value) || 0)}
-                          />
-                        </div>
-
-                        <div className="item-col-subtotal font-semibold text-sm text-slate-700">
-                          ₹ {(it.quantity * it.unitAmount).toFixed(2)}
-                        </div>
-
-                        <div className="item-col-del">
-                          <button
-                            type="button"
-                            className="btn-icon-del"
-                            onClick={() => handleRemoveItemFromBill(idx)}
-                            aria-label="Remove item"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Calculated Total Display */}
-                  <div className="bill-total-summary-card mt-3">
-                    <span className="text-sm font-medium text-slate-600">Calculated Bill Total:</span>
-                    <span className="text-xl font-bold text-slate-900">
-                      ₹ {calculateFormTotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setIsBillModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">
-                  Generate Authoritative Bill
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 5. VIEW BILL DETAIL MODAL */}
-      {isBillDetailModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsBillDetailModalOpen(false)}>
-          <div className="modal-dialog modal-dialog-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Bill Details & Payment History</h3>
-              <button
-                type="button"
-                className="btn-icon-close"
-                onClick={() => setIsBillDetailModalOpen(false)}
-                aria-label="Close dialog"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="modal-body">
-              {isLoadingBillDetail || !selectedBillDetail ? (
-                <div className="loading-state">
-                  <RefreshCw size={24} className="animate-spin text-primary" />
-                  <p>Loading authoritative bill information...</p>
-                </div>
-              ) : (
-                <div className="bill-detail-content">
-                  {/* Bill Banner */}
-                  <div className="bill-header-banner">
-                    <div>
-                      <div className="text-xs uppercase tracking-wide text-muted">Invoice Number</div>
-                      <h4 className="text-xl font-bold text-slate-900 font-mono">
-                        {selectedBillDetail.billNumber}
-                      </h4>
-                      <div className="text-xs text-muted mt-1">
-                        Generated on {new Date(selectedBillDetail.createdAt).toLocaleString()}
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <span
-                        className={`status-pill status-${selectedBillDetail.paymentStatus.toLowerCase().replace('_', '-')}`}
-                      >
-                        {selectedBillDetail.paymentStatus.replace('_', ' ')}
-                      </span>
-                      {selectedBillDetail.paidAt && (
-                        <div className="text-xs text-emerald-700 font-medium mt-1">
-                          Settled on {new Date(selectedBillDetail.paidAt).toLocaleDateString()}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {selectedBillDetail.paymentStatus === 'VOID' && (
-                    <div className="void-alert-box mt-3">
-                      <div className="font-semibold text-rose-800 flex items-center gap-1">
-                        <Ban size={16} /> Bill Voided by {selectedBillDetail.voidedBy || 'Management'}
-                      </div>
-                      <div className="text-xs text-rose-700 mt-1">
-                        Reason: "{selectedBillDetail.voidReason || 'No reason specified'}" on{' '}
-                        {selectedBillDetail.voidedAt
-                          ? new Date(selectedBillDetail.voidedAt).toLocaleString()
-                          : 'N/A'}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Resident and Guest Info */}
-                  <div className="bill-meta-grid mt-4">
-                    <div className="meta-box">
-                      <span className="meta-label">Guest Visitor</span>
-                      <span className="meta-val font-semibold">
-                        {selectedBillDetail.guestVisit?.guest?.name}
-                      </span>
-                      <span className="text-xs text-muted">
-                        Phone: {selectedBillDetail.guestVisit?.guest?.phone}
-                      </span>
-                    </div>
-
-                    <div className="meta-box">
-                      <span className="meta-label">Host Student Resident</span>
-                      <span className="meta-val font-semibold">
-                        {selectedBillDetail.guestVisit?.hostStudent?.name}
-                      </span>
-                      <span className="text-xs text-muted">
-                        JNTU: {selectedBillDetail.guestVisit?.hostStudent?.jntuNo} •{' '}
-                        {selectedBillDetail.guestVisit?.hostStudent?.roomNumber || 'Room'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Line Items */}
-                  <div className="mt-4">
-                    <h5 className="font-semibold text-slate-800 mb-2">Itemized Charges</h5>
-                    <table className="detail-items-table">
-                      <thead>
-                        <tr>
-                          <th>Description</th>
-                          <th className="text-center">Qty</th>
-                          <th className="text-right">Unit Price</th>
-                          <th className="text-right">Total Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedBillDetail.items?.map((it, i) => (
-                          <tr key={it.id || i}>
-                            <td className="font-medium text-slate-800">{it.description}</td>
-                            <td className="text-center">{it.quantity}</td>
-                            <td className="text-right">₹ {it.unitAmount.toFixed(2)}</td>
-                            <td className="text-right font-semibold">
-                              ₹ {(it.quantity * it.unitAmount).toFixed(2)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <td colSpan={3} className="text-right font-bold">Total Bill Amount:</td>
-                          <td className="text-right font-bold text-lg text-slate-900">
-                            ₹ {selectedBillDetail.totalAmount.toFixed(2)}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td colSpan={3} className="text-right font-semibold text-emerald-700">Amount Paid:</td>
-                          <td className="text-right font-semibold text-emerald-700">
-                            ₹ {selectedBillDetail.paidAmount.toFixed(2)}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td colSpan={3} className="text-right font-bold text-rose-700">Balance Due:</td>
-                          <td className="text-right font-bold text-rose-700 text-lg">
-                            ₹ {selectedBillDetail.balanceAmount.toFixed(2)}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-
-                  {/* Payment History */}
-                  <div className="mt-5">
-                    <h5 className="font-semibold text-slate-800 mb-2">Payment Transaction History</h5>
-                    {(!selectedBillDetail.payments || selectedBillDetail.payments.length === 0) ? (
-                      <p className="text-xs text-muted italic">No payment transactions recorded yet.</p>
-                    ) : (
-                      <div className="payment-history-list">
-                        {selectedBillDetail.payments.map((p, idx) => (
-                          <div key={p.id || idx} className="payment-history-item">
-                            <div className="flex justify-between items-center">
-                              <span className="font-bold text-emerald-700 text-base">
-                                + ₹ {p.amount.toFixed(2)}
-                              </span>
-                              <span className="badge-method">{p.paymentMethod}</span>
-                            </div>
-                            <div className="text-xs text-muted mt-1">
-                              Recorded on {new Date(p.createdAt).toLocaleString()} by{' '}
-                              <strong>{p.recordedBy || 'Staff'}</strong>
-                            </div>
-                            {p.paymentReference && (
-                              <div className="text-xs font-mono text-slate-600 mt-0.5">
-                                Ref: {p.paymentReference}
-                              </div>
-                            )}
-                            {p.notes && (
-                              <div className="text-xs text-slate-500 italic mt-0.5">
-                                Notes: "{p.notes}"
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="modal-footer">
-              {selectedBillDetail &&
-                selectedBillDetail.paymentStatus !== 'PAID' &&
-                selectedBillDetail.paymentStatus !== 'VOID' && (
+            <form onSubmit={handleCreateBill} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Line Items Table */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
+                    Bill Charge Line Items
+                  </label>
                   <button
                     type="button"
-                    className="btn-primary"
-                    onClick={() => {
-                      handleOpenRecordPayment(selectedBillDetail);
-                    }}
+                    onClick={handleAddItemToBill}
+                    style={{ background: '#EEF2FF', color: '#4F46E5', border: 'none', padding: '0.35rem 0.65rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
                   >
-                    <CreditCard size={15} /> Record Payment
+                    <Plus size={14} /> Add Line Item
                   </button>
-                )}
-
-              {selectedBillDetail && selectedBillDetail.paymentStatus !== 'VOID' && (
-                <button
-                  type="button"
-                  className="btn-danger"
-                  onClick={() => {
-                    handleOpenVoidBill(selectedBillDetail);
-                  }}
-                >
-                  <Ban size={15} /> Void Bill
-                </button>
-              )}
-
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setIsBillDetailModalOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 6. RECORD PAYMENT MODAL */}
-      {isPaymentModalOpen && billToPay && (
-        <div className="modal-backdrop" onClick={() => setIsPaymentModalOpen(false)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Record Bill Payment</h3>
-              <button
-                type="button"
-                className="btn-icon-close"
-                onClick={() => setIsPaymentModalOpen(false)}
-                aria-label="Close dialog"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitPayment}>
-              <div className="modal-body">
-                {/* Financial Summary Card */}
-                <div className="payment-balance-summary">
-                  <div className="flex justify-between text-xs text-muted mb-1">
-                    <span>Invoice: {billToPay.billNumber}</span>
-                    <span>Total: ₹ {billToPay.totalAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center font-bold">
-                    <span className="text-slate-700">Outstanding Balance:</span>
-                    <span className="text-xl text-rose-600">
-                      ₹ {billToPay.balanceAmount.toFixed(2)}
-                    </span>
-                  </div>
                 </div>
 
-                <div className="form-group mt-3">
-                  <label htmlFor="payAmountInput">Payment Amount (₹) *</label>
-                  <input
-                    id="payAmountInput"
-                    type="number"
-                    required
-                    step="0.01"
-                    min="0.01"
-                    max={billToPay.balanceAmount}
-                    value={paymentFormData.amount}
-                    onChange={(e) => setPaymentFormData({ ...paymentFormData, amount: e.target.value })}
-                  />
-                  <span className="text-xs text-muted mt-1">
-                    Cannot exceed outstanding balance of ₹ {billToPay.balanceAmount.toFixed(2)}.
-                  </span>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="payMethodSelect">Payment Method *</label>
-                  <select
-                    id="payMethodSelect"
-                    value={paymentFormData.paymentMethod}
-                    onChange={(e) => setPaymentFormData({ ...paymentFormData, paymentMethod: e.target.value })}
-                  >
-                    <option value="UPI">UPI (Google Pay / PhonePe / Paytm)</option>
-                    <option value="CASH">Cash at Desk</option>
-                    <option value="CARD">Debit / Credit Card</option>
-                    <option value="BANK_TRANSFER">Direct Bank Transfer / NEFT</option>
-                    <option value="OTHER">Other</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="payRefInput">Transaction / Reference Number</label>
-                  <input
-                    id="payRefInput"
-                    type="text"
-                    placeholder="e.g. UPI-1234567890 or Receipt-042"
-                    value={paymentFormData.paymentReference}
-                    onChange={(e) => setPaymentFormData({ ...paymentFormData, paymentReference: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="payNotesInput">Optional Notes</label>
-                  <input
-                    id="payNotesInput"
-                    type="text"
-                    placeholder="e.g. Partial cash installment..."
-                    value={paymentFormData.notes}
-                    onChange={(e) => setPaymentFormData({ ...paymentFormData, notes: e.target.value })}
-                  />
+                <div style={{ border: '1px solid #E2E8F0', borderRadius: '10px', overflow: 'hidden' }}>
+                  {billFormData.items.map((it, idx) => (
+                    <div key={idx} style={{ padding: '0.75rem', borderBottom: idx < billFormData.items.length - 1 ? '1px solid #E2E8F0' : 'none', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC', display: 'grid', gridTemplateColumns: '3fr 1fr 1.5fr 32px', gap: '0.5rem', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        placeholder="Description (e.g. Guest Room Accommodation)"
+                        value={it.description}
+                        onChange={(e) => handleBillItemChange(idx, 'description', e.target.value)}
+                        style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.85rem' }}
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        placeholder="Qty"
+                        value={it.quantity}
+                        onChange={(e) => handleBillItemChange(idx, 'quantity', e.target.value)}
+                        style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.85rem' }}
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Unit Price (₹)"
+                        value={it.unitAmount}
+                        onChange={(e) => handleBillItemChange(idx, 'unitAmount', e.target.value)}
+                        style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.85rem' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItemFromBill(idx)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', padding: '0.2rem' }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="modal-footer">
+              {/* Total Summary */}
+              <div style={{ background: '#EEF2FF', padding: '1rem', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#3730A3' }}>Calculated Total Bill Amount:</span>
+                <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#4F46E5' }}>₹ {calculateFormTotal().toFixed(2)}</span>
+              </div>
+
+              <div style={{ display: 'flex', justifySelf: 'flex-end', gap: '0.75rem' }}>
                 <button
                   type="button"
-                  className="btn-secondary"
-                  onClick={() => setIsPaymentModalOpen(false)}
+                  onClick={() => setIsBillModalOpen(false)}
+                  style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary">
-                  Confirm Transaction
+                <button
+                  type="submit"
+                  style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: 'none', background: '#4F46E5', color: '#FFFFFF', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <Receipt size={16} /> Create & Issue Bill
                 </button>
               </div>
             </form>
@@ -2098,56 +1542,249 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
         </div>
       )}
 
-      {/* 7. VOID BILL MODAL */}
-      {isVoidModalOpen && billToVoid && (
-        <div className="modal-backdrop" onClick={() => setIsVoidModalOpen(false)}>
-          <div className="modal-dialog modal-dialog-sm" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="text-rose-700 flex items-center gap-1.5">
-                <AlertTriangle size={20} /> Void Bill Invoice
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL 5: VIEW INVOICE & PRINTABLE RECEIPT */}
+      {/* ------------------------------------------------------------- */}
+      {isBillDetailModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '20px', width: '100%', maxWidth: '640px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '1.25rem 1.5rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
+                  Guest Bill Invoice & Receipt
+                </h3>
+                {selectedBillDetail && (
+                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#64748B' }}>
+                    Bill No: <strong style={{ color: '#0F172A' }}>{selectedBillDetail.billNumber}</strong>
+                  </p>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={handlePrintReceipt}
+                  style={{ background: '#4F46E5', color: '#FFFFFF', border: 'none', padding: '0.45rem 0.85rem', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <Printer size={15} /> Print Invoice
+                </button>
+                <button type="button" onClick={() => setIsBillDetailModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {isLoadingBillDetail || !selectedBillDetail ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
+                Loading invoice details...
+              </div>
+            ) : (
+              <div style={{ padding: '1.75rem', maxHeight: '75vh', overflowY: 'auto' }}>
+                {/* Printable Invoice Container */}
+                <div id="printable-invoice">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #E2E8F0', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
+                    <div>
+                      <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#4F46E5', margin: 0 }}>
+                        {APP_BRANDING.appName}
+                      </h2>
+                      <p style={{ fontSize: '0.8rem', color: '#64748B', margin: '0.25rem 0 0 0' }}>
+                        Official Residential Guest Billing Receipt
+                      </p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      {renderStatusBadge(selectedBillDetail.paymentStatus)}
+                      <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '0.35rem' }}>
+                        Date: {new Date(selectedBillDetail.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Guest & Host Information */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: '#F8FAFC', padding: '1rem', borderRadius: '12px', marginBottom: '1.25rem' }}>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Guest Visitor</span>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0F172A', marginTop: '0.2rem' }}>
+                        {selectedBillDetail.guestVisit?.guest?.name}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                        Phone: {selectedBillDetail.guestVisit?.guest?.phone}
+                      </div>
+                    </div>
+
+                    <div>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Host Resident Student</span>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0F172A', marginTop: '0.2rem' }}>
+                        {selectedBillDetail.guestVisit?.hostStudent?.name}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                        JNTU: {selectedBillDetail.guestVisit?.hostStudent?.jntuNo}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Line Items Table */}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+                    <thead>
+                      <tr style={{ background: '#F1F5F9', borderBottom: '1px solid #CBD5E1', color: '#475569', fontWeight: 700 }}>
+                        <th style={{ padding: '0.6rem 0.85rem', textAlign: 'left' }}>Description</th>
+                        <th style={{ padding: '0.6rem 0.85rem', textAlign: 'center' }}>Qty</th>
+                        <th style={{ padding: '0.6rem 0.85rem', textAlign: 'right' }}>Unit Price</th>
+                        <th style={{ padding: '0.6rem 0.85rem', textAlign: 'right' }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedBillDetail.items?.map((it) => (
+                        <tr key={it.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
+                          <td style={{ padding: '0.6rem 0.85rem', color: '#1E293B', fontWeight: 600 }}>{it.description}</td>
+                          <td style={{ padding: '0.6rem 0.85rem', textAlign: 'center' }}>{it.quantity}</td>
+                          <td style={{ padding: '0.6rem 0.85rem', textAlign: 'right' }}>₹ {it.unitAmount.toFixed(2)}</td>
+                          <td style={{ padding: '0.6rem 0.85rem', textAlign: 'right', fontWeight: 700 }}>₹ {(it.totalAmount ?? (it.quantity * it.unitAmount)).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Financial Breakdown */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-end', borderTop: '2px solid #E2E8F0', paddingTop: '0.85rem' }}>
+                    <div style={{ fontSize: '0.9rem', color: '#475569' }}>
+                      Grand Total: <strong style={{ color: '#0F172A', fontSize: '1.1rem' }}>₹ {selectedBillDetail.totalAmount.toFixed(2)}</strong>
+                    </div>
+                    <div style={{ fontSize: '0.9rem', color: '#16A34A' }}>
+                      Paid Amount: <strong>₹ {selectedBillDetail.paidAmount.toFixed(2)}</strong>
+                    </div>
+                    <div style={{ fontSize: '1rem', fontWeight: 800, color: selectedBillDetail.balanceAmount > 0 ? '#DC2626' : '#059669' }}>
+                      Balance Due: ₹ {selectedBillDetail.balanceAmount.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL 6: RECORD PAYMENT */}
+      {/* ------------------------------------------------------------- */}
+      {isPaymentModalOpen && billToPay && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '20px', width: '100%', maxWidth: '480px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '1.25rem 1.5rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
+                Record Payment for Bill #{billToPay.billNumber}
               </h3>
-              <button
-                type="button"
-                className="btn-icon-close"
-                onClick={() => setIsVoidModalOpen(false)}
-                aria-label="Close dialog"
-              >
+              <button type="button" onClick={() => setIsPaymentModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
                 <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleConfirmVoid}>
-              <div className="modal-body">
-                <div className="void-warning-banner">
-                  <strong>Warning:</strong> Voiding invoice <strong>{billToVoid.billNumber}</strong> (₹{' '}
-                  {billToVoid.totalAmount.toFixed(2)}) will invalidate outstanding balances and mark it
-                  VOID in authoritative financial records. This action will be permanently recorded in
-                  the audit history.
-                </div>
-
-                <div className="form-group mt-3">
-                  <label htmlFor="voidReasonInput">Reason for Voiding *</label>
-                  <textarea
-                    id="voidReasonInput"
-                    rows={3}
-                    required
-                    placeholder="Provide detailed administrative justification (e.g. Duplicate entry, guest waiver authorized by Chief Warden)..."
-                    value={voidReason}
-                    onChange={(e) => setVoidReason(e.target.value)}
-                  />
-                </div>
+            <form onSubmit={handleSubmitPayment} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ background: '#FEF3C7', padding: '0.85rem', borderRadius: '10px', color: '#92400E', fontSize: '0.85rem', fontWeight: 600 }}>
+                Outstanding Balance Due: ₹ {billToPay.balanceAmount.toFixed(2)}
               </div>
 
-              <div className="modal-footer">
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Payment Amount (₹) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={paymentFormData.amount}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, amount: e.target.value })}
+                  placeholder="Enter amount being paid..."
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Payment Method</label>
+                <select
+                  value={paymentFormData.paymentMethod}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, paymentMethod: e.target.value })}
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', background: '#FFFFFF' }}
+                >
+                  <option value="UPI">UPI / GPay / PhonePe</option>
+                  <option value="CASH">Cash</option>
+                  <option value="CARD">Credit / Debit Card</option>
+                  <option value="BANK_TRANSFER">Bank Transfer</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Transaction / UPI Reference Number</label>
+                <input
+                  type="text"
+                  value={paymentFormData.paymentReference}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, paymentReference: e.target.value })}
+                  placeholder="e.g. UPI-9988776655"
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifySelf: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
                 <button
                   type="button"
-                  className="btn-secondary"
-                  onClick={() => setIsVoidModalOpen(false)}
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-danger">
-                  Authorize & Void Bill
+                <button
+                  type="submit"
+                  style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: 'none', background: '#16A34A', color: '#FFFFFF', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <CreditCard size={16} /> Confirm Payment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL 7: VOID BILL */}
+      {/* ------------------------------------------------------------- */}
+      {isVoidModalOpen && billToVoid && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '20px', width: '100%', maxWidth: '440px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '1.25rem 1.5rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#B91C1C' }}>
+                Void Bill #{billToVoid.billNumber}
+              </h3>
+              <button type="button" onClick={() => setIsVoidModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmVoidBill} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <p style={{ fontSize: '0.875rem', color: '#475569', margin: 0 }}>
+                Voiding this bill will cancel the financial record. Please state the audit reason for voiding this bill.
+              </p>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Reason for Voiding *</label>
+                <textarea
+                  rows={3}
+                  required
+                  value={voidReason}
+                  onChange={(e) => setVoidReason(e.target.value)}
+                  placeholder="e.g. Duplicate bill generated erroneously by front desk staff."
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifySelf: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsVoidModalOpen(false)}
+                  style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: 'none', background: '#DC2626', color: '#FFFFFF', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Confirm Void
                 </button>
               </div>
             </form>
@@ -2157,3 +1794,4 @@ export const GuestBillingManagementPage: React.FC<GuestBillingManagementPageProp
     </div>
   );
 };
+export default GuestBillingManagementPage;

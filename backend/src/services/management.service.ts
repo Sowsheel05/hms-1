@@ -88,13 +88,19 @@ export class ManagementService {
   /**
    * Authoritative calculation of operational management dashboard metrics
    */
-  public async getDashboardData(hostelScope: 'BOYS' | 'GIRLS' | 'ALL' = 'ALL'): Promise<ManagementDashboardData> {
+  public async getDashboardData(
+    hostelScope: 'BOYS' | 'GIRLS' | 'ALL' = 'ALL',
+    collegeCode?: string
+  ): Promise<ManagementDashboardData> {
     const now = new Date();
 
     const studentWhere: any = {
       role: 'STUDENT',
       isActive: true,
     };
+    if (collegeCode) {
+      studentWhere.collegeCode = collegeCode;
+    }
     if (hostelScope === 'BOYS') {
       studentWhere.blockName = { contains: 'Boys', mode: 'insensitive' };
     } else if (hostelScope === 'GIRLS') {
@@ -201,10 +207,13 @@ export class ManagementService {
 
     // 6. Authoritative Room Occupancy Calculation from PostgreSQL Room and RoomAllocation tables
     const roomWhere: any = {};
+    if (collegeCode) {
+      roomWhere.block = { collegeCode };
+    }
     if (hostelScope === 'BOYS') {
-      roomWhere.block = { name: { contains: 'Boys', mode: 'insensitive' } };
+      roomWhere.block = { ...(roomWhere.block || {}), name: { contains: 'Boys', mode: 'insensitive' } };
     } else if (hostelScope === 'GIRLS') {
-      roomWhere.block = { name: { contains: 'Girls', mode: 'insensitive' } };
+      roomWhere.block = { ...(roomWhere.block || {}), name: { contains: 'Girls', mode: 'insensitive' } };
     }
 
     const dbRooms = await prisma.room.findMany({

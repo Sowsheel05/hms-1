@@ -1,10 +1,25 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
-const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const TEMP_PROFILE = 'C:\\Users\\shank\\AppData\\Local\\Temp\\chrome-hms-guest-billing-step8';
-const ARTIFACT_DIR = 'C:\\Users\\shank\\.gemini\\antigravity-ide\\brain\\d6c51559-2b8b-4440-9f7f-97df80816706';
+function getChromePath() {
+  const candidates = [
+    path.join(os.homedir(), 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe'),
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return candidates[0];
+}
+
+const CHROME_PATH = getChromePath();
+const TEMP_PROFILE = path.join(os.tmpdir(), 'chrome-hms-guest-billing-step8');
+const ARTIFACT_DIR = path.join(os.tmpdir(), 'hms-browser-artifacts');
 const BASE_URL = 'http://localhost:5173';
 const API_URL = 'http://localhost:5001';
 const CDP_PORT = 9232;
@@ -32,6 +47,9 @@ async function main() {
 
   if (!fs.existsSync(TEMP_PROFILE)) {
     fs.mkdirSync(TEMP_PROFILE, { recursive: true });
+  }
+  if (!fs.existsSync(ARTIFACT_DIR)) {
+    fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
   }
 
   // 2. Launch Chrome on port 9232
@@ -168,22 +186,32 @@ async function main() {
     await takeScreenshot('guest_billing_1440x900.png');
 
     // Verify Title and KPI Stats
-    const headerTitle = await evalExpr(`document.querySelector('.guest-billing-header-title h2')?.textContent?.trim() || document.querySelector('h2')?.textContent?.trim()`);
+    const headerTitle = await evalExpr(`document.querySelector('h1')?.textContent?.trim()`);
     console.log('Header Title:', headerTitle);
 
-    const kpiCount = await evalExpr(`document.querySelectorAll('.guest-kpi-card').length`);
+    const kpiCount = await evalExpr(`
+      Array.from(document.querySelectorAll('div')).filter(d => 
+        d.textContent.includes('Total Guests Registered') || 
+        d.textContent.includes('Active Checked-In Guests') || 
+        d.textContent.includes('Total Unpaid Balance')
+      ).length
+    `);
     console.log('KPI Cards Count:', kpiCount);
 
-    const tabCount = await evalExpr(`document.querySelectorAll('.guest-tab-button').length`);
+    const tabCount = await evalExpr(`
+      Array.from(document.querySelectorAll('button')).filter(b => 
+        ['Visits & Check-Ins', 'Bills & Payments', 'Guest Directory'].some(t => b.textContent.includes(t))
+      ).length
+    `);
     console.log('Tabs Count:', tabCount);
 
-    const rowCount = await evalExpr(`document.querySelectorAll('.guest-data-table tbody tr').length`);
+    const rowCount = await evalExpr(`document.querySelectorAll('table tbody tr').length`);
     console.log('Rendered Table Rows:', rowCount);
 
     // Step 4: Test Search
     console.log('Testing search filter...');
     await evalExpr(`
-      const searchInput = document.querySelector('.guest-search-input-wrapper input');
+      const searchInput = document.querySelector('input[placeholder*="Search"], input[placeholder*="search"]');
       if (searchInput) {
         searchInput.value = 'GB-';
         searchInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -194,7 +222,7 @@ async function main() {
 
     // Clear search
     await evalExpr(`
-      const searchInput = document.querySelector('.guest-search-input-wrapper input');
+      const searchInput = document.querySelector('input[placeholder*="Search"], input[placeholder*="search"]');
       if (searchInput) {
         searchInput.value = '';
         searchInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -205,39 +233,37 @@ async function main() {
     // Step 5: Test Detail Modal
     console.log('Testing Detail Modal...');
     await evalExpr(`
-      const viewBtn = document.querySelector('.btn-details');
+      const viewBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('View Invoice') || b.textContent.includes('Details'));
       if (viewBtn) viewBtn.click();
     `);
     await sleep(1500);
     await takeScreenshot('guest_billing_detail_modal.png');
 
-    const isDetailOpen = await evalExpr(`!!document.querySelector('.modal-backdrop')`);
+    const isDetailOpen = await evalExpr(`!!document.querySelector('div[style*="fixed"]')`);
     console.log('Detail Modal Opened:', isDetailOpen);
 
     // Close detail modal
     await evalExpr(`
-      const closeBtn = document.querySelector('.modal-dialog .btn-icon-close, .modal-dialog .btn-secondary');
+      const closeBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Close') || b.textContent.includes('Cancel') || b.querySelector('svg'));
       if (closeBtn) closeBtn.click();
-      else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     `);
     await sleep(800);
 
     // Step 6: Test Record Payment Modal
     console.log('Testing Payment Modal...');
     await evalExpr(`
-      const payBtn = document.querySelector('.btn-pay');
+      const payBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Record Payment') || b.textContent.includes('Pay'));
       if (payBtn) payBtn.click();
     `);
     await sleep(1500);
     await takeScreenshot('guest_billing_payment_modal.png');
 
-    const isPayOpen = await evalExpr(`!!document.querySelector('.modal-backdrop')`);
+    const isPayOpen = await evalExpr(`!!document.querySelector('div[style*="fixed"]')`);
     console.log('Payment Modal Opened:', isPayOpen);
 
     // Close payment modal
     await evalExpr(`
-      const closeBtn = document.querySelector('.modal-backdrop button.btn-icon-close') || 
-                       Array.from(document.querySelectorAll('.modal-backdrop button')).find(b => b.textContent.includes('Cancel'));
+      const closeBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Cancel') || b.textContent.includes('Close'));
       if (closeBtn) closeBtn.click();
     `);
     await sleep(1000);

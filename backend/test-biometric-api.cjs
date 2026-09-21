@@ -262,9 +262,8 @@ async function testBiometricApi() {
     where: { studentId: studentAId },
   });
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
   const futureExit = new Date(Date.now() + 10 * 60 * 1000); // 10 mins from now
+  const returnSameDay = new Date(futureExit.getTime() + 4 * 60 * 60 * 1000); // 4 hours later same day
   const createOutingRes = await fetch('http://localhost:5001/api/student/outing-requests', {
     method: 'POST',
     headers: {
@@ -277,7 +276,7 @@ async function testBiometricApi() {
       destination: 'Central University Library',
       emergencyContact: '9876543210',
       outDate: futureExit.toISOString(),
-      returnDate: tomorrow.toISOString(),
+      returnDate: returnSameDay.toISOString(),
     }),
   });
   const createdOuting = await createOutingRes.json();

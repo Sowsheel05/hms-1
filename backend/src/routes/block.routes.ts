@@ -112,6 +112,9 @@ router.get('/', async (req: AuthenticatedManagementRequest, res: Response): Prom
     const { search, status } = req.query;
 
     const whereClause: any = {};
+    if (req.collegeCode) {
+      whereClause.collegeCode = req.collegeCode;
+    }
 
     if (typeof status === 'string' && status.trim()) {
       const normalizedStatus = status.trim().toUpperCase();
@@ -169,6 +172,31 @@ router.get('/:id', async (req: AuthenticatedManagementRequest, res: Response): P
 
     const block = await prisma.block.findUnique({
       where: { id },
+      include: {
+        rooms: {
+          orderBy: [{ floor: 'asc' }, { roomNumber: 'asc' }],
+          include: {
+            allocations: {
+              where: { status: 'ACTIVE' },
+              include: {
+                student: {
+                  select: {
+                    id: true,
+                    name: true,
+                    jntuNo: true,
+                    email: true,
+                    role: true,
+                    blockName: true,
+                    floorName: true,
+                    roomNumber: true,
+                    bedNumber: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!block) {

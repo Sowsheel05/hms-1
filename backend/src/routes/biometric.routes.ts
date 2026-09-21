@@ -189,7 +189,7 @@ router.all(
 export const testBiometricRouter = Router();
 
 testBiometricRouter.post(
-  '/biometric/events',
+  '/test/biometric/events',
   async (req, res): Promise<void> => {
     try {
       const {

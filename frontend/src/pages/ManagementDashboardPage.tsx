@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Users,
   BedDouble,
   Footprints,
   FileText,
   AlertCircle,
-  Clock,
-  Fingerprint,
   RotateCw,
   Lock,
   ArrowUpRight,
@@ -16,13 +14,13 @@ import {
   Building,
   Wrench,
   Receipt,
-  Cpu,
   UtensilsCrossed,
   History,
   ClipboardList,
   CreditCard,
   Landmark,
   Bell,
+  Cpu,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -42,16 +40,14 @@ const ADMIN_MODULES = [
   { id: 'blocks', title: 'Block Management', path: '/management/blocks', icon: Building },
   { id: 'rooms', title: 'Room Allocation', path: '/management/rooms', icon: BedDouble },
   { id: 'maintenance', title: 'Maintenance', path: '/management/complaints', icon: Wrench },
-  { id: 'biometric', title: 'Biometric Tracking', path: '/management/devices', icon: Fingerprint },
   { id: 'outings', title: 'Outing Requests', path: '/management/outings', icon: Footprints },
-  { id: 'devices', title: 'Device Management', path: '/management/devices', icon: Cpu },
-  { id: 'billing', title: 'Guest Billing', path: '/management/guest-billing', icon: Receipt },
   { id: 'mess', title: 'Mess Management', path: '/management/mess', icon: UtensilsCrossed },
   { id: 'leaves', title: 'Leaves & Suspension', path: '/management/leaves', icon: FileText },
-  { id: 'complaints', title: 'Complaints', path: '/management/complaints', icon: AlertCircle },
+  { id: 'device-management', title: 'Device Management', path: '/management/device-management', icon: Cpu },
   { id: 'logs', title: 'Log History', path: '/management/log-history', icon: History },
   { id: 'outing-logs', title: 'Outing Log History', path: '/management/outing-logs', icon: ClipboardList },
   { id: 'users', title: 'User Management', path: '/management/users', icon: Users },
+  { id: 'billing', title: 'Guest Billing', path: '/management/guest-billing', icon: Receipt },
   { id: 'fee-management', title: 'Fee Management', path: '/management/fee-management', icon: CreditCard },
   { id: 'fee-collection', title: 'Fee Collection', path: '/management/fee-collection', icon: Landmark },
   { id: 'notifications', title: 'Notifications', path: '/management/notifications', icon: Bell },
@@ -70,14 +66,23 @@ export const ManagementDashboardPage: React.FC<ManagementDashboardPageProps> = (
   const [isRealtimeConnected, setIsRealtimeConnected] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
-  const [activeTab, setActiveTab] = useState<'activity' | 'biometrics'>('activity');
+
+  const onRefreshStateChangeRef = useRef(onRefreshStateChange);
+  const isRefreshingRef = useRef(isRefreshing);
+  const isRealtimeConnectedRef = useRef(isRealtimeConnected);
+
+  useEffect(() => {
+    onRefreshStateChangeRef.current = onRefreshStateChange;
+    isRefreshingRef.current = isRefreshing;
+    isRealtimeConnectedRef.current = isRealtimeConnected;
+  });
 
   const fetchDashboardData = useCallback(async (isBackground = false) => {
     if (!isBackground) {
       setIsLoading(true);
     } else {
       setIsRefreshing(true);
-      onRefreshStateChange?.(true, isRealtimeConnected);
+      onRefreshStateChangeRef.current?.(true, isRealtimeConnectedRef.current);
     }
     setError(null);
 
@@ -91,9 +96,14 @@ export const ManagementDashboardPage: React.FC<ManagementDashboardPageProps> = (
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
-      onRefreshStateChange?.(false, isRealtimeConnected);
+      onRefreshStateChangeRef.current?.(false, isRealtimeConnectedRef.current);
     }
-  }, [onRefreshStateChange, isRealtimeConnected]);
+  }, []);
+
+  const fetchDashboardDataRef = useRef(fetchDashboardData);
+  useEffect(() => {
+    fetchDashboardDataRef.current = fetchDashboardData;
+  }, [fetchDashboardData]);
 
   useEffect(() => {
     fetchDashboardData(false);
@@ -102,23 +112,23 @@ export const ManagementDashboardPage: React.FC<ManagementDashboardPageProps> = (
   // Register manual refresh handler with parent layout
   useEffect(() => {
     if (registerRefreshHandler) {
-      registerRefreshHandler(() => fetchDashboardData(true));
+      registerRefreshHandler(() => fetchDashboardDataRef.current(true));
     }
-  }, [registerRefreshHandler, fetchDashboardData]);
+  }, [registerRefreshHandler]);
 
   // Real-time SSE: Domain change → DB → SSE → Refetch → UI
   useEffect(() => {
     const unsubscribe = managementApiService.subscribeToEvents(
       (_event) => {
-        fetchDashboardData(true);
+        fetchDashboardDataRef.current(true);
       },
       (connected) => {
         setIsRealtimeConnected(connected);
-        onRefreshStateChange?.(isRefreshing, connected);
+        onRefreshStateChangeRef.current?.(isRefreshingRef.current, connected);
       }
     );
     return () => unsubscribe();
-  }, [fetchDashboardData, onRefreshStateChange, isRefreshing]);
+  }, []);
 
   const handleAttentionClick = (item: AttentionItem) => {
     if (!item.isAvailable && onModuleNotice) {
@@ -190,7 +200,6 @@ export const ManagementDashboardPage: React.FC<ManagementDashboardPageProps> = (
   const requests = data.requests;
   const attentionItems = data.attention || [];
   const recentActivity = data.recentActivity || [];
-  const recentBiometricLogs = data.recentBiometricEvents || [];
 
   // Room occupancy donut chart values
   const totalR = rooms.totalRooms || 1;
@@ -546,113 +555,45 @@ export const ManagementDashboardPage: React.FC<ManagementDashboardPageProps> = (
         <div className="mgmt-card-header mgmt-feed-header">
           <div>
             <h3 className="mgmt-card-title">Authoritative Operational Logs</h3>
-            <p className="mgmt-card-subtitle">Real-time domain records from PostgreSQL ActivityLog and BiometricEvent</p>
-          </div>
-          <div className="mgmt-tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'activity'}
-              onClick={() => setActiveTab('activity')}
-              className={`mgmt-tab-btn ${activeTab === 'activity' ? 'active' : ''}`}
-            >
-              <Clock size={14} />
-              <span>Hostel Activity ({recentActivity.length})</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'biometrics'}
-              onClick={() => setActiveTab('biometrics')}
-              className={`mgmt-tab-btn ${activeTab === 'biometrics' ? 'active' : ''}`}
-            >
-              <Fingerprint size={14} />
-              <span>Biometric Gate Logs ({recentBiometricLogs.length})</span>
-            </button>
+            <p className="mgmt-card-subtitle">Real-time domain records from PostgreSQL ActivityLog</p>
           </div>
         </div>
 
-        {activeTab === 'activity' ? (
-          <div className="mgmt-activity-feed" role="tabpanel">
-            {recentActivity.length === 0 ? (
-              <div className="mgmt-feed-empty">
-                <Layers size={28} className="text-slate" />
-                <p>No recent activity records logged.</p>
-              </div>
-            ) : (
-              <div className="activity-timeline">
-                {recentActivity.map((act) => (
-                  <div key={act.id} className="activity-item">
-                    <div className="activity-dot-wrapper">
-                      <div className="activity-dot" />
-                      <div className="activity-line" />
-                    </div>
-                    <div className="activity-content">
-                      <div className="activity-top">
-                        <span className="activity-type-badge">{act.activityType}</span>
-                        {act.student && (
-                          <span className="activity-actor">{act.student.name} ({act.student.jntuNo})</span>
-                        )}
-                        <span className="activity-time">{formatDate(act.timestamp)} {formatTimestamp(act.timestamp)}</span>
-                      </div>
-                      <p className="activity-desc">{act.description}</p>
-                      {act.student?.blockName && (
-                        <div className="activity-meta">
-                          <span>Block: {act.student.blockName}</span>
-                          {act.student.roomNumber && <span> • Room {act.student.roomNumber}</span>}
-                        </div>
-                      )}
-                    </div>
+        <div className="mgmt-activity-feed">
+          {recentActivity.length === 0 ? (
+            <div className="mgmt-feed-empty">
+              <Layers size={28} className="text-slate" />
+              <p>No recent activity records logged.</p>
+            </div>
+          ) : (
+            <div className="activity-timeline">
+              {recentActivity.map((act) => (
+                <div key={act.id} className="activity-item">
+                  <div className="activity-dot-wrapper">
+                    <div className="activity-dot" />
+                    <div className="activity-line" />
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="mgmt-biometric-feed" role="tabpanel">
-            {recentBiometricLogs.length === 0 ? (
-              <div className="mgmt-feed-empty">
-                <Fingerprint size={28} className="text-slate" />
-                <p>No biometric events recorded today.</p>
-              </div>
-            ) : (
-              <div className="biometric-table-wrapper">
-                <table className="biometric-table">
-                  <thead>
-                    <tr>
-                      <th>Event</th>
-                      <th>Student</th>
-                      <th>JNTU No.</th>
-                      <th>Gate</th>
-                      <th>Verification</th>
-                      <th>Timestamp</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentBiometricLogs.map((log) => (
-                      <tr key={log.id}>
-                        <td>
-                          <span className={`direction-badge ${log.eventType === 'ENTRY' ? 'dir-in' : 'dir-out'}`}>
-                            {log.eventType}
-                          </span>
-                        </td>
-                        <td className="font-medium">{log.student.name}</td>
-                        <td><code>{log.student.jntuNo}</code></td>
-                        <td>{log.gate || 'Main Gate'}</td>
-                        <td>
-                          <span className="verification-badge badge-verified">{log.verificationStatus}</span>
-                        </td>
-                        <td className="text-muted">
-                          {formatDate(log.eventTimestamp)} {formatTimestamp(log.eventTimestamp)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+                  <div className="activity-content">
+                    <div className="activity-top">
+                      <span className="activity-type-badge">{act.activityType}</span>
+                      {act.student && (
+                        <span className="activity-actor">{act.student.name} ({act.student.jntuNo})</span>
+                      )}
+                      <span className="activity-time">{formatDate(act.timestamp)} {formatTimestamp(act.timestamp)}</span>
+                    </div>
+                    <p className="activity-desc">{act.description}</p>
+                    {act.student?.blockName && (
+                      <div className="activity-meta">
+                        <span>Block: {act.student.blockName}</span>
+                        {act.student.roomNumber && <span> • Room {act.student.roomNumber}</span>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );

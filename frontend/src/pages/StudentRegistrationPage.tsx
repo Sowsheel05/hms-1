@@ -26,8 +26,7 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
   // Current active step (1 to 4)
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
 
-  // Available blocks from backend
-  const [blocks, setBlocks] = useState<Array<{ id: string; name: string; code: string }>>([]);
+
 
   // Form Fields State (Preserved across step navigation)
   // Step 1: Personal Info
@@ -69,26 +68,95 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
   // Success state after submission
   const [submittedResult, setSubmittedResult] = useState<StudentRegistrationResponse | null>(null);
 
-  useEffect(() => {
+  // Available blocks from backend (with availability metrics)
+  const [blocks, setBlocks] = useState<Array<any>>([]);
+  const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
+
+  // Load active hostel blocks with retry & fallback
+  const loadRegistrationBlocks = React.useCallback(() => {
+    setIsLoadingBlocks(true);
     apiService
       .getRegistrationBlocks()
-      .then((res) => {
+      .then((res: any) => {
         if (res.blocks?.length > 0) {
           setBlocks(res.blocks);
-          setPreferredBlock(res.blocks[0].name);
+          setPreferredBlock((prev) => prev || res.blocks[0].name);
+        } else {
+          // Default fallback blocks if DB blocks list is empty
+          const fallbackBlocks = [
+            { id: 'bh-1', name: 'BH-1', code: 'BH-1', description: 'Boys Block 1' },
+            { id: 'bh-2', name: 'BH-2', code: 'BH-2', description: 'Boys Block 2' },
+            { id: 'gh-1', name: 'GH-1', code: 'GH-1', description: 'Girls Block 1' },
+          ];
+          setBlocks(fallbackBlocks);
+          setPreferredBlock((prev) => prev || 'BH-1');
         }
       })
-      .catch(() => {
-        // Fallback default blocks
-        const fallback = [
-          { id: '1', name: 'Boys Hostel Block A', code: 'BH-A' },
-          { id: '2', name: 'Girls Hostel Block B', code: 'GH-B' },
-          { id: '3', name: 'Main Campus Hostel Block C', code: 'CH-C' },
+      .catch((err) => {
+        console.error('Failed to load blocks from database:', err);
+        const fallbackBlocks = [
+          { id: 'bh-1', name: 'BH-1', code: 'BH-1', description: 'Boys Block 1' },
+          { id: 'bh-2', name: 'BH-2', code: 'BH-2', description: 'Boys Block 2' },
+          { id: 'gh-1', name: 'GH-1', code: 'GH-1', description: 'Girls Block 1' },
         ];
-        setBlocks(fallback);
-        setPreferredBlock(fallback[0].name);
+        setBlocks(fallbackBlocks);
+        setPreferredBlock((prev) => prev || 'BH-1');
+      })
+      .finally(() => {
+        setIsLoadingBlocks(false);
       });
   }, []);
+
+  useEffect(() => {
+    loadRegistrationBlocks();
+  }, [loadRegistrationBlocks]);
+
+  // Filter blocks strictly according to student's selected gender (Step 1)
+  const filteredBlocks = React.useMemo(() => {
+    if (!gender) return blocks;
+    const isFemale = gender.toLowerCase() === 'female';
+    return blocks.filter((b: any) => {
+      const targetGender = b.targetGender;
+      if (targetGender) {
+        return isFemale ? targetGender === 'Female' : targetGender === 'Male';
+      }
+      const text = `${b.name} ${b.code} ${b.description || ''}`.toUpperCase();
+      const isGirlsBlock = text.includes('GH') || text.includes('GIRLS') || text.includes('FEMALE') || text.includes('WOMEN');
+      return isFemale ? isGirlsBlock : !isGirlsBlock;
+    });
+  }, [blocks, gender]);
+
+  // Ensure preferredBlock remains valid whenever gender or filteredBlocks change
+  useEffect(() => {
+    if (filteredBlocks.length > 0) {
+      const isCurrentValid = filteredBlocks.some((b: any) => b.name === preferredBlock || b.code === preferredBlock);
+      if (!isCurrentValid) {
+        setPreferredBlock(filteredBlocks[0].name);
+      }
+    }
+  }, [filteredBlocks, preferredBlock]);
+
+  // Room availability for selected preferred block and room type
+  const selectedBlockData = React.useMemo(() => {
+    return filteredBlocks.find((b: any) => b.name === preferredBlock || b.code === preferredBlock) || null;
+  }, [filteredBlocks, preferredBlock]);
+
+  const selectedRoomTypeAvailability = React.useMemo(() => {
+    if (!selectedBlockData || !selectedBlockData.roomTypesSummary) return null;
+    const summary = selectedBlockData.roomTypesSummary[preferredRoomType];
+    if (!summary) {
+      return {
+        availableCount: 0,
+        totalRooms: 0,
+        isAvailable: false,
+      };
+    }
+    return {
+      availableCount: summary.availableCount,
+      totalRooms: summary.totalRooms,
+      isAvailable: summary.availableCount > 0,
+    };
+  }, [selectedBlockData, preferredRoomType]);
 
   // Helper to clear error for a specific field when edited
   const clearFieldError = (field: string) => {
@@ -307,13 +375,13 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
     { number: 4, title: 'Hostel', description: 'Preferences & Declaration', icon: Home },
   ];
 
-  // Helper for input error styling
-  const getInputStyle = (fieldName: string): React.CSSProperties => {
+  // Helper for input and select error & visible styling
+  const getInputStyle = (fieldName: string, isSelect = false): React.CSSProperties => {
     const hasError = !!errors[fieldName];
     return {
       width: '100%',
       height: '46px',
-      padding: '0 14px',
+      padding: isSelect ? '0 36px 0 14px' : '0 14px',
       fontSize: '0.9375rem',
       color: '#0F172A',
       backgroundColor: hasError ? '#FEF2F2' : '#FFFFFF',
@@ -322,6 +390,15 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
       outline: 'none',
       boxSizing: 'border-box',
       transition: 'border-color 0.15s ease, background-color 0.15s ease',
+      appearance: isSelect ? 'none' : undefined,
+      WebkitAppearance: isSelect ? 'none' : undefined,
+      MozAppearance: isSelect ? 'none' : undefined,
+      backgroundImage: isSelect
+        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`
+        : undefined,
+      backgroundRepeat: isSelect ? 'no-repeat' : undefined,
+      backgroundPosition: isSelect ? 'right 12px center' : undefined,
+      cursor: isSelect ? 'pointer' : undefined,
     };
   };
 
@@ -833,13 +910,14 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
                       Department / Branch *
                     </label>
                     <select
-                      style={getInputStyle('branch')}
+                      style={getInputStyle('branch', true)}
                       value={branch}
                       onChange={(e) => {
                         setBranch(e.target.value);
                         clearFieldError('branch');
                       }}
                     >
+                      <option value="" disabled>-- Select Branch --</option>
                       <option value="Computer Science & Engineering (CSE)">Computer Science & Engineering (CSE)</option>
                       <option value="Artificial Intelligence & ML (AIML)">Artificial Intelligence & ML (AIML)</option>
                       <option value="Electronics & Communication (ECE)">Electronics & Communication (ECE)</option>
@@ -861,13 +939,14 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
                       Year of Study *
                     </label>
                     <select
-                      style={getInputStyle('yearOfStudy')}
+                      style={getInputStyle('yearOfStudy', true)}
                       value={yearOfStudy}
                       onChange={(e) => {
                         setYearOfStudy(e.target.value);
                         clearFieldError('yearOfStudy');
                       }}
                     >
+                      <option value="" disabled>-- Select Year of Study --</option>
                       <option value="1st Year">1st Year</option>
                       <option value="2nd Year">2nd Year</option>
                       <option value="3rd Year">3rd Year</option>
@@ -886,13 +965,14 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
                       Section *
                     </label>
                     <select
-                      style={getInputStyle('section')}
+                      style={getInputStyle('section', true)}
                       value={section}
                       onChange={(e) => {
                         setSection(e.target.value);
                         clearFieldError('section');
                       }}
                     >
+                      <option value="" disabled>-- Select Section --</option>
                       <option value="A">Section A</option>
                       <option value="B">Section B</option>
                       <option value="C">Section C</option>
@@ -911,13 +991,14 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
                       Semester *
                     </label>
                     <select
-                      style={getInputStyle('semester')}
+                      style={getInputStyle('semester', true)}
                       value={semester}
                       onChange={(e) => {
                         setSemester(e.target.value);
                         clearFieldError('semester');
                       }}
                     >
+                      <option value="" disabled>-- Select Semester --</option>
                       <option value="Semester 1">Semester 1</option>
                       <option value="Semester 2">Semester 2</option>
                     </select>
@@ -1022,13 +1103,14 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
                       Relationship *
                     </label>
                     <select
-                      style={getInputStyle('guardianRelation')}
+                      style={getInputStyle('guardianRelation', true)}
                       value={guardianRelation}
                       onChange={(e) => {
                         setGuardianRelation(e.target.value);
                         clearFieldError('guardianRelation');
                       }}
                     >
+                      <option value="" disabled>-- Select Relationship --</option>
                       <option value="Father">Father</option>
                       <option value="Mother">Mother</option>
                       <option value="Guardian">Guardian</option>
@@ -1183,7 +1265,7 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
                       Preferred Hostel / Block *
                     </label>
                     <select
-                      style={getInputStyle('preferredBlock')}
+                      style={getInputStyle('preferredBlock', true)}
                       value={preferredBlock}
                       onChange={(e) => {
                         setPreferredBlock(e.target.value);
@@ -1191,9 +1273,18 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
                       }}
                       required
                     >
-                      {blocks.map((b) => (
-                        <option key={b.id} value={b.name}>{b.name} ({b.code})</option>
-                      ))}
+                      {isLoadingBlocks && filteredBlocks.length === 0 ? (
+                        <option value="" disabled>Loading available hostels...</option>
+                      ) : filteredBlocks.length === 0 ? (
+                        <option value="" disabled>No hostels available for selected gender</option>
+                      ) : (
+                        <>
+                          <option value="" disabled>-- Select Preferred Hostel / Block --</option>
+                          {filteredBlocks.map((b) => (
+                            <option key={b.id} value={b.name}>{b.name} ({b.code})</option>
+                          ))}
+                        </>
+                      )}
                     </select>
                     {errors.preferredBlock && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#DC2626', fontSize: '0.75rem', marginTop: '0.3rem' }}>
@@ -1208,15 +1299,47 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
                       Preferred Room Type
                     </label>
                     <select
-                      style={getInputStyle('preferredRoomType')}
+                      style={getInputStyle('preferredRoomType', true)}
                       value={preferredRoomType}
                       onChange={(e) => setPreferredRoomType(e.target.value)}
                     >
+                      <option value="" disabled>-- Select Room Type --</option>
                       <option value="Non-AC Room (2 Sharing)">Non-AC Room (2 Sharing)</option>
                       <option value="Non-AC Room (3 Sharing)">Non-AC Room (3 Sharing)</option>
                       <option value="AC Room (2 Sharing)">AC Room (2 Sharing)</option>
                       <option value="AC Room (3 Sharing)">AC Room (3 Sharing)</option>
                     </select>
+
+                    {/* Live Availability Notice */}
+                    {selectedRoomTypeAvailability && (
+                      <div
+                        style={{
+                          marginTop: '0.5rem',
+                          padding: '0.5rem 0.75rem',
+                          borderRadius: '8px',
+                          fontSize: '0.78125rem',
+                          fontWeight: '600',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          backgroundColor: selectedRoomTypeAvailability.isAvailable ? '#F0FDF4' : '#FFF1F2',
+                          border: selectedRoomTypeAvailability.isAvailable ? '1px solid #BBF7D0' : '1px solid #FECDD3',
+                          color: selectedRoomTypeAvailability.isAvailable ? '#15803D' : '#BE123C',
+                        }}
+                      >
+                        {selectedRoomTypeAvailability.isAvailable ? (
+                          <>
+                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#16A34A', flexShrink: 0 }} />
+                            <span>Room Available ({selectedRoomTypeAvailability.availableCount} vacant room{selectedRoomTypeAvailability.availableCount > 1 ? 's' : ''} in {preferredBlock})</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle size={15} style={{ flexShrink: 0 }} />
+                            <span>The selected room is not available. Please choose another room or room type.</span>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Floor Preference */}
@@ -1225,10 +1348,11 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
                       Floor Preference
                     </label>
                     <select
-                      style={getInputStyle('preferredFloor')}
+                      style={getInputStyle('preferredFloor', true)}
                       value={preferredFloor}
                       onChange={(e) => setPreferredFloor(e.target.value)}
                     >
+                      <option value="" disabled>-- Select Floor --</option>
                       <option value="1">1st Floor / Ground</option>
                       <option value="2">2nd Floor</option>
                       <option value="3">3rd Floor</option>
@@ -1242,10 +1366,11 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
                       Stay Duration
                     </label>
                     <select
-                      style={getInputStyle('stayDuration')}
+                      style={getInputStyle('stayDuration', true)}
                       value={stayDuration}
                       onChange={(e) => setStayDuration(e.target.value)}
                     >
+                      <option value="" disabled>-- Select Stay Duration --</option>
                       <option value="Full Academic Year">Full Academic Year (10 Months)</option>
                       <option value="Single Semester">Single Semester (5 Months)</option>
                     </select>
@@ -1257,10 +1382,11 @@ export const StudentRegistrationPage: React.FC<StudentRegistrationPageProps> = (
                       Food & Mess Preference
                     </label>
                     <select
-                      style={getInputStyle('foodPreference')}
+                      style={getInputStyle('foodPreference', true)}
                       value={foodPreference}
                       onChange={(e) => setFoodPreference(e.target.value)}
                     >
+                      <option value="" disabled>-- Select Food Preference --</option>
                       <option value="VEG">Vegetarian</option>
                       <option value="NON_VEG">Non-Vegetarian</option>
                     </select>

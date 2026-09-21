@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ManagementAuthProvider, useManagementAuth } from './context/ManagementAuthContext';
-import { LoginPage } from './pages/LoginPage';
+import { UnifiedLoginPage } from './pages/UnifiedLoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MyRoomPage } from './pages/MyRoomPage';
 import { MessTokensPage } from './pages/MessTokensPage';
@@ -17,7 +17,6 @@ import { apiService } from './services/api';
 // Step 10 & 11 Management Components
 import { ManagementSidebar } from './components/ManagementSidebar';
 import { ManagementHeader } from './components/ManagementHeader';
-import { ManagementLoginPage } from './pages/ManagementLoginPage';
 import { ManagementDashboardPage } from './pages/ManagementDashboardPage';
 import { BlockManagementPage } from './pages/BlockManagementPage';
 import { RoomManagementPage } from './pages/RoomManagementPage';
@@ -32,7 +31,6 @@ import { ManagementUserManagementPage } from './pages/ManagementUserManagementPa
 import { OutingLogHistoryPage } from './pages/OutingLogHistoryPage';
 import { FeeManagementPage } from './pages/FeeManagementPage';
 import { FeeCollectionPage } from './pages/FeeCollectionPage';
-import { ManagementDevicePage } from './pages/ManagementDevicePage';
 import { ManagementNotificationsPage } from './pages/ManagementNotificationsPage';
 import { ManagementHostelApplicationsPage } from './pages/ManagementHostelApplicationsPage';
 import { HostelApplicationPage } from './pages/HostelApplicationPage';
@@ -197,23 +195,35 @@ const AuthenticatedManagementApp: React.FC<{
   const isGuestBillingPage = currentPath === '/management/guest-billing' || currentPath === '/management/billing';
   const isLogHistoryPage = currentPath === '/management/log-history' || currentPath === '/management/logs';
   const isOutingLogHistoryPage = currentPath === '/management/outing-log-history' || currentPath === '/management/outing-logs';
-  const isDevicePage = currentPath === '/management/devices';
   const isUserManagementPage = currentPath === '/management/users';
   const isFeeManagementPage = currentPath === '/management/fee-management';
   const isFeeCollectionPage = currentPath === '/management/fee-collection';
   const isNotificationsPage = currentPath === '/management/notifications';
   const isHostelApplicationsPage = currentPath === '/management/hostel-applications';
 
+  const handleModuleNotice = React.useCallback((name: string) => {
+    setModuleNotice(name);
+  }, []);
+
+  const handleRefreshStateChange = React.useCallback((refreshing: boolean, connected: boolean) => {
+    setIsRefreshing(refreshing);
+    setIsRealtimeConnected(connected);
+  }, []);
+
+  const handleRegisterRefreshHandler = React.useCallback((fn: () => void) => {
+    setRefreshHandler(() => fn);
+  }, []);
+
   return (
     <div className="portal-layout management-layout">
-      {/* Management Sidebar with all 14 modules */}
+      {/* Management Sidebar */}
       <ManagementSidebar
         currentPath={currentPath}
         isOpen={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
         onNavigate={onNavigate}
         onLogout={onLogout}
-        onDisabledNotice={(name) => setModuleNotice(name)}
+        onDisabledNotice={handleModuleNotice}
       />
 
       <div className="portal-main-area management-main-area">
@@ -229,9 +239,7 @@ const AuthenticatedManagementApp: React.FC<{
             isHostelApplicationsPage
               ? 'Student Registrations & Hostel Applications'
               : isNotificationsPage
-              ? 'Notifications'
-              : isDevicePage
-                ? 'Device Management & Turnstile Registry'
+                ? 'Notifications'
                 : isOutingLogHistoryPage
                   ? 'Outing Log History & Gate Transit'
                   : isFeeCollectionPage
@@ -262,9 +270,7 @@ const AuthenticatedManagementApp: React.FC<{
             isHostelApplicationsPage
               ? 'Review pending student admissions, verify criteria, approve, and allocate rooms.'
               : isNotificationsPage
-              ? 'Create, manage, and monitor HMS notifications.'
-              : isDevicePage
-                ? 'Authoritative hardware control plane for hostel turnstiles, biometric scanners, and RFID readers.'
+                ? 'Create, manage, and monitor HMS notifications.'
                 : isOutingLogHistoryPage
                   ? 'Authoritative historical record of student outing requests, approvals, and physical gate movement events.'
                   : isFeeCollectionPage
@@ -299,8 +305,6 @@ const AuthenticatedManagementApp: React.FC<{
             <ManagementHostelApplicationsPage onNavigate={onNavigate} />
           ) : isNotificationsPage ? (
             <ManagementNotificationsPage />
-          ) : isDevicePage ? (
-            <ManagementDevicePage onNavigate={onNavigate} />
           ) : currentPath === '/management/outing-log-history' ? (
             <ManagementOutingLogHistoryPage onNavigate={onNavigate} />
           ) : isOutingLogHistoryPage ? (
@@ -330,12 +334,9 @@ const AuthenticatedManagementApp: React.FC<{
           ) : (
             <ManagementDashboardPage
               onNavigate={onNavigate}
-              onModuleNotice={(name) => setModuleNotice(name)}
-              onRefreshStateChange={(refreshing, connected) => {
-                setIsRefreshing(refreshing);
-                setIsRealtimeConnected(connected);
-              }}
-              registerRefreshHandler={(fn) => setRefreshHandler(() => fn)}
+              onModuleNotice={handleModuleNotice}
+              onRefreshStateChange={handleRefreshStateChange}
+              registerRefreshHandler={handleRegisterRefreshHandler}
             />
           )}
         </main>
@@ -491,16 +492,23 @@ const AppContent: React.FC = () => {
           onNavigate={navigateTo}
           onLogout={async () => {
             await mgmtLogout();
-            navigateTo('/management/login');
+            navigateTo('/login');
           }}
         />
       );
     }
 
     return (
-      <ManagementLoginPage
-        onLoginSuccess={() => navigateTo('/management/dashboard')}
-        onNavigateToStudent={() => navigateTo('/login')}
+      <UnifiedLoginPage
+        onLoginSuccess={(role) => {
+          if (role === 'STUDENT') {
+            navigateTo('/dashboard');
+          } else {
+            navigateTo('/management/dashboard');
+          }
+          window.location.reload();
+        }}
+        onNavigateToRegister={() => navigateTo('/student/register')}
       />
     );
   }
@@ -528,10 +536,16 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <LoginPage
-      onLoginSuccess={() => navigateTo('/dashboard')}
+    <UnifiedLoginPage
+      onLoginSuccess={(role) => {
+        if (role === 'STUDENT') {
+          navigateTo('/dashboard');
+        } else {
+          navigateTo('/management/dashboard');
+        }
+        window.location.reload();
+      }}
       onNavigateToRegister={() => navigateTo('/student/register')}
-      onNavigateToManagement={() => navigateTo('/management/login')}
     />
   );
 };

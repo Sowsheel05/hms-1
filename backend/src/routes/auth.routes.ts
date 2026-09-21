@@ -60,9 +60,48 @@ router.get('/register-blocks', async (_req, res): Promise<void> => {
       orderBy: { name: 'asc' },
     });
 
+    const blocksWithAvailability = await Promise.all(
+      blocks.map(async (b) => {
+        const activeRooms = await prisma.room.findMany({
+          where: { blockId: b.id, status: 'ACTIVE' },
+          select: {
+            roomType: true,
+            roomNumber: true,
+            capacity: true,
+            allocations: { where: { status: 'ACTIVE' }, select: { id: true } },
+          },
+        });
+
+        const roomTypesSummary: Record<string, { availableCount: number; totalRooms: number }> = {};
+        activeRooms.forEach((r) => {
+          const typeKey = r.roomType || 'Standard';
+          const occupancy = r.allocations ? r.allocations.length : 0;
+          const availableBeds = Math.max(0, r.capacity - occupancy);
+          if (!roomTypesSummary[typeKey]) {
+            roomTypesSummary[typeKey] = { availableCount: 0, totalRooms: 0 };
+          }
+          roomTypesSummary[typeKey].totalRooms += 1;
+          if (availableBeds > 0) {
+            roomTypesSummary[typeKey].availableCount += 1;
+          }
+        });
+
+        const isFemaleBlock = /GH|GIRLS|FEMALE|WOMEN/i.test(`${b.name} ${b.code} ${b.description || ''}`);
+        const targetGender = isFemaleBlock ? 'Female' : 'Male';
+
+        return {
+          ...b,
+          targetGender,
+          roomTypesSummary,
+          totalActiveRooms: activeRooms.length,
+          totalVacantRooms: activeRooms.filter((r) => (r.allocations?.length || 0) < r.capacity).length,
+        };
+      })
+    );
+
     res.status(200).json({
       success: true,
-      blocks,
+      blocks: blocksWithAvailability,
     });
   } catch (error) {
     console.error('Error fetching register blocks:', error);

@@ -63,6 +63,12 @@ async function runTests() {
       const student = await prisma.student.findUnique({ where: { jntuNo: '25331A05H7' } });
       assert.ok(student, 'Student must exist in DB');
       testStudentId = student.id;
+
+      // Ensure clean state: lift any leftover active suspensions for test student
+      await prisma.suspension.updateMany({
+        where: { studentId: testStudentId, status: 'ACTIVE' },
+        data: { status: 'LIFTED', liftedAt: new Date() },
+      });
     });
 
     // 3. RBAC — Unauthenticated Access Blocked
@@ -398,8 +404,8 @@ async function runTests() {
           passType: 'LOCAL_OUTING',
           purpose: 'Weekend shopping trip',
           destination: 'City Mall',
-          outDate: new Date(Date.now() + 86400000).toISOString(),
-          returnDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+          outDate: new Date(Date.now() + 3600000).toISOString(),
+          returnDate: new Date(Date.now() + 14400000).toISOString(),
           emergencyContact: '9876543210',
           parentContact: '9876543210',
         }),
@@ -466,6 +472,13 @@ async function runTests() {
 
     // 20. Outing Privileges Restored
     await test('20. Outing Restored — Student can apply for outings again once suspension is lifted', async () => {
+      // Clear any prior active outings and active suspensions for test student so new request succeeds
+      await prisma.outingRequest.deleteMany({ where: { studentId: testStudentId } });
+      await prisma.suspension.updateMany({
+        where: { studentId: testStudentId, status: 'ACTIVE' },
+        data: { status: 'LIFTED', liftedAt: new Date() },
+      });
+
       const outingRes = await fetch(`${API_BASE}/student/outing-requests`, {
         method: 'POST',
         headers: {
@@ -476,8 +489,8 @@ async function runTests() {
           passType: 'LOCAL_OUTING',
           purpose: 'Trip after suspension lifted',
           destination: 'City Center',
-          outDate: new Date(Date.now() + 86400000).toISOString(),
-          returnDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+          outDate: new Date(Date.now() + 3600000).toISOString(),
+          returnDate: new Date(Date.now() + 14400000).toISOString(),
           emergencyContact: '9876543210',
           parentContact: '9876543210',
         }),

@@ -261,8 +261,8 @@ async function runOutingLogHistorySuite() {
 
   // 16. Date range filter: from / to
   await test('16. Date Range Filter: from and to bounds accurately restrict records', async () => {
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const tomorrow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     const res = await getJson(`/management/outing-log-history?from=${yesterday}&to=${tomorrow}`, adminToken);
     assert.strictEqual(res.status, 200);

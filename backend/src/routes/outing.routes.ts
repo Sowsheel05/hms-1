@@ -255,6 +255,19 @@ router.post('/outing-requests', authenticateStudent, async (req: AuthenticatedRe
       return;
     }
 
+    // Same-Day Hourly Pass Constraint: Outings are hourly passes (max 14 hours).
+    const durationMs = parsedReturnDate.getTime() - parsedOutDate.getTime();
+    const durationHours = durationMs / (1000 * 60 * 60);
+    const isSameCalendarDay = parsedOutDate.toDateString() === parsedReturnDate.toDateString();
+
+    if (!isSameCalendarDay && durationHours > 14) {
+      res.status(400).json({
+        success: false,
+        message: 'Outings are strictly same-day hourly passes (maximum 14 hours). For multi-day trips home, please submit a Leave request.',
+      });
+      return;
+    }
+
     // Outing date cannot be in the past (allow 15-minute grace period for network delays)
     const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
     if (parsedOutDate < fifteenMinutesAgo) {

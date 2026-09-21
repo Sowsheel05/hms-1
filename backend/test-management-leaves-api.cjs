@@ -44,6 +44,12 @@ async function runTests() {
     const studentId = studentLoginData.user.id;
     console.log('  -> PASS: Student logged in successfully.');
 
+    // Ensure clean state: lift any leftover active suspensions for test student
+    await prisma.suspension.updateMany({
+      where: { studentId, status: 'ACTIVE' },
+      data: { status: 'LIFTED', liftedAt: new Date() },
+    });
+
     // 3. RBAC: Unauthenticated access -> 401
     console.log('[TEST 3] Unauthenticated access to /management/leaves/stats should return 401...');
     const unauthRes = await fetch(`${BASE_URL}/management/leaves/stats`);

@@ -4,10 +4,10 @@
  * Do not hardcode branding strings in individual views.
  */
 export const APP_BRANDING = {
-  appName: 'Hostel Management',
-  portalName: 'Student Hostel Portal',
-  tagline: 'Residential Student Services & Room Portal',
-  collegeName: 'Institutional Hostel Management System',
-  supportEmail: 'hostel.admin@college.edu',
-  welcomeSubtitle: 'Sign in to access your hostel portal',
+  appName: 'Campusly',
+  portalName: 'Campusly Portal',
+  tagline: 'Alliance College of Management Residential Portal',
+  collegeName: 'ALLIANCE COLLEGE OF MANAGEMENT',
+  supportEmail: 'hostel.support@alliance.edu.in',
+  welcomeSubtitle: 'Login to your Campusly account and access the Alliance College of Management hostel dashboard.',
 };

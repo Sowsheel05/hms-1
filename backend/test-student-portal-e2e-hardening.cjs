@@ -358,9 +358,9 @@ async function runTests() {
     markPass('Outing request concurrency check prevents multiple simultaneous active/pending passes');
   }
 
-  // Ensure no lingering pending outings block validation testing
+  // Ensure no lingering active/pending outings block validation testing
   await prisma.outingRequest.deleteMany({
-    where: { studentId: loginDataA.user.id, status: 'PENDING' },
+    where: { studentId: loginDataA.user.id },
   }).catch(() => {});
 
   // Outing date validation: returnDate <= outDate
@@ -511,8 +511,17 @@ async function runTests() {
   // ----------------------------------------------------
   console.log('\n--- SECTION 9: UNIFIED SSE ENDPOINT & SECURITY ---');
 
+  // Re-authenticate tokenA for post-logout sections
+  const freshLogin = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jntuNo: '25331A05H7', password: 'Password@123' }),
+  });
+  const freshData = await freshLogin.json();
+  const freshTokenA = freshData.token;
+
   // Authenticated SSE connection receives 200 text/event-stream
-  const sseRes = await fetch(`${BASE_URL}/api/student/events?token=${encodeURIComponent(tokenA)}`, {
+  const sseRes = await fetch(`${BASE_URL}/api/student/events?token=${encodeURIComponent(freshTokenA)}`, {
     headers: { Accept: 'text/event-stream' },
   });
   assert.strictEqual(sseRes.status, 200, 'SSE stream must return 200 for authenticated student');
@@ -529,7 +538,7 @@ async function runTests() {
   const postRoomRes = await fetch(`${BASE_URL}/api/student/my-room`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${tokenA}`,
+      Authorization: `Bearer ${freshTokenA}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ roomNumber: '999', block: 'Luxury-Block' }),
