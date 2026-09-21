@@ -20,7 +20,6 @@ import {
   CreditCard,
   Landmark,
   Bell,
-  Cpu,
 } from 'lucide-react';
 import {
   managementApiService,
@@ -43,7 +42,6 @@ const ADMIN_MODULES = [
   { id: 'outings', title: 'Outing Requests', path: '/management/outings', icon: Footprints },
   { id: 'mess', title: 'Mess Management', path: '/management/mess', icon: UtensilsCrossed },
   { id: 'leaves', title: 'Leaves & Suspension', path: '/management/leaves', icon: FileText },
-  { id: 'device-management', title: 'Device Management', path: '/management/device-management', icon: Cpu },
   { id: 'logs', title: 'Log History', path: '/management/log-history', icon: History },
   { id: 'outing-logs', title: 'Outing Log History', path: '/management/outing-logs', icon: ClipboardList },
   { id: 'users', title: 'User Management', path: '/management/users', icon: Users },

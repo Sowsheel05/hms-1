@@ -582,6 +582,16 @@ export const ManagementUserManagementPage: React.FC<ManagementUserManagementPage
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleApplyFilters()}
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="user-search-clear"
+                title="Clear search"
+              >
+                <X size={15} />
+              </button>
+            )}
           </div>
 
           {/* Role Filter */}

@@ -113,17 +113,17 @@ export const ManagementHeader: React.FC<ManagementHeaderProps> = ({
       return 'Chief Warden';
     }
     if (user?.role === 'WARDEN') return 'Warden';
-    if (user?.role === 'ADMIN') return 'College Director / Administrator';
+    if (user?.role === 'ADMIN') return 'College Administrator';
     return formatRole(user?.role);
   };
 
   const formatRole = (role?: string) => {
-    if (!role) return 'College Director / Administrator';
+    if (!role) return 'College Administrator';
     switch (role) {
       case 'SUPPORT_ADMIN':
         return 'Multi-College Tech Support Admin';
       case 'ADMIN':
-        return 'College Director / Administrator';
+        return 'College Administrator';
       case 'HOSTEL_ADMIN':
         return 'Hostel Administrator';
       case 'WARDEN':
@@ -298,7 +298,7 @@ export const ManagementHeader: React.FC<ManagementHeaderProps> = ({
             >
               {getInitials()}
             </div>
-            <div className="profile-text-desktop" style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', justifyContent: 'center' }}>
+            <div className="profile-text-desktop" style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', justifyContent: 'center', whiteSpace: 'nowrap' }}>
               <span className="profile-name" style={{ fontWeight: 600, color: '#0F172A', fontSize: '0.85rem', lineHeight: '1.2' }}>
                 {getHeaderDisplayName()}
               </span>

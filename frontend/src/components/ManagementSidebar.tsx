@@ -18,7 +18,6 @@ import {
   X,
   ShieldCheck,
   Lock,
-  Cpu,
 } from 'lucide-react';
 import { useManagementAuth } from '../context/ManagementAuthContext';
 import { APP_BRANDING } from '../config/branding';
@@ -44,7 +43,6 @@ export const MANAGEMENT_NAV_ITEMS: ManagementNavItem[] = [
   { id: 'outing-logs', label: 'Outing Log History', path: '/management/outing-logs', icon: ClipboardList, isAvailable: true },
   { id: 'users', label: 'User Management', path: '/management/users', icon: Users, isAvailable: true },
   { id: 'billing', label: 'Guest Billing', path: '/management/guest-billing', icon: Receipt, isAvailable: true },
-  { id: 'device-management', label: 'Device Management', path: '/management/device-management', icon: Cpu, isAvailable: true },
   { id: 'fee-management', label: 'Fee Management', path: '/management/fee-management', icon: CreditCard, isAvailable: true },
   { id: 'fee-collection', label: 'Fee Collection', path: '/management/fee-collection', icon: Landmark, isAvailable: true },
   { id: 'notifications', label: 'Notifications', path: '/management/notifications', icon: Bell, isAvailable: true },
@@ -78,7 +76,7 @@ export const ManagementSidebar: React.FC<ManagementSidebarProps> = ({
     }
     if (isWarden) {
       // Remove admin-only system config modules for wardens
-      return !['fee-management', 'fee-collection', 'users', 'device-management'].includes(item.id);
+      return !['fee-management', 'fee-collection', 'users'].includes(item.id);
     }
     return true;
   });

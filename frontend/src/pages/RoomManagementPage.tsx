@@ -1237,6 +1237,16 @@ export const RoomManagementPage: React.FC<RoomManagementPageProps> = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 aria-label="Search"
               />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="room-search-clear"
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
 
             <div className="room-filter-controls">
