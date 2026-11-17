@@ -108,6 +108,8 @@ router.post('/login', loginRateLimiter, async (req, res): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Unable to sign in right now. Please try again.',
+      errorDetails: error?.message || String(error),
+      errorStack: error?.stack,
     });
   }
 });

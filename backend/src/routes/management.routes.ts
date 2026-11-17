@@ -199,11 +199,13 @@ router.post('/auth/login', loginRateLimiter, async (req, res): Promise<void> => 
         hostelScope,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Management login error:', error);
     res.status(500).json({
       success: false,
       message: 'Unable to sign in to management portal right now.',
+      errorDetails: error?.message || String(error),
+      errorStack: error?.stack,
     });
   }
 });
