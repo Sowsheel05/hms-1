@@ -1,30 +1,25 @@
-name: CI/CD Auto Deployment Pipeline
+name: Campusly Production CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
-      - master
+      - final
       - feat/security-hardening-and-fee-management
   workflow_dispatch:
 
-concurrency:
-  group: production-deployment
-  cancel-in-progress: false
-
 jobs:
-  test-and-build:
-    name: Build & Automated Verification
+  validate-and-deploy:
+    name: Build & Zero-Downtime Deploy
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js v22
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: 'npm'
+          node-version: 20
 
       - name: Install Monorepo Dependencies
         run: |
@@ -33,92 +28,42 @@ jobs:
           npm --prefix frontend install
 
       - name: Generate Prisma Client
-        run: |
-          cd backend
-          npx prisma generate
+        run: npm --prefix backend run prisma:generate
 
-      - name: Compile Backend (TypeScript)
+      - name: Validate Backend & Frontend Build
         run: |
           npm --prefix backend run build
-
-      - name: Build Frontend Production Bundle (Vite)
-        run: |
           npm --prefix frontend run build
 
-  deploy-to-server:
-    name: Deploy to Production Server
-    needs: test-and-build
-    runs-on: ubuntu-latest
-    # Run only if server SSH credentials are configured in GitHub Secrets
-    if: github.repository_owner != ''
-    steps:
-      - name: Deploy via SSH to Target Server
-        uses: appleboy/ssh-action@v1.0.3
-        if: env.SERVER_HOST != ''
+      - name: Package Code Archive for Deployment
+        run: |
+          tar -czf /tmp/app.tar.gz \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='backend/node_modules' \
+            --exclude='frontend/node_modules' \
+            --exclude='backend/dist' \
+            --exclude='frontend/dist' \
+            .
+
+      - name: Setup SSH Deploy Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p ${{ secrets.VPS_PORT || 22 }} ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Stream Archive and Unpack on VPS
+        run: |
+          ssh -i ~/.ssh/id_deploy -p ${{ secrets.VPS_PORT || 22 }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/campusly.thehps.in"
+          cat /tmp/app.tar.gz | ssh -i ~/.ssh/id_deploy -p ${{ secrets.VPS_PORT || 22 }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "tar -xzf - -C /var/www/campusly.thehps.in"
+
+      - name: Execute Zero-Downtime Deployment on VPS
         env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER || 'ubuntu' }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          passphrase: ${{ secrets.SERVER_SSH_PASSPHRASE }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
-          script_stop: true
-          envs: GITHUB_SHA,GITHUB_REF_NAME
-          script: |
-            TARGET_DIR="${{ secrets.DEPLOY_PATH || '/var/www/hms' }}"
-            echo "=========================================================="
-            echo "🚀 Starting Automated HMS Server Deployment"
-            echo "Branch: $GITHUB_REF_NAME | Commit: $GITHUB_SHA"
-            echo "Target Directory: $TARGET_DIR"
-            echo "=========================================================="
-
-            if [ ! -d "$TARGET_DIR" ]; then
-              echo "Error: Target directory $TARGET_DIR does not exist on server!"
-              exit 1
-            fi
-
-            cd "$TARGET_DIR"
-
-            echo "📥 [1/6] Fetching latest commits from GitHub..."
-            git fetch origin
-            git checkout "$GITHUB_REF_NAME" || git checkout -b "$GITHUB_REF_NAME" "origin/$GITHUB_REF_NAME"
-            git reset --hard "origin/$GITHUB_REF_NAME"
-
-            echo "📦 [2/6] Installing dependencies..."
-            npm install --production=false
-            npm --prefix backend install --production=false
-            npm --prefix frontend install --production=false
-
-            echo "🗄️ [3/6] Syncing Prisma schema & generating client..."
-            cd backend
-            npx prisma generate
-            npx prisma db push --skip-generate
-            cd ..
-
-            echo "🏗️ [4/6] Building production backend & frontend..."
-            npm --prefix backend run build
-            npm --prefix frontend run build
-
-            echo "📊 [5/6] Checking for facility Excel template auto-import..."
-            if [ -f "HMS_Hostel_Facility_Setup_Template.xlsx" ]; then
-              echo "Executing automatic facility data import..."
-              npm run import:facility || echo "Facility import completed with notifications."
-            fi
-
-            echo "🔄 [6/6] Reloading production services with zero downtime..."
-            if command -v pm2 >/dev/null 2>&1; then
-              pm2 reload ecosystem.config.js --env production || pm2 start ecosystem.config.js --env production
-              pm2 save
-            elif command -v docker >/dev/null 2>&1 && [ -f "docker-compose.yml" ]; then
-              docker compose up -d --build
-            elif systemctl is-active --quiet hms-backend; then
-              sudo systemctl restart hms-backend
-            else
-              echo "⚠️ PM2 or Systemd service not detected. Running custom deploy script..."
-              chmod +x scripts/deploy.sh && ./scripts/deploy.sh
-            fi
-
-            echo "=========================================================="
-            echo "✅ HMS Deployment Successfully Completed!"
-            echo "=========================================================="
+          TARGET_PORT: ${{ secrets.PORT || '5025' }}
+          DB_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SEC: ${{ secrets.JWT_SECRET }}
+          JWT_EXP: ${{ secrets.JWT_EXPIRES_IN || '7d' }}
+          CORS_ORG: ${{ secrets.CORS_ORIGIN || 'https://campusly.thehps.in,http://campusly.thehps.in' }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -p ${{ secrets.VPS_PORT || 22 }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "PORT='$TARGET_PORT' DATABASE_URL='$DB_URL' JWT_SECRET='$JWT_SEC' JWT_EXPIRES_IN='$JWT_EXP' CORS_ORIGIN='$CORS_ORG' bash -s" < scripts/deploy-remote.sh
