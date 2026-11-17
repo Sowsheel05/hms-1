@@ -27,6 +27,7 @@ import outingLogHistoryRouter from './outing-log-history.routes';
 import deviceRouter from './device.routes';
 import adminNotificationRouter from './admin-notification.routes';
 import hostelApplicationManagementRouter from './hostel-application-management.routes';
+import { alertsManagementRouter } from './alerts-management.routes';
 import { auditService } from '../services/audit.service';
 
 
@@ -50,6 +51,7 @@ router.use('/fee-management', feeManagementRouter);
 router.use('/fee-collection', feeCollectionRouter);
 router.use('/notifications', adminNotificationRouter);
 router.use('/hostel-applications', hostelApplicationManagementRouter);
+router.use('/alerts', alertsManagementRouter);
 
 
 /**

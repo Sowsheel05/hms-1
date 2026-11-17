@@ -34,6 +34,7 @@ import { FeeManagementPage } from './pages/FeeManagementPage';
 import { FeeCollectionPage } from './pages/FeeCollectionPage';
 import { ManagementDevicePage } from './pages/ManagementDevicePage';
 import { ManagementNotificationsPage } from './pages/ManagementNotificationsPage';
+import { AlertsManagementPage } from './pages/AlertsManagementPage';
 import { ManagementHostelApplicationsPage } from './pages/ManagementHostelApplicationsPage';
 import { HostelApplicationPage } from './pages/HostelApplicationPage';
 import { StudentRegistrationPage } from './pages/StudentRegistrationPage';
@@ -201,6 +202,7 @@ const AuthenticatedManagementApp: React.FC<{
   const isUserManagementPage = currentPath === '/management/users';
   const isFeeManagementPage = currentPath === '/management/fee-management';
   const isFeeCollectionPage = currentPath === '/management/fee-collection';
+  const isAlertsPage = currentPath === '/management/alerts';
   const isNotificationsPage = currentPath === '/management/notifications';
   const isHostelApplicationsPage = currentPath === '/management/hostel-applications';
 
@@ -226,7 +228,9 @@ const AuthenticatedManagementApp: React.FC<{
           isRefreshing={isRefreshing}
           isRealtimeConnected={isRealtimeConnected}
           pageTitle={
-            isHostelApplicationsPage
+            isAlertsPage
+              ? 'Alerts & Security Monitoring'
+              : isHostelApplicationsPage
               ? 'Student Registrations & Hostel Applications'
               : isNotificationsPage
               ? 'Notifications'
@@ -259,7 +263,9 @@ const AuthenticatedManagementApp: React.FC<{
                                         : 'Admin Dashboard'
           }
           pageSubtitle={
-            isHostelApplicationsPage
+            isAlertsPage
+              ? 'Real-time campus security, curfew violations, gate transit rejections, and urgent facility alerts.'
+              : isHostelApplicationsPage
               ? 'Review pending student admissions, verify criteria, approve, and allocate rooms.'
               : isNotificationsPage
               ? 'Create, manage, and monitor HMS notifications.'
@@ -295,7 +301,9 @@ const AuthenticatedManagementApp: React.FC<{
 
         {/* Management Content View */}
         <main className="portal-content-body management-content-body">
-          {isHostelApplicationsPage ? (
+          {isAlertsPage ? (
+            <AlertsManagementPage onNavigate={onNavigate} />
+          ) : isHostelApplicationsPage ? (
             <ManagementHostelApplicationsPage onNavigate={onNavigate} />
           ) : isNotificationsPage ? (
             <ManagementNotificationsPage />

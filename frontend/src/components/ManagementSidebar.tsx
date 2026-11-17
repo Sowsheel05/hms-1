@@ -18,6 +18,7 @@ import {
   LogOut,
   X,
   ShieldCheck,
+  ShieldAlert,
   Lock,
 } from 'lucide-react';
 import { APP_BRANDING } from '../config/branding';
@@ -46,6 +47,7 @@ export const MANAGEMENT_NAV_ITEMS: ManagementNavItem[] = [
   { id: 'users', label: 'User Management', path: '/management/users', icon: Users, isAvailable: true },
   { id: 'billing', label: 'Guest Billing', path: '/management/guest-billing', icon: Receipt, isAvailable: true },
   { id: 'devices', label: 'Device Management', path: '/management/devices', icon: Cpu, isAvailable: true },
+  { id: 'alerts', label: 'Alerts & Security', path: '/management/alerts', icon: ShieldAlert, isAvailable: true },
   { id: 'notifications', label: 'Notifications', path: '/management/notifications', icon: Bell, isAvailable: true },
 ];
 

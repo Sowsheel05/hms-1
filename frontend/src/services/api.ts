@@ -4691,7 +4691,118 @@ export const managementApiService = {
     if (!res.ok) throw new Error(data.message || 'Failed to allocate room for application.');
     return data;
   },
+
+  async getAlerts(params?: {
+    severity?: string;
+    type?: string;
+    blockName?: string;
+    limit?: number;
+  }): Promise<{ success: boolean; alerts: AlertItem[]; stats: AlertStats }> {
+    const token = managementAuthStorage.getToken();
+    const query = new URLSearchParams();
+    if (params?.severity && params.severity !== 'ALL') query.set('severity', params.severity);
+    if (params?.type && params.type !== 'ALL') query.set('type', params.type);
+    if (params?.blockName && params.blockName !== 'ALL') query.set('blockName', params.blockName);
+    if (params?.limit) query.set('limit', params.limit.toString());
+
+    const res = await fetch(`/api/management/alerts?${query.toString()}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch active alerts.');
+    return data;
+  },
+
+  async getAlertStats(): Promise<{ success: boolean; stats: AlertStats }> {
+    const token = managementAuthStorage.getToken();
+    const res = await fetch('/api/management/alerts/stats', {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch alert statistics.');
+    return data;
+  },
+
+  async broadcastAlert(payload: BroadcastAlertPayload): Promise<any> {
+    const token = managementAuthStorage.getToken();
+    const res = await fetch('/api/management/alerts/broadcast', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to broadcast alert.');
+    return data;
+  },
+
+  async acknowledgeAlert(alertId: string, notes?: string): Promise<any> {
+    const token = managementAuthStorage.getToken();
+    const res = await fetch('/api/management/alerts/acknowledge', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify({ alertId, notes: notes || '' }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to acknowledge alert.');
+    return data;
+  },
 };
+
+export interface AlertItem {
+  id: string;
+  type: 'CURFEW_OVERDUE' | 'GATE_BREACH' | 'URGENT_COMPLAINT' | 'DISCIPLINARY' | 'EMERGENCY_BROADCAST';
+  severity: 'CRITICAL' | 'HIGH' | 'WARNING' | 'INFO';
+  title: string;
+  description: string;
+  source: string;
+  timestamp: string;
+  student?: {
+    id: string;
+    name: string;
+    jntuNo: string;
+    blockName?: string | null;
+    roomNumber?: string | null;
+    emergencyContact?: string | null;
+  };
+  details: Record<string, any>;
+  isActionable: boolean;
+  actionLabel?: string;
+  actionUrl?: string;
+}
+
+export interface AlertStats {
+  totalAlerts: number;
+  criticalAlerts: number;
+  overdueStudents: number;
+  gateBreaches: number;
+  urgentComplaints: number;
+  activeSuspensions: number;
+  systemStatus: 'NORMAL' | 'ELEVATED' | 'CRITICAL';
+}
+
+export interface BroadcastAlertPayload {
+  title: string;
+  message: string;
+  severity: 'CRITICAL' | 'HIGH' | 'WARNING' | 'INFO';
+  recipientScope: 'ALL_STUDENTS' | 'BLOCK' | 'ROOM';
+  blockName?: string;
+  roomNumber?: string;
+  expiresInHours?: number;
+}
 
 export interface StudentRegistrationDto {
   name: string;

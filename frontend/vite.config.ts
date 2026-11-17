@@ -16,6 +16,7 @@ export default defineConfig({
           }
           if (
             id.includes('/pages/Management') ||
+            id.includes('/pages/Alerts') ||
             id.includes('/pages/Fee') ||
             id.includes('/pages/Block') ||
             id.includes('/pages/RoomManagement') ||
