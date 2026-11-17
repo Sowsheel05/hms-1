@@ -46,6 +46,10 @@ JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
 CORS_ORIGIN=${CORS_ORIGIN:-https://campusly.thehps.in,http://campusly.thehps.in}
 EOF
 
+echo "==> Cleaning stale legacy files..."
+rm -f backend/src/services/college.service.ts backend/src/routes/college.routes.ts backend/src/scripts/verify-fee-features.ts
+rm -rf backend/dist frontend/dist
+
 echo "==> Creating persistent storage directories..."
 mkdir -p backend/uploads/complaints
 

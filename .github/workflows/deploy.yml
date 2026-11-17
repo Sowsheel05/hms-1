@@ -55,7 +55,7 @@ jobs:
 
       - name: Stream Archive and Unpack on VPS
         run: |
-          ssh -i ~/.ssh/id_deploy -p ${{ secrets.VPS_PORT || 22 }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/campusly.thehps.in"
+          ssh -i ~/.ssh/id_deploy -p ${{ secrets.VPS_PORT || 22 }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/campusly.thehps.in && rm -rf /var/www/campusly.thehps.in/backend/src /var/www/campusly.thehps.in/frontend/src"
           cat /tmp/app.tar.gz | ssh -i ~/.ssh/id_deploy -p ${{ secrets.VPS_PORT || 22 }} ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "tar -xzf - -C /var/www/campusly.thehps.in"
 
       - name: Execute Zero-Downtime Deployment on VPS
