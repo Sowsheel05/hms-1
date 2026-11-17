@@ -15,6 +15,16 @@ import hostelApplicationRoutes from './routes/hostel-application.routes';
 
 const app = express();
 
+// Security Hardening: Disable Express signature and set security headers
+app.disable('x-powered-by');
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
+
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map((o) => o.trim());
 app.use(
   cors({
@@ -74,7 +84,11 @@ app.use('/api/student', notificationRoutes);
 app.use('/api/student', biometricRoutes);
 app.use('/api/student/hostel-application', hostelApplicationRoutes);
 app.use('/api/management', managementRoutes);
-app.use('/api/test', testBiometricRouter);
+
+// Strictly isolate test ingestion router from production deployments
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/test', testBiometricRouter);
+}
 
 // Fallback 404
 app.use((req, res) => {

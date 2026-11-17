@@ -192,6 +192,14 @@ testBiometricRouter.post(
   '/biometric/events',
   async (req, res): Promise<void> => {
     try {
+      if (process.env.NODE_ENV === 'production') {
+        res.status(403).json({
+          success: false,
+          message: 'Test ingestion endpoint is disabled in production environments.',
+        });
+        return;
+      }
+
       const {
         studentId,
         eventType,
