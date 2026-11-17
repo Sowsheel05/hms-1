@@ -6,6 +6,13 @@ import {
 } from '../middleware/management.middleware';
 import { complaintEventsService } from '../services/events.service';
 import { auditService } from '../services/audit.service';
+import multer from 'multer';
+import { facilityImporterService } from '../services/facility-importer.service';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 const router = Router();
 
@@ -568,5 +575,42 @@ router.delete('/:id', async (req: AuthenticatedManagementRequest, res: Response)
     });
   }
 });
+
+/**
+ * POST /api/management/blocks/import-excel
+ * Bulk imports blocks, rooms, and bed capacities from the Excel setup template
+ */
+router.post(
+  '/import-excel',
+  upload.single('file'),
+  async (req: AuthenticatedManagementRequest, res: Response): Promise<void> => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ success: false, message: 'Please upload an Excel (.xlsx or .xls) file.' });
+        return;
+      }
+
+      const actor = {
+        id: req.managementUser?.id || 'system',
+        username: req.managementUser?.name || req.managementUser?.jntuNo || 'Admin',
+        role: req.managementUser?.role || 'ADMIN',
+      };
+
+      const result = await facilityImporterService.importFacilityExcel(
+        req.file.buffer,
+        req.file.originalname,
+        actor
+      );
+
+      res.status(200).json(result);
+    } catch (err: any) {
+      console.error('Facility Excel import error:', err);
+      res.status(400).json({
+        success: false,
+        message: err.message || 'Failed to import facility Excel template.',
+      });
+    }
+  }
+);
 
 export default router;

@@ -9,6 +9,10 @@
     "dev:frontend": "npm --prefix frontend run dev",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "build:backend": "npm --prefix backend run build",
-    "build:frontend": "npm --prefix frontend run build"
+    "build:frontend": "npm --prefix frontend run build",
+    "import:facility": "npm --prefix backend run import:facility",
+    "deploy": "bash scripts/deploy.sh",
+    "deploy:win": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1",
+    "webhook": "node scripts/webhook-deploy-server.js"
   }
 }
