@@ -55,7 +55,7 @@ npm --prefix frontend install
 
 echo "==> Applying Prisma schema updates..."
 npm --prefix backend run prisma:generate
-npm --prefix backend run prisma:push
+npm --prefix backend run prisma:push -- --accept-data-loss || npx --prefix backend prisma db push --accept-data-loss
 npm --prefix backend run prisma:seed || true
 node backend/ensure-demo-student.cjs || true
 
